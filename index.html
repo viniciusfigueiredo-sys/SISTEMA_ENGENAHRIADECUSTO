@@ -46,17 +46,17 @@
       </div>
 
       <!-- FORMULÁRIO DE LOGIN -->
-      <form id="form-login" onsubmit="executarLogin(event)" class="space-y-4">
+      <div id="box-login" class="space-y-4">
         <div>
           <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Usuário ou E-mail:</label>
-          <input type="text" id="login-usuario" required placeholder="Digite seu usuário..." class="w-full text-xs border border-gray-300 rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-bp-blue">
+          <input type="text" id="login-usuario" placeholder="Digite seu usuário..." class="w-full text-xs border border-gray-300 rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-bp-blue">
         </div>
         <div>
           <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Senha de Acesso:</label>
-          <input type="password" id="login-senha" required placeholder="••••••••" class="w-full text-xs border border-gray-300 rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-bp-blue">
+          <input type="password" id="login-senha" placeholder="••••••••" class="w-full text-xs border border-gray-300 rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-bp-blue">
         </div>
 
-        <button type="submit" class="w-full bg-bp-blue hover:bg-bp-dark text-white font-bold text-xs py-3 rounded-lg transition-all shadow-md">
+        <button type="button" onclick="executarLogin()" class="w-full bg-bp-blue hover:bg-bp-dark text-white font-bold text-xs py-3 rounded-lg transition-all shadow-md">
           Entrar no Sistema
         </button>
 
@@ -65,38 +65,38 @@
             <button type="button" onclick="exibirFormSolicitacao()" class="text-bp-blue font-bold hover:underline">Solicitar Acesso</button>
           </p>
         </div>
-      </form>
+      </div>
 
       <!-- FORMULÁRIO DE SOLICITAÇÃO -->
-      <form id="form-solicitacao" onsubmit="solicitarCadastro(event)" class="space-y-4 hidden">
+      <div id="box-solicitacao" class="space-y-4 hidden">
         <div class="bg-amber-50 border-l-4 border-amber-400 p-2.5 rounded text-[11px] text-amber-800">
           ℹ️ Seu cadastro precisará da <strong>aprovação do usuário Mestre</strong> para ser liberado.
         </div>
         <div>
           <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Nome Completo:</label>
-          <input type="text" id="solic-nome" required placeholder="Seu nome..." class="w-full text-xs border border-gray-300 rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-bp-blue">
+          <input type="text" id="solic-nome" placeholder="Seu nome..." class="w-full text-xs border border-gray-300 rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-bp-blue">
         </div>
         <div>
           <label class="block text-xs font-bold text-gray-700 uppercase mb-1">E-mail Corporativo:</label>
-          <input type="email" id="solic-email" required placeholder="seuemail@brasilpontes.com.br" class="w-full text-xs border border-gray-300 rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-bp-blue">
+          <input type="email" id="solic-email" placeholder="seuemail@brasilpontes.com.br" class="w-full text-xs border border-gray-300 rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-bp-blue">
         </div>
         <div>
           <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Nome de Usuário desejado:</label>
-          <input type="text" id="solic-usuario" required placeholder="ex: joao_silva" class="w-full text-xs border border-gray-300 rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-bp-blue">
+          <input type="text" id="solic-usuario" placeholder="ex: joao_silva" class="w-full text-xs border border-gray-300 rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-bp-blue">
         </div>
         <div>
           <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Crie uma Senha:</label>
-          <input type="password" id="solic-senha" required placeholder="••••••••" class="w-full text-xs border border-gray-300 rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-bp-blue">
+          <input type="password" id="solic-senha" placeholder="••••••••" class="w-full text-xs border border-gray-300 rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-bp-blue">
         </div>
 
-        <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs py-3 rounded-lg transition-all shadow-md">
+        <button type="button" onclick="solicitarCadastro()" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs py-3 rounded-lg transition-all shadow-md">
           Enviar Solicitação ao Mestre
         </button>
 
         <div class="text-center pt-2 border-t border-gray-100">
           <button type="button" onclick="exibirFormLogin()" class="text-xs text-gray-500 font-bold hover:underline">← Voltar para o Login</button>
         </div>
-      </form>
+      </div>
 
     </div>
   </div>
@@ -247,39 +247,39 @@
         <button onclick="fecharModalNovaObra()" class="text-gray-400 hover:text-gray-600 font-bold">✕</button>
       </div>
       
-      <form id="form-cad-obra" onsubmit="salvarNovaObra(event)" class="space-y-3 text-xs">
+      <div class="space-y-3 text-xs">
         <div>
           <label class="font-bold text-gray-700">Nome da Obra:</label>
-          <input type="text" id="cad-nome" required placeholder="Ex: Ponte Sobre o Rio São Francisco" class="w-full mt-1 border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-bp-blue">
+          <input type="text" id="cad-nome" placeholder="Ex: Ponte Sobre o Rio São Francisco" class="w-full mt-1 border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-bp-blue">
         </div>
         <div class="grid grid-cols-2 gap-3">
           <div>
             <label class="font-bold text-gray-700">Centro de Custo (CC):</label>
-            <input type="text" id="cad-cc" required placeholder="CC-2026-04" class="w-full mt-1 border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-bp-blue">
+            <input type="text" id="cad-cc" placeholder="CC-2026-04" class="w-full mt-1 border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-bp-blue">
           </div>
           <div>
             <label class="font-bold text-gray-700">Engenheiro Responsável:</label>
-            <input type="text" id="cad-resp" required placeholder="Eng. Carlos Silva" class="w-full mt-1 border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-bp-blue">
+            <input type="text" id="cad-resp" placeholder="Eng. Carlos Silva" class="w-full mt-1 border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-bp-blue">
           </div>
         </div>
         <div>
           <label class="font-bold text-gray-700">Link CSV/Google Sheets - Planilha PREVISTO:</label>
-          <input type="url" id="cad-url-previsto" required placeholder="https://docs.google.com/spreadsheets/.../pub?output=csv" class="w-full mt-1 border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-bp-blue">
+          <input type="url" id="cad-url-previsto" placeholder="https://docs.google.com/spreadsheets/.../pub?output=csv" class="w-full mt-1 border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-bp-blue">
         </div>
         <div>
           <label class="font-bold text-gray-700">Link CSV/Google Sheets - Planilha REALIZADO:</label>
-          <input type="url" id="cad-url-realizado" required placeholder="https://docs.google.com/spreadsheets/.../pub?output=csv" class="w-full mt-1 border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-bp-blue">
+          <input type="url" id="cad-url-realizado" placeholder="https://docs.google.com/spreadsheets/.../pub?output=csv" class="w-full mt-1 border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-bp-blue">
         </div>
 
         <div class="flex justify-end gap-2 pt-3 border-t">
           <button type="button" onclick="fecharModalNovaObra()" class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg font-bold">Cancelar</button>
-          <button type="submit" class="px-4 py-2 bg-bp-blue text-white rounded-lg font-bold hover:bg-bp-dark">Salvar Obra</button>
+          <button type="button" onclick="salvarNovaObra()" class="px-4 py-2 bg-bp-blue text-white rounded-lg font-bold hover:bg-bp-dark">Salvar Obra</button>
         </div>
-      </form>
+      </div>
     </div>
   </div>
 
-  <!-- MODAL: GESTÃO DE USUÁRIOS E CRIAR USUÁRIO DIRETO (MESTRE) -->
+  <!-- MODAL: GESTÃO DE USUÁRIOS -->
   <div id="modal-usuarios" class="fixed inset-0 bg-black/60 backdrop-blur-sm hidden z-50 flex items-center justify-center p-4">
     <div class="bg-white rounded-2xl max-w-3xl w-full p-6 shadow-2xl border border-gray-100 space-y-4 max-h-[90vh] overflow-y-auto">
       <div class="flex justify-between items-center border-b pb-3">
@@ -287,25 +287,25 @@
         <button onclick="fecharModalUsuarios()" class="text-gray-400 hover:text-gray-600 font-bold">✕</button>
       </div>
 
-      <!-- FORMULÁRIO DIRETO PARA CRIAR NOVO USUÁRIO (MESTRE) -->
-      <form onsubmit="criarUsuarioDireto(event)" class="bg-bp-bg p-4 rounded-xl space-y-3 text-xs border border-gray-200">
+      <!-- FORMULÁRIO DIRETO PARA CRIAR NOVO USUÁRIO -->
+      <div class="bg-bp-bg p-4 rounded-xl space-y-3 text-xs border border-gray-200">
         <p class="font-bold text-bp-blue uppercase">➕ Criar Novo Usuário Diretamente (Mestre)</p>
         <div class="grid grid-cols-2 gap-3">
-          <input type="text" id="novo-usr-nome" placeholder="Nome Completo" required class="border p-2 rounded-lg">
-          <input type="email" id="novo-usr-email" placeholder="E-mail Corporativo" required class="border p-2 rounded-lg">
+          <input type="text" id="novo-usr-nome" placeholder="Nome Completo" class="border p-2 rounded-lg">
+          <input type="email" id="novo-usr-email" placeholder="E-mail Corporativo" class="border p-2 rounded-lg">
         </div>
         <div class="grid grid-cols-3 gap-3">
-          <input type="text" id="novo-usr-login" placeholder="Nome de Usuário (Login)" required class="border p-2 rounded-lg">
-          <input type="password" id="novo-usr-senha" placeholder="Senha" required class="border p-2 rounded-lg">
-          <select id="novo-usr-perfil" required class="border p-2 rounded-lg font-bold">
+          <input type="text" id="novo-usr-login" placeholder="Nome de Usuário (Login)" class="border p-2 rounded-lg">
+          <input type="password" id="novo-usr-senha" placeholder="Senha" class="border p-2 rounded-lg">
+          <select id="novo-usr-perfil" class="border p-2 rounded-lg font-bold">
             <option value="Engenheiro">Engenheiro</option>
             <option value="Orçamentista">Orçamentista</option>
             <option value="Dono">Dono / Diretoria</option>
             <option value="Mestre">Mestre</option>
           </select>
         </div>
-        <button type="submit" class="w-full bg-bp-blue text-white font-bold py-2 rounded-lg hover:bg-bp-dark">Cadastrar Usuário Agora</button>
-      </form>
+        <button type="button" onclick="criarUsuarioDireto()" class="w-full bg-bp-blue text-white font-bold py-2 rounded-lg hover:bg-bp-dark">Cadastrar Usuário Agora</button>
+      </div>
 
       <!-- SOLICITAÇÕES PENDENTES -->
       <div id="secao-solicitacoes" class="bg-amber-50 p-4 rounded-xl space-y-3 text-xs border border-amber-200">
