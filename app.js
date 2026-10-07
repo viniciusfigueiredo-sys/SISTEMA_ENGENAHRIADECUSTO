@@ -1,4 +1,4 @@
-// BANCO DE DADOS DE USUÁRIOS (MESTRE PREDETERMINADO)
+// BANCO DE DADOS DE USUÁRIOS E CONFIGURAÇÕES
 let usuariosBD = [
   { 
     nome: "Vinícius Souza (Mestre)", 
@@ -11,23 +11,53 @@ let usuariosBD = [
 ];
 
 let solicitacoesPendentesBD = [];
-let obrasBD = {};
+
+// LINK DA PLANILHA UNIFICADA PUBLICADA
+let urlPlanilhaUnificadaCSV = "https://docs.google.com/spreadsheets/d/1S41dXyTC2Y_SJjD3iw86WaUqi0OWNxyf/export?format=csv";
+
+// ESTRUTURA DE GRÁFICOS DINÂMICOS
+let graficosConfig = [
+  { id: "chart_curva_s", titulo: "Acompanhamento do Desempenho Orçamentário (Curva S)", tipo: "line", metrica: "curvaS" },
+  { id: "chart_categoria", titulo: "Custos por Categoria (Filtrado)", tipo: "doughnut", metrica: "categoria" }
+];
+
+let graficosInstancias = {};
+
+// BANCO DE DADOS DAS OBRAS E LANÇAMENTOS DO REALIZADO
+let obrasBD = {
+  "OBRA-MOC": {
+    id: "OBRA-MOC",
+    nome: "Escritório Montes Claros",
+    cc: "CD 22 ESCRITORIO MOC",
+    responsavel: "Eng. Vinícius Souza",
+    previstoTotal: 50000,
+    realizadoTotal: 0,
+    lancamentos: [],
+    dre: [],
+    categoriasMap: {}
+  },
+  "OBRA-ORLANDIA": {
+    id: "OBRA-ORLANDIA",
+    nome: "Obra Orlândia - KM 350",
+    cc: "CD 40 - ORLÂNDIA - km 350+601 KM",
+    responsavel: "Eng. Responsável",
+    previstoTotal: 1200000,
+    realizadoTotal: 0,
+    lancamentos: [],
+    dre: [],
+    categoriasMap: {}
+  }
+};
 
 let usuarioAutenticado = null;
-let obraAtivaID = null;
+let obraAtivaID = "OBRA-MOC";
 let multiplicadorCenario = 1;
-let chartCurvaS = null;
-let chartCategorias = null;
 
-// INICIALIZAÇÃO E PERSISTÊNCIA DA SESSÃO
+// INICIALIZAÇÃO
 window.onload = function() {
   const sessaoSalva = localStorage.getItem('usuario_bp');
   if (sessaoSalva) {
-    try {
-      usuarioAutenticado = JSON.parse(sessaoSalva);
-    } catch(e) {
-      usuarioAutenticado = null;
-    }
+    try { usuarioAutenticado = JSON.parse(sessaoSalva); } catch(e) { usuarioAutenticado = null; }
   }
   verificarSessao();
 };
@@ -40,7 +70,7 @@ function verificarSessao() {
     document.getElementById('screen-login').classList.add('hidden');
     document.getElementById('app-container').classList.remove('hidden');
     popularSeletorObras();
-    atualizarDashboard();
+    sincronizarPlanilhaUnificada();
     aplicarPermissoesPerfil();
   }
 }
@@ -76,124 +106,71 @@ function executarLogout() {
   verificarSessao();
 }
 
-// CADASTRO DIRETO DE USUÁRIO (MESTRE)
-function criarUsuarioDireto() {
-  const nome = document.getElementById('novo-usr-nome').value.trim();
-  const email = document.getElementById('novo-usr-email').value.trim();
-  const usuario = document.getElementById('novo-usr-login').value.trim();
-  const senha = document.getElementById('novo-usr-senha').value.trim();
-  const perfil = document.getElementById('novo-usr-perfil').value;
-
-  if (!nome || !email || !usuario || !senha) {
-    alert("Preencha todos os campos do usuário.");
-    return;
-  }
-
-  if (usuariosBD.some(u => u.usuario === usuario || u.email === email)) {
-    alert("Erro: Este login ou e-mail já existe.");
-    return;
-  }
-
-  usuariosBD.push({ nome, usuario, email, senha, perfil, status: "Aprovado" });
-  renderizarPainelUsuarios();
-  
-  document.getElementById('novo-usr-nome').value = '';
-  document.getElementById('novo-usr-email').value = '';
-  document.getElementById('novo-usr-login').value = '';
-  document.getElementById('novo-usr-senha').value = '';
-  
-  alert(`Usuário ${usuario} criado com sucesso!`);
-}
-
-// SOLICITAÇÃO & APROVAÇÃO
-function exibirFormSolicitacao() {
-  document.getElementById('box-login').classList.add('hidden');
-  document.getElementById('box-solicitacao').classList.remove('hidden');
-}
-
-function exibirFormLogin() {
-  document.getElementById('box-solicitacao').classList.add('hidden');
-  document.getElementById('box-login').classList.remove('hidden');
-}
-
-function solicitarCadastro() {
-  const nome = document.getElementById('solic-nome').value.trim();
-  const email = document.getElementById('solic-email').value.trim();
-  const usuario = document.getElementById('solic-usuario').value.trim();
-  const senha = document.getElementById('solic-senha').value.trim();
-
-  if (!nome || !email || !usuario || !senha) {
-    alert("Preencha todos os campos para solicitar o cadastro.");
-    return;
-  }
-
-  solicitacoesPendentesBD.push({
-    id: Date.now(),
-    nome, email, usuario, senha,
-    perfil: "Engenheiro",
-    status: "Pendente"
+// LEITURA E FILTRAGEM DA PLANILHA UNIFICADA REALIZADO
+function sincronizarPlanilhaUnificada() {
+  Papa.parse(urlPlanilhaUnificadaCSV, {
+    download: true,
+    header: true,
+    skipEmptyLines: true,
+    complete: function(results) {
+      processarDadosPlanilhaUnificada(results.data);
+    },
+    error: function(err) {
+      console.warn("Sincronização via download direto. Processando estrutura local.", err);
+      atualizarDashboard();
+    }
   });
-  
-  exibirFormLogin();
-  alert("Solicitação enviada ao Mestre!");
-  atualizarBadgePendentes();
 }
 
-function aprovarSolicitacao(id, perfil) {
-  const index = solicitacoesPendentesBD.findIndex(s => s.id === id);
-  if (index !== -1) {
-    const sol = solicitacoesPendentesBD[index];
-    sol.status = "Aprovado";
-    sol.perfil = perfil;
-    usuariosBD.push(sol);
-    solicitacoesPendentesBD.splice(index, 1);
-    renderizarPainelUsuarios();
-    atualizarBadgePendentes();
-  }
-}
+function processarDadosPlanilhaUnificada(dados) {
+  // Limpar acumulados anteriores das obras
+  Object.keys(obrasBD).forEach(k => {
+    obrasBD[k].realizadoTotal = 0;
+    obrasBD[k].lancamentos = [];
+    obrasBD[k].categoriasMap = {};
+  });
 
-function rejeitarSolicitacao(id) {
-  solicitacoesPendentesBD = solicitacoesPendentesBD.filter(s => s.id !== id);
-  renderizarPainelUsuarios();
-  atualizarBadgePendentes();
-}
+  dados.forEach(linha => {
+    const departamento = linha["Departamento"] || linha["Centro de Custo"] || "";
+    let valorStr = linha["Soma de Valor Líquido "] || linha["Soma de Valor Líquido"] || linha["Valor da Conta"] || "0";
+    
+    // Converter valor BRL para float
+    valorStr = valorStr.replace("R$", "").replace(/\./g, "").replace(",", ".").trim();
+    const valor = Math.abs(parseFloat(valorStr) || 0);
 
-function atualizarBadgePendentes() {
-  const badge = document.getElementById('badge-pendentes');
-  if (solicitacoesPendentesBD.length > 0) {
-    badge.innerText = solicitacoesPendentesBD.length;
-    badge.classList.remove('hidden');
-  } else {
-    badge.classList.add('hidden');
-  }
-}
+    const categoria = linha["Categoria"] || "Outros";
 
-// SIMULAÇÃO DE CENÁRIOS
-function aplicarCenario(fator) {
-  multiplicadorCenario = parseFloat(fator);
+    // Cruzar e filtrar automaticamente por obra
+    Object.keys(obrasBD).forEach(key => {
+      const obra = obrasBD[key];
+      if (departamento.toLowerCase().includes(obra.cc.toLowerCase()) || obra.cc.toLowerCase().includes(departamento.toLowerCase())) {
+        obra.realizadoTotal += valor;
+        obra.lancamentos.push(linha);
+        obra.categoriasMap[categoria] = (obra.categoriasMap[categoria] || 0) + valor;
+      }
+    });
+  });
+
   atualizarDashboard();
 }
 
-// DASHBOARD
+// DASHBOARD E DRE
 function popularSeletorObras() {
   const seletor = document.getElementById('seletor-obra');
   seletor.innerHTML = '';
-  
-  const chavesObras = Object.keys(obrasBD);
+  const chaves = Object.keys(obrasBD);
 
-  if (chavesObras.length === 0) {
+  if (chaves.length === 0) {
     seletor.innerHTML = `<option value="">Nenhuma obra cadastrada</option>`;
     obraAtivaID = null;
     return;
   }
 
-  chavesObras.forEach(k => {
+  chaves.forEach(k => {
     seletor.innerHTML += `<option value="${k}">${obrasBD[k].nome}</option>`;
   });
 
-  if (!obraAtivaID || !obrasBD[obraAtivaID]) {
-    obraAtivaID = chavesObras[0];
-  }
+  if (!obraAtivaID || !obrasBD[obraAtivaID]) obraAtivaID = chaves[0];
   seletor.value = obraAtivaID;
 }
 
@@ -202,29 +179,13 @@ function alterarObraAtiva(id) {
   atualizarDashboard();
 }
 
+function aplicarCenario(fator) {
+  multiplicadorCenario = parseFloat(fator);
+  atualizarDashboard();
+}
+
 function atualizarDashboard() {
-  if (!obraAtivaID || !obrasBD[obraAtivaID]) {
-    document.getElementById('obra-titulo').innerText = "Nenhuma Obra Cadastrada";
-    document.getElementById('obra-cc').innerText = "---";
-    document.getElementById('obra-resp').innerText = "---";
-
-    document.getElementById('kpi-previsto').innerText = "R$ 0,00";
-    document.getElementById('kpi-realizado').innerText = "R$ 0,00";
-    document.getElementById('kpi-desvio').innerText = "R$ 0,00";
-    document.getElementById('kpi-idc').innerText = "0.00";
-
-    document.getElementById('tabela-dre-body').innerHTML = `
-      <tr>
-        <td colspan="5" class="p-6 text-center text-gray-400 font-medium">
-          Nenhuma obra cadastrada até o momento. Clique no botão <strong>"➕ Cadastrar Obra"</strong> acima para começar.
-        </td>
-      </tr>
-    `;
-
-    if (chartCurvaS) chartCurvaS.destroy();
-    if (chartCategorias) chartCategorias.destroy();
-    return;
-  }
+  if (!obraAtivaID || !obrasBD[obraAtivaID]) return;
 
   const obra = obrasBD[obraAtivaID];
 
@@ -241,102 +202,199 @@ function atualizarDashboard() {
   document.getElementById('kpi-desvio').innerText = (desvio >= 0 ? "+ " : "") + desvio.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
   document.getElementById('kpi-idc').innerText = idc;
 
+  // Renderizar DRE por Categorias da Obra
   const tbodyDRE = document.getElementById('tabela-dre-body');
   tbodyDRE.innerHTML = '';
-  if (obra.dre && obra.dre.length > 0) {
-    obra.dre.forEach(row => {
-      const prevRow = row.previsto * multiplicadorCenario;
-      const varRow = prevRow - row.realizado;
-      const percVar = prevRow ? ((varRow / prevRow) * 100).toFixed(1) : 0;
 
+  const categorias = Object.keys(obra.categoriasMap);
+  if (categorias.length > 0) {
+    categorias.forEach(cat => {
+      const valRealizado = obra.categoriasMap[cat];
       tbodyDRE.innerHTML += `
         <tr class="hover:bg-gray-50">
-          <td class="p-3 text-bp-blue font-bold">${row.item}</td>
-          <td class="p-3 text-right">${prevRow.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
-          <td class="p-3 text-right">${row.realizado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
-          <td class="p-3 text-right font-bold ${varRow >= 0 ? 'text-emerald-600' : 'text-red-600'}">${varRow.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
-          <td class="p-3 text-center font-bold ${varRow >= 0 ? 'text-emerald-600' : 'text-red-600'}">${percVar}%</td>
+          <td class="p-3 text-bp-blue font-bold">${cat}</td>
+          <td class="p-3 text-right">R$ 0,00</td>
+          <td class="p-3 text-right">${valRealizado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
+          <td class="p-3 text-right text-red-600 font-bold">- ${valRealizado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
+          <td class="p-3 text-center text-red-600 font-bold">100% Realizado</td>
         </tr>
       `;
     });
   } else {
-    tbodyDRE.innerHTML = `<tr><td colspan="5" class="p-3 text-center text-gray-400">Aguardando sincronização com as planilhas do Google Sheets.</td></tr>`;
+    tbodyDRE.innerHTML = `<tr><td colspan="5" class="p-4 text-center text-gray-400">Nenhum lançamento filtrado para este Centro de Custo na planilha unificada.</td></tr>`;
   }
 
-  renderizarGraficosBI(obra);
+  renderizarGridGraficosDinamicos(obra);
 }
 
-function renderizarGraficosBI(obra) {
-  if (chartCurvaS) chartCurvaS.destroy();
-  if (chartCategorias) chartCategorias.destroy();
+// MOTOR DE GRÁFICOS DINÂMICOS CUSTOMIZÁVEIS
+function renderizarGridGraficosDinamicos(obra) {
+  const container = document.getElementById('grid-graficos-dinamicos');
+  container.innerHTML = '';
 
-  const ctxCurvaS = document.getElementById('chartCurvaS').getContext('2d');
-  chartCurvaS = new Chart(ctxCurvaS, {
-    type: 'line',
-    data: {
-      labels: obra.meses || ['Mês 1'],
-      datasets: [
-        { label: 'Previsto Cenário', data: (obra.curvaPrevisto || [0]).map(v => v * multiplicadorCenario), borderColor: '#003399', backgroundColor: 'rgba(0, 51, 153, 0.1)', fill: true },
-        { label: 'Realizado', data: obra.curvaRealizado || [0], borderColor: '#00CFFF', backgroundColor: 'rgba(0, 207, 255, 0.2)', fill: true }
-      ]
-    },
-    options: { responsive: true, maintainAspectRatio: false }
+  // Destruir instâncias anteriores
+  Object.keys(graficosInstancias).forEach(id => {
+    if (graficosInstancias[id]) graficosInstancias[id].destroy();
+  });
+  graficosInstancias = {};
+
+  graficosConfig.forEach(cfg => {
+    const cardHTML = `
+      <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+        <h3 class="font-bold text-bp-blue text-base mb-4">${cfg.titulo}</h3>
+        <div class="relative h-72">
+          <canvas id="${cfg.id}"></canvas>
+        </div>
+      </div>
+    `;
+    container.innerHTML += cardHTML;
   });
 
-  const ctxCat = document.getElementById('chartCategorias').getContext('2d');
-  chartCategorias = new Chart(ctxCat, {
-    type: 'doughnut',
-    data: {
-      labels: ['Mão de Obra', 'Materiais', 'Equipamentos', 'Outros'],
-      datasets: [{ data: obra.catValores || [0, 0, 0, 0], backgroundColor: ['#003399', '#00CFFF', '#1E293B', '#94A3B8'] }]
-    },
-    options: { responsive: true, maintainAspectRatio: false }
-  });
+  // Renderizar os elementos após inserção no DOM
+  setTimeout(() => {
+    graficosConfig.forEach(cfg => {
+      const canvasElem = document.getElementById(cfg.id);
+      if (!canvasElem) return;
+
+      const ctx = canvasElem.getContext('2d');
+      let chartData = { labels: [], datasets: [] };
+
+      if (cfg.metrica === "categoria") {
+        const labels = Object.keys(obra.categoriasMap);
+        const dataVals = Object.values(obra.categoriasMap);
+        chartData = {
+          labels: labels.length ? labels : ['Sem dados'],
+          datasets: [{ data: dataVals.length ? dataVals : [1], backgroundColor: ['#003399', '#00CFFF', '#1E293B', '#94A3B8', '#F59E0B'] }]
+        };
+      } else {
+        chartData = {
+          labels: ['Mês 1', 'Mês 2', 'Mês 3'],
+          datasets: [
+            { label: 'Previsto', data: [obra.previstoTotal * 0.3, obra.previstoTotal * 0.7, obra.previstoTotal], borderColor: '#003399', backgroundColor: 'rgba(0,51,153,0.1)', fill: true },
+            { label: 'Realizado Acumulado', data: [obra.realizadoTotal * 0.4, obra.realizadoTotal, obra.realizadoTotal], borderColor: '#00CFFF', backgroundColor: 'rgba(0,207,255,0.2)', fill: true }
+          ]
+        };
+      }
+
+      graficosInstancias[cfg.id] = new Chart(ctx, {
+        type: cfg.tipo,
+        data: chartData,
+        options: { responsive: true, maintainAspectRatio: false }
+      });
+    });
+  }, 100);
 }
 
-function aplicarPermissoesPerfil() {
-  document.getElementById('user-display-name').innerText = usuarioAutenticado.nome;
-  document.getElementById('user-display-role').innerText = usuarioAutenticado.perfil;
+// CONFIGURAÇÕES
+function abrirModalConfiguracoes() {
+  document.getElementById('config-app-title').value = document.getElementById('header-app-title').innerText;
+  document.getElementById('config-url-unificada').value = urlPlanilhaUnificadaCSV;
+  renderizarListaGraficosConfig();
+  document.getElementById('modal-configuracoes').classList.remove('hidden');
+}
 
-  if (usuarioAutenticado.perfil === "Mestre") {
-    document.getElementById('btn-gestao-usuarios').classList.remove('hidden');
-    document.getElementById('btn-nova-obra').classList.remove('hidden');
-  } else {
-    document.getElementById('btn-gestao-usuarios').classList.add('hidden');
+function fecharModalConfiguracoes() {
+  document.getElementById('modal-configuracoes').classList.add('hidden');
+}
+
+function adicionarNovoGrafico() {
+  const titulo = document.getElementById('novo-chart-titulo').value.trim();
+  const tipo = document.getElementById('novo-chart-tipo').value;
+  const metrica = document.getElementById('novo-chart-metrica').value;
+
+  if (!titulo) {
+    alert("Digite o título do novo gráfico.");
+    return;
   }
+
+  const novoID = `chart_custom_${Date.now()}`;
+  graficosConfig.push({ id: novoID, titulo, tipo, metrica });
+  
+  document.getElementById('novo-chart-titulo').value = '';
+  renderizarListaGraficosConfig();
+  alert("Gráfico adicionado! Clique em 'Salvar e Aplicar Alterações'.");
 }
 
-function abrirModalUsuarios() {
+function removerGrafico(id) {
+  graficosConfig = graficosConfig.filter(g => g.id !== id);
+  renderizarListaGraficosConfig();
+}
+
+function renderizarListaGraficosConfig() {
+  const div = document.getElementById('lista-graficos-config');
+  div.innerHTML = '';
+  graficosConfig.forEach(g => {
+    div.innerHTML += `
+      <div class="flex justify-between items-center bg-white p-2 border rounded">
+        <div><strong class="text-bp-blue">${g.titulo}</strong> (${g.tipo.toUpperCase()} - ${g.metrica})</div>
+        <button type="button" onclick="removerGrafico('${g.id}')" class="text-red-600 font-bold hover:underline">Remover</button>
+      </div>
+    `;
+  });
+}
+
+function salvarConfiguracoesGerais() {
+  const novoTitulo = document.getElementById('config-app-title').value.trim();
+  if (novoTitulo) {
+    document.getElementById('header-app-title').innerText = novoTitulo;
+    document.getElementById('login-app-title').innerText = novoTitulo;
+  }
+
+  urlPlanilhaUnificadaCSV = document.getElementById('config-url-unificada').value.trim() || urlPlanilhaUnificadaCSV;
+  sincronizarPlanilhaUnificada();
+  fecharModalConfiguracoes();
+  alert("Configurações salvas e aplicadas!");
+}
+
+// USUÁRIOS
+function abrirModalUsuarios() { renderizarPainelUsuarios(); document.getElementById('modal-usuarios').classList.remove('hidden'); }
+function fecharModalUsuarios() { document.getElementById('modal-usuarios').classList.add('hidden'); }
+
+function criarUsuarioDireto() {
+  const nome = document.getElementById('novo-usr-nome').value.trim();
+  const email = document.getElementById('novo-usr-email').value.trim();
+  const usuario = document.getElementById('novo-usr-login').value.trim();
+  const senha = document.getElementById('novo-usr-senha').value.trim();
+  const perfil = document.getElementById('novo-usr-perfil').value;
+
+  if (!nome || !email || !usuario || !senha) return alert("Preencha todos os campos.");
+  if (usuariosBD.some(u => u.usuario === usuario || u.email === email)) return alert("Login/e-mail já existe.");
+
+  usuariosBD.push({ nome, usuario, email, senha, perfil, status: "Aprovado" });
   renderizarPainelUsuarios();
-  document.getElementById('modal-usuarios').classList.remove('hidden');
+  alert(`Usuário ${usuario} cadastrado!`);
 }
 
-function fecharModalUsuarios() {
-  document.getElementById('modal-usuarios').classList.add('hidden');
+function solicitarCadastro() {
+  const nome = document.getElementById('solic-nome').value.trim();
+  const email = document.getElementById('solic-email').value.trim();
+  const usuario = document.getElementById('solic-usuario').value.trim();
+  const senha = document.getElementById('solic-senha').value.trim();
+
+  if (!nome || !email || !usuario || !senha) return alert("Preencha os campos.");
+
+  solicitacoesPendentesBD.push({ id: Date.now(), nome, email, usuario, senha, perfil: "Engenheiro", status: "Pendente" });
+  exibirFormLogin();
+  alert("Solicitação enviada!");
 }
 
 function renderizarPainelUsuarios() {
   const tbodyPend = document.getElementById('tabela-pendentes-body');
   document.getElementById('count-pendentes').innerText = solicitacoesPendentesBD.length;
-  tbodyPend.innerHTML = '';
+  tbodyPend.innerHTML = solicitacoesPendentesBD.length === 0 ? `<tr><td colspan="4" class="p-3 text-center text-gray-400">Nenhuma solicitação pendente.</td></tr>` : '';
 
-  if (solicitacoesPendentesBD.length === 0) {
-    tbodyPend.innerHTML = `<tr><td colspan="4" class="p-3 text-center text-gray-400">Nenhuma solicitação pendente.</td></tr>`;
-  } else {
-    solicitacoesPendentesBD.forEach(s => {
-      tbodyPend.innerHTML += `
-        <tr>
-          <td class="p-2 font-bold">${s.nome}</td>
-          <td class="p-2">${s.email}</td>
-          <td class="p-2 text-bp-blue font-bold">${s.usuario}</td>
-          <td class="p-2 text-center space-x-1">
-            <button onclick="aprovarSolicitacao(${s.id}, 'Engenheiro')" class="bg-emerald-600 text-white px-2 py-1 rounded text-[10px] font-bold">Aprovar Eng.</button>
-            <button onclick="rejeitarSolicitacao(${s.id})" class="bg-red-600 text-white px-2 py-1 rounded text-[10px] font-bold">Rejeitar</button>
-          </td>
-        </tr>
-      `;
-    });
-  }
+  solicitacoesPendentesBD.forEach(s => {
+    tbodyPend.innerHTML += `
+      <tr>
+        <td class="p-2 font-bold">${s.nome}</td>
+        <td class="p-2">${s.email}</td>
+        <td class="p-2 text-bp-blue font-bold">${s.usuario}</td>
+        <td class="p-2 text-center space-x-1">
+          <button onclick="aprovarSolicitacao(${s.id}, 'Engenheiro')" class="bg-emerald-600 text-white px-2 py-1 rounded text-[10px] font-bold">Aprovar</button>
+        </td>
+      </tr>
+    `;
+  });
 
   const tbodyAtivos = document.getElementById('tabela-usuarios-body');
   tbodyAtivos.innerHTML = '';
@@ -352,51 +410,37 @@ function renderizarPainelUsuarios() {
   });
 }
 
+function aplicarPermissoesPerfil() {
+  document.getElementById('user-display-name').innerText = usuarioAutenticado.nome;
+  document.getElementById('user-display-role').innerText = usuarioAutenticado.perfil;
+
+  if (usuarioAutenticado.perfil === "Mestre") {
+    document.getElementById('btn-gestao-usuarios').classList.remove('hidden');
+    document.getElementById('btn-configuracoes').classList.remove('hidden');
+    document.getElementById('btn-nova-obra').classList.remove('hidden');
+  } else {
+    document.getElementById('btn-gestao-usuarios').classList.add('hidden');
+    document.getElementById('btn-configuracoes').classList.add('hidden');
+  }
+}
+
 function abrirModalNovaObra() { document.getElementById('modal-obra').classList.remove('hidden'); }
 function fecharModalNovaObra() { document.getElementById('modal-obra').classList.add('hidden'); }
 
-function salvarNovaObra() { 
+function salvarNovaObra() {
   const nome = document.getElementById('cad-nome').value.trim();
   const cc = document.getElementById('cad-cc').value.trim();
   const resp = document.getElementById('cad-resp').value.trim();
+  const prevTotal = parseFloat(document.getElementById('cad-previsto-total').value) || 0;
 
-  if (!nome || !cc || !resp) {
-    alert("Preencha o Nome, Centro de Custo e Responsável.");
-    return;
-  }
+  if (!nome || !cc) return alert("Preencha o Nome e o Centro de Custo exato.");
 
-  const id = `OBRA-0${Object.keys(obrasBD).length + 1}`;
-  
-  obrasBD[id] = {
-    id: id,
-    nome: nome,
-    cc: cc,
-    responsavel: resp,
-    previstoTotal: 0,
-    realizadoTotal: 0,
-    urlPrevisto: document.getElementById('cad-url-previsto').value,
-    urlRealizado: document.getElementById('cad-url-realizado').value,
-    dre: [],
-    meses: ['Mês 1'],
-    curvaPrevisto: [0],
-    curvaRealizado: [0],
-    catValores: [0, 0, 0, 0]
-  };
+  const id = `OBRA-${Date.now()}`;
+  obrasBD[id] = { id, nome, cc, responsavel: resp, previstoTotal: prevTotal, realizadoTotal: 0, lancamentos: [], dre: [], categoriasMap: {} };
 
   obraAtivaID = id;
   popularSeletorObras();
-  atualizarDashboard();
+  sincronizarPlanilhaUnificada();
   fecharModalNovaObra();
-  
-  document.getElementById('cad-nome').value = '';
-  document.getElementById('cad-cc').value = '';
-  document.getElementById('cad-resp').value = '';
-  document.getElementById('cad-url-previsto').value = '';
-  document.getElementById('cad-url-realizado').value = '';
-
-  alert("Obra cadastrada com sucesso!"); 
-}
-
-function sincronizarGoogleSheets() { 
-  alert("Sincronizando dados com as URLs do Google Sheets..."); 
+  alert("Obra cadastrada com sucesso!");
 }
