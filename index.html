@@ -3,20 +3,21 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Brasil Pontes - Gestão de Custos (Previsto x Realizado)</title>
-  <!-- Tailwind CSS -->
-  <script src="https://cdn.tailwindcss.com"></script>
-  <!-- Chart.js para Gráficos -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <title>Brasil Pontes - Plataforma de BI e Gestão de Custos</title>
   
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+  <link rel="stylesheet" href="style.css">
+
   <script>
     tailwind.config = {
       theme: {
         extend: {
           colors: {
             bp: {
-              blue: '#003399',      // Azul oficial logo BP
-              light: '#00CFFF',     // Azul claro / estrela BP
+              blue: '#003399',
+              light: '#00CFFF',
               dark: '#002266',
               bg: '#F4F6F9'
             }
@@ -28,8 +29,8 @@
 </head>
 <body class="bg-bp-bg font-sans text-gray-800 antialiased min-h-screen flex flex-col">
 
-  <!-- HEADER / LOGO BRASIL PONTES -->
-  <header class="bg-bp-blue text-white shadow-lg sticky top-0 z-50">
+  <!-- HEADER E BARRA DE GOVERNANÇA -->
+  <header class="bg-bp-blue text-white shadow-lg sticky top-0 z-40">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
       <div class="flex items-center space-x-4">
         <div class="bg-white p-2 rounded-lg shadow-sm flex items-center justify-center">
@@ -39,107 +40,131 @@
         </div>
         <div>
           <h1 class="font-bold text-lg leading-tight">Brasil Pontes</h1>
-          <p class="text-xs text-bp-light font-medium">Engenharia de Custos • Previsto x Realizado</p>
+          <p class="text-xs text-bp-light font-medium">Power BI & Controladoria de Custos</p>
         </div>
       </div>
 
       <div class="flex items-center space-x-4">
         <div class="flex flex-col">
-          <label for="seletor-obra" class="text-xs text-gray-200 font-medium">Obra Ativa:</label>
-          <select id="seletor-obra" onchange="trocarObra()" class="bg-bp-dark text-white text-sm font-semibold rounded-lg px-3 py-1.5 border border-bp-light/40 focus:outline-none focus:ring-2 focus:ring-bp-light">
-            <option value="obra_1">Ponte Rio Verde - Trecho 01</option>
-            <option value="obra_2">Viaduto Industrial - BR-040</option>
+          <label for="seletor-obra" class="text-xs text-gray-200 font-medium">Obra em Análise:</label>
+          <select id="seletor-obra" onchange="alterarObraAtiva(this.value)" class="bg-bp-dark text-white text-sm font-semibold rounded-lg px-3 py-1.5 border border-bp-light/40 focus:outline-none focus:ring-2 focus:ring-bp-light">
+            <!-- Populado Dinamicamente -->
           </select>
+        </div>
+
+        <div class="border-l border-bp-dark pl-4 flex items-center space-x-3">
+          <div class="text-right hidden md:block">
+            <p id="user-display-name" class="text-sm font-semibold">Mestre do Sistema</p>
+            <p id="user-display-role" class="text-xs text-bp-light font-bold uppercase">Mestre (Admin)</p>
+          </div>
+          <button onclick="abrirModalUsuarios()" id="btn-gestao-usuarios" class="bg-bp-dark hover:bg-bp-blue text-bp-light border border-bp-light/50 text-xs font-bold px-3 py-2 rounded-lg transition-all">
+            👥 Usuários
+          </button>
         </div>
       </div>
     </div>
   </header>
 
-  <!-- DASHBOARD PRINCIPAL -->
-  <main class="flex-grow max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+  <!-- PAINEL DE CONTROLE / DASHBOARD INTERATIVO -->
+  <main class="flex-grow max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
 
+    <!-- CABEÇALHO DA OBRA E AÇÕES -->
     <section class="bg-white p-5 rounded-xl shadow-sm border border-gray-200 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
       <div>
-        <h2 id="titulo-obra" class="text-xl font-bold text-bp-blue">Ponte Rio Verde - Trecho 01</h2>
-        <p class="text-xs text-gray-500">Status: <span class="text-emerald-600 font-semibold">● Sincronizado</span></p>
+        <div class="flex items-center gap-3">
+          <h2 id="obra-titulo" class="text-2xl font-black text-bp-blue">---</h2>
+          <span id="obra-status-badge" class="bg-emerald-100 text-emerald-800 text-xs font-bold px-2.5 py-0.5 rounded-full">Ativa</span>
+        </div>
+        <p class="text-xs text-gray-500 mt-1">Centro de Custo: <span id="obra-cc" class="font-semibold text-gray-700">---</span> | Responsável: <span id="obra-resp" class="font-semibold text-gray-700">---</span></p>
       </div>
 
-      <button onclick="sincronizar()" class="bg-bp-blue hover:bg-bp-dark text-white text-xs font-semibold px-4 py-2 rounded-lg flex items-center gap-2 transition-all">
-        🔄 Sincronizar Google Sheets
-      </button>
+      <div class="flex flex-wrap gap-2">
+        <button id="btn-nova-obra" onclick="abrirModalNovaObra()" class="bg-bp-light hover:bg-cyan-400 text-bp-dark text-xs font-bold px-4 py-2 rounded-lg shadow transition-all flex items-center gap-1">
+          ➕ Cadastrar Nova Obra
+        </button>
+        <button onclick="sincronizarGoogleSheets()" class="bg-bp-blue hover:bg-bp-dark text-white text-xs font-bold px-4 py-2 rounded-lg transition-all flex items-center gap-2">
+          🔄 Sincronizar Dados BI
+        </button>
+      </div>
     </section>
 
-    <!-- CARDS DE KPIS -->
+    <!-- CARDS KPIS INTERATIVOS -->
     <section class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
-      <div class="bg-white p-5 rounded-xl shadow-sm border-l-4 border-bp-blue">
-        <p class="text-xs font-bold text-gray-500 uppercase">Custo Previsto Total</p>
-        <p id="kpi-previsto" class="text-2xl font-black text-bp-blue mt-1">R$ 1.250.000,00</p>
+      <div class="bg-white p-5 rounded-xl shadow-sm border-l-4 border-bp-blue hover:shadow-md transition-shadow">
+        <p class="text-xs font-bold text-gray-400 uppercase tracking-wider">Orçamento Previsto</p>
+        <p id="kpi-previsto" class="text-2xl font-black text-bp-blue mt-1">R$ 0,00</p>
+        <p class="text-[11px] text-gray-400 mt-1">Baseline aprovada</p>
       </div>
 
-      <div class="bg-white p-5 rounded-xl shadow-sm border-l-4 border-bp-light">
-        <p class="text-xs font-bold text-gray-500 uppercase">Custo Realizado</p>
-        <p id="kpi-realizado" class="text-2xl font-black text-gray-800 mt-1">R$ 980.000,00</p>
+      <div class="bg-white p-5 rounded-xl shadow-sm border-l-4 border-bp-light hover:shadow-md transition-shadow">
+        <p class="text-xs font-bold text-gray-400 uppercase tracking-wider">Gasto Realizado</p>
+        <p id="kpi-realizado" class="text-2xl font-black text-gray-800 mt-1">R$ 0,00</p>
+        <p class="text-[11px] text-gray-400 mt-1">Acumulado medido</p>
       </div>
 
-      <div id="card-desvio" class="bg-white p-5 rounded-xl shadow-sm border-l-4 border-emerald-500">
-        <p class="text-xs font-bold text-gray-500 uppercase">Saldo Orçamentário</p>
-        <p id="kpi-desvio" class="text-2xl font-black text-emerald-600 mt-1">R$ +270.000,00</p>
+      <div id="card-desvio" class="bg-white p-5 rounded-xl shadow-sm border-l-4 border-emerald-500 hover:shadow-md transition-shadow">
+        <p class="text-xs font-bold text-gray-400 uppercase tracking-wider">Saldo Orçamentário</p>
+        <p id="kpi-desvio" class="text-2xl font-black text-emerald-600 mt-1">R$ 0,00</p>
+        <p id="kpi-desvio-percent" class="text-[11px] font-bold text-emerald-600 mt-1">0.0% do previsto</p>
       </div>
 
-      <div class="bg-white p-5 rounded-xl shadow-sm border-l-4 border-amber-500">
-        <p class="text-xs font-bold text-gray-500 uppercase">IDC (Desempenho)</p>
-        <p id="kpi-idc" class="text-2xl font-black text-amber-600 mt-1">1.28</p>
+      <div class="bg-white p-5 rounded-xl shadow-sm border-l-4 border-amber-500 hover:shadow-md transition-shadow">
+        <p class="text-xs font-bold text-gray-400 uppercase tracking-wider">Índice IDC (Eficiência)</p>
+        <p id="kpi-idc" class="text-2xl font-black text-amber-600 mt-1">0.00</p>
+        <p id="kpi-idc-status" class="text-[11px] font-bold text-amber-600 mt-1">---</p>
       </div>
     </section>
 
-    <!-- GRÁFICOS -->
+    <!-- PAINEL DE GRÁFICOS POWER BI (INTERATIVO) -->
     <section class="grid grid-cols-1 lg:grid-cols-3 gap-6">
       <div class="lg:col-span-2 bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-        <h3 class="font-bold text-bp-blue text-base mb-4">Evolução Curva S (Previsto x Realizado)</h3>
-        <div class="relative h-72">
+        <div class="flex justify-between items-center mb-4">
+          <div>
+            <h3 class="font-bold text-bp-blue text-base">Evolução Curva S (Previsto vs. Realizado)</h3>
+            <p class="text-xs text-gray-400">Clique em um mês para filtrar o detalhamento</p>
+          </div>
+          <span class="text-xs bg-bp-bg text-bp-blue font-bold px-2.5 py-1 rounded">Interativo</span>
+        </div>
+        <div class="relative h-80">
           <canvas id="chartCurvaS"></canvas>
         </div>
       </div>
 
       <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-        <h3 class="font-bold text-bp-blue text-base mb-4">Gastos por Categoria</h3>
-        <div class="relative h-72">
+        <div class="flex justify-between items-center mb-4">
+          <h3 class="font-bold text-bp-blue text-base">Análise por Categoria</h3>
+          <button onclick="resetarFiltrosGrafico()" class="text-[11px] text-bp-light font-bold bg-bp-blue px-2 py-1 rounded">Limpar Filtro</button>
+        </div>
+        <div class="relative h-80">
           <canvas id="chartCategorias"></canvas>
         </div>
       </div>
     </section>
 
-    <!-- TABELA EAP -->
+    <!-- DETALHAMENTO DE EAP COM FILTROS DINÂMICOS -->
     <section class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-      <div class="p-5 border-b border-gray-200 bg-gray-50">
-        <h3 class="font-bold text-bp-blue text-base">Detalhamento da EAP</h3>
+      <div class="p-5 border-b border-gray-200 bg-gray-50 flex justify-between items-center">
+        <div>
+          <h3 class="font-bold text-bp-blue text-base">Detalhamento da EAP e Composições</h3>
+          <p class="text-xs text-gray-500">Filtrado dinamicamente pelas seleções do gráfico</p>
+        </div>
+        <input type="text" id="input-busca-eap" onkeyup="filtrarTabelaEAP()" placeholder="🔍 Buscar etapa ou insumo..." class="text-xs border border-gray-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-bp-blue w-64">
       </div>
       <div class="overflow-x-auto">
         <table class="w-full text-left text-xs">
-          <thead class="bg-bp-blue text-white uppercase">
+          <thead class="bg-bp-blue text-white uppercase tracking-wider">
             <tr>
-              <th class="p-3">Item EAP</th>
-              <th class="p-3">Descrição da Etapa</th>
+              <th class="p-3">Código EAP</th>
+              <th class="p-3">Etapa / Serviço</th>
+              <th class="p-3">Categoria</th>
               <th class="p-3 text-right">Previsto (R$)</th>
               <th class="p-3 text-right">Realizado (R$)</th>
               <th class="p-3 text-right">Desvio (R$)</th>
+              <th class="p-3 text-center">Status</th>
             </tr>
           </thead>
-          <tbody id="tabela-eap" class="divide-y divide-gray-200 font-medium">
-            <tr>
-              <td class="p-3 font-bold text-bp-blue">1.0</td>
-              <td class="p-3">Serviços Preliminares</td>
-              <td class="p-3 text-right">R$ 100.000,00</td>
-              <td class="p-3 text-right">R$ 95.000,00</td>
-              <td class="p-3 text-right text-emerald-600 font-bold">R$ +5.000,00</td>
-            </tr>
-            <tr>
-              <td class="p-3 font-bold text-bp-blue">2.0</td>
-              <td class="p-3">Infraestrutura e Fundações</td>
-              <td class="p-3 text-right">R$ 450.000,00</td>
-              <td class="p-3 text-right">R$ 480.000,00</td>
-              <td class="p-3 text-right text-red-600 font-bold">R$ -30.000,00</td>
-            </tr>
+          <tbody id="tabela-eap-body" class="divide-y divide-gray-200 font-medium">
+            <!-- Linhas Inseridas via JS -->
           </tbody>
         </table>
       </div>
@@ -147,40 +172,92 @@
 
   </main>
 
-  <footer class="bg-bp-dark text-white border-t border-bp-blue py-4 mt-auto text-center text-xs">
-    <p>© Brasil Pontes Engenharia - Gestão de Custos</p>
-  </footer>
+  <!-- MODAL: CADASTRO DE NOVA OBRA -->
+  <div id="modal-obra" class="fixed inset-0 bg-black/60 backdrop-blur-sm hidden z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-xl w-full p-6 shadow-2xl border border-gray-100 space-y-4">
+      <div class="flex justify-between items-center border-b pb-3">
+        <h3 class="text-lg font-bold text-bp-blue">Cadastrar Nova Obra & Conexões</h3>
+        <button onclick="fecharModalNovaObra()" class="text-gray-400 hover:text-gray-600 font-bold">✕</button>
+      </div>
+      
+      <form id="form-cad-obra" onsubmit="salvarNovaObra(event)" class="space-y-3 text-xs">
+        <div>
+          <label class="font-bold text-gray-700">Nome da Obra:</label>
+          <input type="text" id="cad-nome" required placeholder="Ex: Ponte Sobre o Rio São Francisco" class="w-full mt-1 border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-bp-blue">
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="font-bold text-gray-700">Centro de Custo (CC):</label>
+            <input type="text" id="cad-cc" required placeholder="CC-2026-04" class="w-full mt-1 border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-bp-blue">
+          </div>
+          <div>
+            <label class="font-bold text-gray-700">Engenheiro Responsável:</label>
+            <input type="text" id="cad-resp" required placeholder="Eng. Carlos Silva" class="w-full mt-1 border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-bp-blue">
+          </div>
+        </div>
+        <div>
+          <label class="font-bold text-gray-700">Link CSV/Google Sheets - Planilha PREVISTO:</label>
+          <input type="url" id="cad-url-previsto" required placeholder="https://docs.google.com/spreadsheets/.../pub?output=csv" class="w-full mt-1 border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-bp-blue">
+        </div>
+        <div>
+          <label class="font-bold text-gray-700">Link CSV/Google Sheets - Planilha REALIZADO:</label>
+          <input type="url" id="cad-url-realizado" required placeholder="https://docs.google.com/spreadsheets/.../pub?output=csv" class="w-full mt-1 border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-bp-blue">
+        </div>
 
-  <script>
-    window.onload = function() {
-      // Gráfico Curva S
-      const ctxCurvaS = document.getElementById('chartCurvaS').getContext('2d');
-      new Chart(ctxCurvaS, {
-        type: 'line',
-        data: {
-          labels: ['Mês 1', 'Mês 2', 'Mês 3', 'Mês 4', 'Mês 5'],
-          datasets: [
-            { label: 'Previsto', data: [150000, 350000, 600000, 850000, 1250000], borderColor: '#003399', backgroundColor: 'rgba(0, 51, 153, 0.1)', fill: true },
-            { label: 'Realizado', data: [140000, 370000, 580000, 980000, null], borderColor: '#00CFFF', backgroundColor: 'rgba(0, 207, 255, 0.2)', fill: true }
-          ]
-        },
-        options: { responsive: true, maintainAspectRatio: false }
-      });
+        <div class="flex justify-end gap-2 pt-3 border-t">
+          <button type="button" onclick="fecharModalNovaObra()" class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg font-bold">Cancelar</button>
+          <button type="submit" class="px-4 py-2 bg-bp-blue text-white rounded-lg font-bold hover:bg-bp-dark">Salvar e Conectar Obra</button>
+        </div>
+      </form>
+    </div>
+  </div>
 
-      // Gráfico Categoria
-      const ctxCat = document.getElementById('chartCategorias').getContext('2d');
-      new Chart(ctxCat, {
-        type: 'doughnut',
-        data: {
-          labels: ['Mão de Obra', 'Materiais', 'Equipamentos', 'Outros'],
-          datasets: [{ data: [40, 35, 15, 10], backgroundColor: ['#003399', '#00CFFF', '#1E293B', '#94A3B8'] }]
-        },
-        options: { responsive: true, maintainAspectRatio: false }
-      });
-    };
+  <!-- MODAL: GESTÃO DE USUÁRIOS E PERMISSÕES (ADMIN/MESTRE) -->
+  <div id="modal-usuarios" class="fixed inset-0 bg-black/60 backdrop-blur-sm hidden z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-2xl border border-gray-100 space-y-4">
+      <div class="flex justify-between items-center border-b pb-3">
+        <h3 class="text-lg font-bold text-bp-blue">Gestão de Usuários & Níveis de Acesso</h3>
+        <button onclick="fecharModalUsuarios()" class="text-gray-400 hover:text-gray-600 font-bold">✕</button>
+      </div>
 
-    function sincronizar() { alert("Conectando ao Google Sheets..."); }
-    function trocarObra() { alert("Obra alterada."); }
-  </script>
+      <!-- FORMULÁRIO DE CADASTRO DE USUÁRIO -->
+      <form onsubmit="cadastrarNovoUsuario(event)" class="bg-bp-bg p-4 rounded-xl space-y-3 text-xs border border-gray-200">
+        <p class="font-bold text-bp-blue uppercase">Cadastrar / Alterar Senha de Usuário</p>
+        <div class="grid grid-cols-2 gap-3">
+          <input type="text" id="usr-nome" placeholder="Nome Completo" required class="border p-2 rounded-lg">
+          <input type="email" id="usr-email" placeholder="E-mail de Acesso" required class="border p-2 rounded-lg">
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <input type="password" id="usr-senha" placeholder="Senha de Acesso" required class="border p-2 rounded-lg">
+          <select id="usr-perfil" required class="border p-2 rounded-lg font-bold">
+            <option value="Mestre">Mestre (Acesso Total)</option>
+            <option value="Engenheiro">Engenheiro de Obra</option>
+            <option value="Orçamentista">Orçamentista</option>
+            <option value="Dono">Dono / Diretoria (Leitura)</option>
+          </select>
+        </div>
+        <button type="submit" class="w-full bg-bp-blue text-white font-bold py-2 rounded-lg hover:bg-bp-dark">Cadastrar / Atualizar Usuário</button>
+      </form>
+
+      <!-- LISTA DE USUÁRIOS CADASTRADOS -->
+      <div class="overflow-y-auto max-h-48 text-xs">
+        <table class="w-full text-left">
+          <thead class="bg-gray-100 text-gray-600 font-bold uppercase">
+            <tr>
+              <th class="p-2">Nome</th>
+              <th class="p-2">E-mail</th>
+              <th class="p-2">Perfil</th>
+              <th class="p-2 text-center">Ações</th>
+            </tr>
+          </thead>
+          <tbody id="tabela-usuarios-body" class="divide-y">
+            <!-- Inserido Dinamicamente -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
 </body>
 </html>
