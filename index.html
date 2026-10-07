@@ -29,9 +29,7 @@
 </head>
 <body class="bg-bp-bg font-sans text-gray-800 antialiased min-h-screen flex flex-col">
 
-  <!-- ========================================== -->
-  <!-- TELA DE LOGIN / CADASTRO (FUNDO AZUL)      -->
-  <!-- ========================================== -->
+  <!-- TELA DE LOGIN / CADASTRO -->
   <div id="screen-login" class="fixed inset-0 bg-bp-blue z-50 flex items-center justify-center p-4">
     <div class="bg-white rounded-2xl max-w-md w-full p-8 shadow-2xl border border-bp-light/20 space-y-6 relative">
       <div class="text-center space-y-2">
@@ -97,9 +95,7 @@
     </div>
   </div>
 
-  <!-- ========================================== -->
-  <!-- SISTEMA PRINCIPAL                          -->
-  <!-- ========================================== -->
+  <!-- SISTEMA PRINCIPAL -->
   <div id="app-container" class="hidden min-h-screen flex flex-col">
     <header class="bg-bp-blue text-white shadow-lg sticky top-0 z-40">
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
@@ -154,7 +150,7 @@
             <h2 id="obra-titulo" class="text-2xl font-black text-bp-blue">---</h2>
             <span id="obra-badge-status" class="bg-emerald-100 text-emerald-800 text-xs font-bold px-2.5 py-0.5 rounded-full">Ativa</span>
           </div>
-          <p class="text-xs text-gray-500 mt-1">Departamento / Filtro: <span id="obra-cc" class="font-semibold text-gray-700">---</span> | Gestor: <span id="obra-resp" class="font-semibold text-gray-700">---</span></p>
+          <p class="text-xs text-gray-500 mt-1">Departamento / CC: <span id="obra-cc" class="font-semibold text-gray-700">---</span> | Gestor: <span id="obra-resp" class="font-semibold text-gray-700">---</span></p>
         </div>
 
         <div class="flex flex-wrap items-center gap-3">
@@ -167,8 +163,8 @@
             </select>
           </div>
 
-          <button onclick="sincronizarTodasPlanilhas()" class="bg-bp-blue hover:bg-bp-dark text-white text-xs font-bold px-4 py-2 rounded-lg transition-all flex items-center gap-1 shadow">
-            🔄 Sincronizar Dados
+          <button onclick="sincronizarTodasPlanilhas()" id="btn-sync" class="bg-bp-blue hover:bg-bp-dark text-white text-xs font-bold px-4 py-2 rounded-lg transition-all flex items-center gap-1 shadow">
+            🔄 Sincronizar Google Sheets
           </button>
         </div>
       </section>
@@ -196,18 +192,17 @@
         </div>
       </section>
 
-      <!-- TABELA DEMONSTRATIVA COM FAROL -->
+      <!-- TABELA COM FAROL -->
       <section class="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
         <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-4">
-          <h3 class="text-base font-bold text-bp-blue">Demonstrativo e Farol por Categoria</h3>
+          <h3 class="text-base font-bold text-bp-blue">Demonstrativo e Farol por Categoria BP</h3>
           
-          <!-- Resumo do Farol -->
           <div class="flex flex-wrap gap-2">
             <div class="flex items-center gap-1.5 text-xs font-bold text-emerald-800 bg-emerald-100 px-3 py-1.5 rounded-lg border border-emerald-200">
               <span>🟢 Seguras:</span> <span id="farol-verde-count" class="text-sm">0</span>
             </div>
             <div class="flex items-center gap-1.5 text-xs font-bold text-amber-800 bg-amber-100 px-3 py-1.5 rounded-lg border border-amber-200">
-              <span>🟡 Atenção:</span> <span id="farol-amarelo-count" class="text-sm">0</span>
+              <span>🟡 Atenção (85%+):</span> <span id="farol-amarelo-count" class="text-sm">0</span>
             </div>
             <div class="flex items-center gap-1.5 text-xs font-bold text-red-800 bg-red-100 px-3 py-1.5 rounded-lg border border-red-200">
               <span>🔴 Estouradas:</span> <span id="farol-vermelho-count" class="text-sm">0</span>
@@ -228,7 +223,6 @@
               </tr>
             </thead>
             <tbody id="tabela-dre-body" class="divide-y divide-gray-200 font-semibold">
-              <!-- Preenchido via JS -->
             </tbody>
           </table>
         </div>
@@ -236,7 +230,6 @@
 
       <!-- PAINEL DE GRÁFICOS DINÂMICOS -->
       <section id="grid-graficos-dinamicos" class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <!-- Gerados via JS -->
       </section>
 
     </main>
@@ -244,29 +237,32 @@
 
   <!-- MODAL: CONFIGURAÇÕES -->
   <div id="modal-configuracoes" class="fixed inset-0 bg-black/60 backdrop-blur-sm hidden z-50 flex items-center justify-center p-4">
-    <div class="bg-white rounded-2xl max-w-4xl w-full p-6 shadow-2xl border border-gray-100 space-y-6 max-h-[90vh] overflow-y-auto">
+    <div class="bg-white rounded-2xl max-w-5xl w-full p-6 shadow-2xl border border-gray-100 space-y-6 max-h-[90vh] overflow-y-auto">
       <div class="flex justify-between items-center border-b pb-3">
         <h3 class="text-lg font-bold text-bp-blue">⚙️ Painel de Configurações do Sistema</h3>
         <button onclick="fecharModalConfiguracoes()" class="text-gray-400 hover:text-gray-600 font-bold">✕</button>
       </div>
 
       <div class="flex border-b text-xs font-bold gap-4">
-        <button onclick="trocarAbaConfig('geral')" id="tab-btn-geral" class="pb-2 border-b-2 border-bp-blue text-bp-blue">Geral & Links</button>
-        <button onclick="trocarAbaConfig('obras')" id="tab-btn-obras" class="pb-2 text-gray-500 hover:text-bp-blue">🏢 Gerenciar Obras (Editar / Arquivar / Excluir)</button>
+        <button onclick="trocarAbaConfig('geral')" id="tab-btn-geral" class="pb-2 border-b-2 border-bp-blue text-bp-blue">Geral & Link Principal</button>
+        <button onclick="trocarAbaConfig('obras')" id="tab-btn-obras" class="pb-2 text-gray-500 hover:text-bp-blue">🏢 Gerir Obras & Links do Previsto</button>
         <button onclick="trocarAbaConfig('graficos')" id="tab-btn-graficos" class="pb-2 text-gray-500 hover:text-bp-blue">📊 Personalizar Gráficos</button>
       </div>
 
       <div id="cfg-aba-geral" class="space-y-4 text-xs">
+        <div class="bg-amber-50 border-l-4 border-amber-400 p-3 rounded text-[11px] text-amber-800">
+          <strong>Aviso sobre Links do Google Sheets:</strong> Cole o link de partilha padrão. O sistema tentará converter automaticamente para leitura CSV.
+        </div>
         <div class="bg-bp-bg p-4 rounded-xl border space-y-3">
           <p class="font-bold text-bp-blue uppercase">Configurações Gerais</p>
-          <div class="grid grid-cols-2 gap-3">
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div>
               <label class="font-bold">Nome da Empresa / Aplicação:</label>
               <input type="text" id="config-app-title" class="w-full border p-2 rounded-lg mt-1" placeholder="Brasil Pontes">
             </div>
             <div>
-              <label class="font-bold">URL Planilha Realizado (CSV):</label>
-              <input type="url" id="config-url-unificada" class="w-full border p-2 rounded-lg mt-1">
+              <label class="font-bold">URL Planilha REALIZADO (Todas as obras):</label>
+              <input type="url" id="config-url-unificada" class="w-full border p-2 rounded-lg mt-1" placeholder="https://docs.google.com/spreadsheets/d/.../edit">
             </div>
           </div>
         </div>
@@ -274,14 +270,14 @@
 
       <div id="cfg-aba-obras" class="space-y-4 text-xs hidden">
         <div class="bg-bp-bg p-4 rounded-xl border space-y-3">
-          <p class="font-bold text-bp-blue uppercase">Gerenciamento Completo de Obras</p>
+          <p class="font-bold text-bp-blue uppercase">Gerenciamento de Obras (Extraídas do Realizado)</p>
           <div class="overflow-x-auto">
-            <table class="w-full text-left bg-white rounded-lg overflow-hidden border">
+            <table class="w-full text-left bg-white rounded-lg overflow-hidden border min-w-max">
               <thead class="bg-bp-blue text-white font-bold uppercase text-[10px]">
                 <tr>
-                  <th class="p-2">Nome da Obra</th>
-                  <th class="p-2">Departamento / Filtro Exato (Coluna AJ)</th>
-                  <th class="p-2 text-center">Status</th>
+                  <th class="p-2">Departamento / Filtro (Chave)</th>
+                  <th class="p-2">Nome Amigável da Obra</th>
+                  <th class="p-2">URL Planilha PREVISTO (Desta Obra)</th>
                   <th class="p-2 text-center">Ações</th>
                 </tr>
               </thead>
@@ -324,13 +320,16 @@
       </div>
 
       <div class="flex justify-end border-t pt-3">
-        <button type="button" onclick="salvarConfiguracoesGerais()" class="bg-emerald-600 text-white font-bold px-6 py-2 rounded-lg hover:bg-emerald-700">Salvar Alterações</button>
+        <button type="button" onclick="salvarConfiguracoesGerais()" class="bg-emerald-600 text-white font-bold px-6 py-2 rounded-lg hover:bg-emerald-700 shadow-md">
+          Salvar Alterações
+        </button>
       </div>
     </div>
   </div>
 
   <!-- MODAL: GESTÃO DE USUÁRIOS -->
   <div id="modal-usuarios" class="fixed inset-0 bg-black/60 backdrop-blur-sm hidden z-50 flex items-center justify-center p-4">
+    <!-- (Mantido o código do Modal de Usuários igual ao anterior) -->
     <div class="bg-white rounded-2xl max-w-3xl w-full p-6 shadow-2xl border border-gray-100 space-y-4 max-h-[90vh] overflow-y-auto">
       <div class="flex justify-between items-center border-b pb-3">
         <h3 class="text-lg font-bold text-bp-blue">Gestão de Usuários e Controle Mestre</h3>
@@ -338,7 +337,7 @@
       </div>
 
       <div class="bg-bp-bg p-4 rounded-xl space-y-3 text-xs border border-gray-200">
-        <p class="font-bold text-bp-blue uppercase">➕ Criar Novo Usuário Diretamente (Mestre)</p>
+        <p class="font-bold text-bp-blue uppercase">➕ Criar Novo Usuário</p>
         <div class="grid grid-cols-2 gap-3">
           <input type="text" id="novo-usr-nome" placeholder="Nome Completo" class="border p-2 rounded-lg">
           <input type="email" id="novo-usr-email" placeholder="E-mail Corporativo" class="border p-2 rounded-lg">
@@ -353,7 +352,7 @@
             <option value="Mestre">Mestre</option>
           </select>
         </div>
-        <button type="button" onclick="criarUsuarioDireto()" class="w-full bg-bp-blue text-white font-bold py-2 rounded-lg hover:bg-bp-dark">Cadastrar Usuário Agora</button>
+        <button type="button" onclick="criarUsuarioDireto()" class="w-full bg-bp-blue text-white font-bold py-2 rounded-lg hover:bg-bp-dark">Cadastrar Usuário</button>
       </div>
 
       <div id="secao-solicitacoes" class="bg-amber-50 p-4 rounded-xl space-y-3 text-xs border border-amber-200">
