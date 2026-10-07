@@ -12,32 +12,14 @@ let usuariosBD = [
 
 let solicitacoesPendentesBD = [];
 
-// BANCO DE DADOS GLOBAL DE OBRAS
-let obrasBD = {
-  "OBRA-01": {
-    id: "OBRA-01",
-    nome: "Ponte Rio Verde - Trecho 01",
-    cc: "CC-2026-01",
-    responsavel: "Eng. Vinícius Souza",
-    previstoTotal: 1250000,
-    realizadoTotal: 980000,
-    dre: [
-      { item: "(+) Receita / Verba Prevista", previsto: 1500000, realizado: 1500000 },
-      { item: "(-) Custos Diretos (EAP)", previsto: 1000000, realizado: 820000 },
-      { item: "(=) Margem Bruta de Contribuição", previsto: 500000, realizado: 680000 },
-      { item: "(-) Custos Indiretos e Canteiro", previsto: 250000, realizado: 160000 },
-      { item: "(=) Resultado Operacional (EBITDA)", previsto: 250000, realizado: 520000 }
-    ],
-    meses: ['Mês 1', 'Mês 2', 'Mês 3', 'Mês 4', 'Mês 5', 'Mês 6'],
-    curvaPrevisto: [150000, 350000, 600000, 850000, 1050000, 1250000],
-    curvaRealizado: [140000, 370000, 580000, 980000, null, null],
-    catValores: [400000, 480000, 280000, 125000]
-  }
-};
+// BANCO DE DADOS GLOBAL DE OBRAS (Inicia vazio)
+let obrasBD = {};
 
 let usuarioAutenticado = null;
-let obraAtivaID = "OBRA-01";
+let obraAtivaID = null;
 let multiplicadorCenario = 1;
+let chartCurvaS = null;
+let chartCategorias = null;
 let chartCurvaS = null;
 let chartCategorias = null;
 
