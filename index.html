@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Brasil Pontes - Plataforma de BI e Gestão de Custos</title>
+  <title>Brasil Pontes - Plataforma de Planejamento e Controladoria Orçamentária</title>
   
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -35,7 +35,6 @@
   <div id="screen-login" class="fixed inset-0 bg-bp-blue z-50 flex items-center justify-center p-4">
     <div class="bg-white rounded-2xl max-w-md w-full p-8 shadow-2xl border border-bp-light/20 space-y-6 relative">
       
-      <!-- Logo e Título -->
       <div class="text-center space-y-2">
         <div class="inline-flex bg-bp-blue p-3 rounded-xl shadow-md mb-2">
           <span class="text-white font-black text-3xl tracking-tighter flex items-center">
@@ -43,10 +42,10 @@
           </span>
         </div>
         <h2 class="text-2xl font-black text-bp-blue">Brasil Pontes</h2>
-        <p class="text-xs text-gray-500 font-medium">Engenharia de Custos • Acesso Restrito</p>
+        <p class="text-xs text-gray-500 font-medium">Controladoria & Planejamento Orçamentário</p>
       </div>
 
-      <!-- FORMULÁRIO 1: LOGIN -->
+      <!-- FORMULÁRIO DE LOGIN -->
       <form id="form-login" onsubmit="executarLogin(event)" class="space-y-4">
         <div>
           <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Usuário ou E-mail:</label>
@@ -68,7 +67,7 @@
         </div>
       </form>
 
-      <!-- FORMULÁRIO 2: SOLICITAÇÃO DE CADASTRO -->
+      <!-- FORMULÁRIO DE SOLICITAÇÃO -->
       <form id="form-solicitacao" onsubmit="solicitarCadastro(event)" class="space-y-4 hidden">
         <div class="bg-amber-50 border-l-4 border-amber-400 p-2.5 rounded text-[11px] text-amber-800">
           ℹ️ Seu cadastro precisará da <strong>aprovação do usuário Mestre</strong> para ser liberado.
@@ -103,10 +102,9 @@
   </div>
 
   <!-- ========================================== -->
-  <!-- SISTEMA PRINCIPAL (PROTEGIDO)               -->
+  <!-- SISTEMA PRINCIPAL ESTILO SCOREPLAN        -->
   <!-- ========================================== -->
   <div id="app-container" class="hidden min-h-screen flex flex-col">
-    <!-- HEADER E BARRA DE GOVERNANÇA -->
     <header class="bg-bp-blue text-white shadow-lg sticky top-0 z-40">
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
         <div class="flex items-center space-x-4">
@@ -117,15 +115,14 @@
           </div>
           <div>
             <h1 class="font-bold text-lg leading-tight">Brasil Pontes</h1>
-            <p class="text-xs text-bp-light font-medium">Power BI & Controladoria de Custos</p>
+            <p class="text-xs text-bp-light font-medium">Controladoria Orçamentária • Estilo Scoreplan</p>
           </div>
         </div>
 
         <div class="flex items-center space-x-4">
           <div class="flex flex-col">
-            <label for="seletor-obra" class="text-xs text-gray-200 font-medium">Obra em Análise:</label>
+            <label for="seletor-obra" class="text-xs text-gray-200 font-medium">Obra / Unidade:</label>
             <select id="seletor-obra" onchange="alterarObraAtiva(this.value)" class="bg-bp-dark text-white text-sm font-semibold rounded-lg px-3 py-1.5 border border-bp-light/40 focus:outline-none focus:ring-2 focus:ring-bp-light">
-              <!-- Populado Dinamicamente -->
             </select>
           </div>
 
@@ -146,115 +143,103 @@
       </div>
     </header>
 
-    <!-- PAINEL DE CONTROLE / DASHBOARD INTERATIVO -->
     <main class="flex-grow max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
 
-      <!-- CABEÇALHO DA OBRA E AÇÕES -->
+      <!-- BARRA DE AÇÕES SCOREPLAN (CENÁRIOS & OBRAS) -->
       <section class="bg-white p-5 rounded-xl shadow-sm border border-gray-200 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <div class="flex items-center gap-3">
             <h2 id="obra-titulo" class="text-2xl font-black text-bp-blue">---</h2>
-            <span id="obra-status-badge" class="bg-emerald-100 text-emerald-800 text-xs font-bold px-2.5 py-0.5 rounded-full">Ativa</span>
+            <span class="bg-emerald-100 text-emerald-800 text-xs font-bold px-2.5 py-0.5 rounded-full">Orçamento Aprovado</span>
           </div>
-          <p class="text-xs text-gray-500 mt-1">Centro de Custo: <span id="obra-cc" class="font-semibold text-gray-700">---</span> | Responsável: <span id="obra-resp" class="font-semibold text-gray-700">---</span></p>
+          <p class="text-xs text-gray-500 mt-1">Centro de Custo: <span id="obra-cc" class="font-semibold text-gray-700">---</span> | Gestor: <span id="obra-resp" class="font-semibold text-gray-700">---</span></p>
         </div>
 
-        <div class="flex flex-wrap gap-2">
-          <button id="btn-nova-obra" onclick="abrirModalNovaObra()" class="bg-bp-light hover:bg-cyan-400 text-bp-dark text-xs font-bold px-4 py-2 rounded-lg shadow transition-all flex items-center gap-1">
-            ➕ Cadastrar Nova Obra
+        <div class="flex flex-wrap items-center gap-3">
+          <!-- SIMULADOR DE CENÁRIO -->
+          <div class="flex items-center gap-2 bg-bp-bg p-2 rounded-lg border">
+            <span class="text-xs font-bold text-gray-600">Cenário:</span>
+            <select id="seletor-cenario" onchange="aplicarCenario(this.value)" class="text-xs font-bold bg-white text-bp-blue border rounded p-1">
+              <option value="1">Base (Realista)</option>
+              <option value="1.1">Otimista (+10% Custo)</option>
+              <option value="0.9">Pessimista / Ajustado (-10% Custo)</option>
+            </select>
+          </div>
+
+          <button id="btn-nova-obra" onclick="abrirModalNovaObra()" class="bg-bp-light hover:bg-cyan-400 text-bp-dark text-xs font-bold px-4 py-2 rounded-lg shadow transition-all">
+            ➕ Cadastrar Obra
           </button>
-          <button onclick="sincronizarGoogleSheets()" class="bg-bp-blue hover:bg-bp-dark text-white text-xs font-bold px-4 py-2 rounded-lg transition-all flex items-center gap-2">
-            🔄 Sincronizar Dados BI
+          <button onclick="sincronizarGoogleSheets()" class="bg-bp-blue hover:bg-bp-dark text-white text-xs font-bold px-4 py-2 rounded-lg transition-all">
+            🔄 Sincronizar Google Sheets
           </button>
         </div>
       </section>
 
-      <!-- CARDS KPIS INTERATIVOS -->
+      <!-- PAINEL DRE ORÇAMENTÁRIA (ESTILO SCOREPLAN) -->
+      <section class="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+        <h3 class="text-base font-bold text-bp-blue mb-4">DRE Orçamentária - Visão Estruturada (Previsto x Realizado)</h3>
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs">
+            <thead class="bg-bp-blue text-white uppercase">
+              <tr>
+                <th class="p-3">Estrutura DRE</th>
+                <th class="p-3 text-right">Orçado (R$)</th>
+                <th class="p-3 text-right">Realizado (R$)</th>
+                <th class="p-3 text-right">Variação (R$)</th>
+                <th class="p-3 text-center">Desvio %</th>
+              </tr>
+            </thead>
+            <tbody id="tabela-dre-body" class="divide-y divide-gray-200 font-semibold">
+              <!-- Preenchido via JS -->
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- CARDS DE KPIS -->
       <section class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
-        <div class="bg-white p-5 rounded-xl shadow-sm border-l-4 border-bp-blue hover:shadow-md transition-shadow">
-          <p class="text-xs font-bold text-gray-400 uppercase tracking-wider">Orçamento Previsto</p>
+        <div class="bg-white p-5 rounded-xl shadow-sm border-l-4 border-bp-blue">
+          <p class="text-xs font-bold text-gray-400 uppercase">Total Previsto</p>
           <p id="kpi-previsto" class="text-2xl font-black text-bp-blue mt-1">R$ 0,00</p>
-          <p class="text-[11px] text-gray-400 mt-1">Baseline aprovada</p>
         </div>
 
-        <div class="bg-white p-5 rounded-xl shadow-sm border-l-4 border-bp-light hover:shadow-md transition-shadow">
-          <p class="text-xs font-bold text-gray-400 uppercase tracking-wider">Gasto Realizado</p>
+        <div class="bg-white p-5 rounded-xl shadow-sm border-l-4 border-bp-light">
+          <p class="text-xs font-bold text-gray-400 uppercase">Total Realizado</p>
           <p id="kpi-realizado" class="text-2xl font-black text-gray-800 mt-1">R$ 0,00</p>
-          <p class="text-[11px] text-gray-400 mt-1">Acumulado medido</p>
         </div>
 
-        <div id="card-desvio" class="bg-white p-5 rounded-xl shadow-sm border-l-4 border-emerald-500 hover:shadow-md transition-shadow">
-          <p class="text-xs font-bold text-gray-400 uppercase tracking-wider">Saldo Orçamentário</p>
+        <div id="card-desvio" class="bg-white p-5 rounded-xl shadow-sm border-l-4 border-emerald-500">
+          <p class="text-xs font-bold text-gray-400 uppercase">Saldo Orçamentário</p>
           <p id="kpi-desvio" class="text-2xl font-black text-emerald-600 mt-1">R$ 0,00</p>
-          <p id="kpi-desvio-percent" class="text-[11px] font-bold text-emerald-600 mt-1">0.0% do previsto</p>
         </div>
 
-        <div class="bg-white p-5 rounded-xl shadow-sm border-l-4 border-amber-500 hover:shadow-md transition-shadow">
-          <p class="text-xs font-bold text-gray-400 uppercase tracking-wider">Índice IDC (Eficiência)</p>
+        <div class="bg-white p-5 rounded-xl shadow-sm border-l-4 border-amber-500">
+          <p class="text-xs font-bold text-gray-400 uppercase">Índice IDC</p>
           <p id="kpi-idc" class="text-2xl font-black text-amber-600 mt-1">0.00</p>
-          <p id="kpi-idc-status" class="text-[11px] font-bold text-amber-600 mt-1">---</p>
         </div>
       </section>
 
-      <!-- PAINEL DE GRÁFICOS POWER BI (INTERATIVO) -->
+      <!-- GRÁFICOS INTERATIVOS -->
       <section class="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div class="lg:col-span-2 bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-          <div class="flex justify-between items-center mb-4">
-            <div>
-              <h3 class="font-bold text-bp-blue text-base">Evolução Curva S (Previsto vs. Realizado)</h3>
-              <p class="text-xs text-gray-400">Clique em um mês para filtrar o detalhamento</p>
-            </div>
-            <span class="text-xs bg-bp-bg text-bp-blue font-bold px-2.5 py-1 rounded">Interativo</span>
-          </div>
+          <h3 class="font-bold text-bp-blue text-base mb-4">Acompanhamento do Desempenho Orçamentário (Curva S)</h3>
           <div class="relative h-80">
             <canvas id="chartCurvaS"></canvas>
           </div>
         </div>
 
         <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-          <div class="flex justify-between items-center mb-4">
-            <h3 class="font-bold text-bp-blue text-base">Análise por Categoria</h3>
-            <button onclick="resetarFiltrosGrafico()" class="text-[11px] text-bp-light font-bold bg-bp-blue px-2 py-1 rounded">Limpar Filtro</button>
-          </div>
+          <h3 class="font-bold text-bp-blue text-base mb-4">Custos por Categoria</h3>
           <div class="relative h-80">
             <canvas id="chartCategorias"></canvas>
           </div>
         </div>
       </section>
 
-      <!-- DETALHAMENTO DE EAP -->
-      <section class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-        <div class="p-5 border-b border-gray-200 bg-gray-50 flex justify-between items-center">
-          <div>
-            <h3 class="font-bold text-bp-blue text-base">Detalhamento da EAP e Composições</h3>
-            <p class="text-xs text-gray-500">Filtrado dinamicamente pelas seleções do gráfico</p>
-          </div>
-          <input type="text" id="input-busca-eap" onkeyup="filtrarTabelaEAP()" placeholder="🔍 Buscar etapa ou insumo..." class="text-xs border border-gray-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-bp-blue w-64">
-        </div>
-        <div class="overflow-x-auto">
-          <table class="w-full text-left text-xs">
-            <thead class="bg-bp-blue text-white uppercase tracking-wider">
-              <tr>
-                <th class="p-3">Código EAP</th>
-                <th class="p-3">Etapa / Serviço</th>
-                <th class="p-3">Categoria</th>
-                <th class="p-3 text-right">Previsto (R$)</th>
-                <th class="p-3 text-right">Realizado (R$)</th>
-                <th class="p-3 text-right">Desvio (R$)</th>
-                <th class="p-3 text-center">Status</th>
-              </tr>
-            </thead>
-            <tbody id="tabela-eap-body" class="divide-y divide-gray-200 font-medium">
-              <!-- Linhas Inseridas via JS -->
-            </tbody>
-          </table>
-        </div>
-      </section>
-
     </main>
   </div>
 
-  <!-- MODAL: CADASTRO DE NOVA OBRA -->
+  <!-- MODAL: CADASTRO DE OBRA -->
   <div id="modal-obra" class="fixed inset-0 bg-black/60 backdrop-blur-sm hidden z-50 flex items-center justify-center p-4">
     <div class="bg-white rounded-2xl max-w-xl w-full p-6 shadow-2xl border border-gray-100 space-y-4">
       <div class="flex justify-between items-center border-b pb-3">
@@ -288,24 +273,44 @@
 
         <div class="flex justify-end gap-2 pt-3 border-t">
           <button type="button" onclick="fecharModalNovaObra()" class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg font-bold">Cancelar</button>
-          <button type="submit" class="px-4 py-2 bg-bp-blue text-white rounded-lg font-bold hover:bg-bp-dark">Salvar e Conectar Obra</button>
+          <button type="submit" class="px-4 py-2 bg-bp-blue text-white rounded-lg font-bold hover:bg-bp-dark">Salvar Obra</button>
         </div>
       </form>
     </div>
   </div>
 
-  <!-- MODAL: GESTÃO DE USUÁRIOS E APROVAÇÃO (ADMIN/MESTRE) -->
+  <!-- MODAL: GESTÃO DE USUÁRIOS E CRIAR USUÁRIO DIRETO (MESTRE) -->
   <div id="modal-usuarios" class="fixed inset-0 bg-black/60 backdrop-blur-sm hidden z-50 flex items-center justify-center p-4">
     <div class="bg-white rounded-2xl max-w-3xl w-full p-6 shadow-2xl border border-gray-100 space-y-4 max-h-[90vh] overflow-y-auto">
       <div class="flex justify-between items-center border-b pb-3">
-        <h3 class="text-lg font-bold text-bp-blue">Gestão de Usuários e Aprovações de Acesso</h3>
+        <h3 class="text-lg font-bold text-bp-blue">Gestão de Usuários e Controle Mestre</h3>
         <button onclick="fecharModalUsuarios()" class="text-gray-400 hover:text-gray-600 font-bold">✕</button>
       </div>
 
-      <!-- PAINEL 1: SOLICITAÇÕES PENDENTES (Mestre Aprova/Rejeita) -->
+      <!-- FORMULÁRIO DIRETO PARA CRIAR NOVO USUÁRIO (MESTRE) -->
+      <form onsubmit="criarUsuarioDireto(event)" class="bg-bp-bg p-4 rounded-xl space-y-3 text-xs border border-gray-200">
+        <p class="font-bold text-bp-blue uppercase">➕ Criar Novo Usuário Diretamente (Mestre)</p>
+        <div class="grid grid-cols-2 gap-3">
+          <input type="text" id="novo-usr-nome" placeholder="Nome Completo" required class="border p-2 rounded-lg">
+          <input type="email" id="novo-usr-email" placeholder="E-mail Corporativo" required class="border p-2 rounded-lg">
+        </div>
+        <div class="grid grid-cols-3 gap-3">
+          <input type="text" id="novo-usr-login" placeholder="Nome de Usuário (Login)" required class="border p-2 rounded-lg">
+          <input type="password" id="novo-usr-senha" placeholder="Senha" required class="border p-2 rounded-lg">
+          <select id="novo-usr-perfil" required class="border p-2 rounded-lg font-bold">
+            <option value="Engenheiro">Engenheiro</option>
+            <option value="Orçamentista">Orçamentista</option>
+            <option value="Dono">Dono / Diretoria</option>
+            <option value="Mestre">Mestre</option>
+          </select>
+        </div>
+        <button type="submit" class="w-full bg-bp-blue text-white font-bold py-2 rounded-lg hover:bg-bp-dark">Cadastrar Usuário Agora</button>
+      </form>
+
+      <!-- SOLICITAÇÕES PENDENTES -->
       <div id="secao-solicitacoes" class="bg-amber-50 p-4 rounded-xl space-y-3 text-xs border border-amber-200">
         <div class="flex justify-between items-center">
-          <p class="font-bold text-amber-900 uppercase">⚠️ Solicitações de Cadastro Pendentes</p>
+          <p class="font-bold text-amber-900 uppercase">⚠️ Solicitações Pendentes</p>
           <span id="count-pendentes" class="bg-amber-200 text-amber-900 font-bold px-2 py-0.5 rounded-full">0</span>
         </div>
         
@@ -316,19 +321,18 @@
                 <th class="p-2">Nome</th>
                 <th class="p-2">E-mail</th>
                 <th class="p-2">Usuário</th>
-                <th class="p-2 text-center">Ação do Mestre</th>
+                <th class="p-2 text-center">Ação</th>
               </tr>
             </thead>
             <tbody id="tabela-pendentes-body" class="divide-y">
-              <!-- Preenchido via JS -->
             </tbody>
           </table>
         </div>
       </div>
 
-      <!-- PAINEL 2: USUÁRIOS ATIVOS -->
+      <!-- LISTA DE USUÁRIOS -->
       <div class="space-y-2 text-xs">
-        <p class="font-bold text-bp-blue uppercase">Usuários Ativos e Aprovados</p>
+        <p class="font-bold text-bp-blue uppercase">Usuários Cadastrados</p>
         <div class="overflow-y-auto max-h-48 border rounded-lg">
           <table class="w-full text-left">
             <thead class="bg-gray-100 text-gray-600 font-bold uppercase text-[10px]">
@@ -340,7 +344,6 @@
               </tr>
             </thead>
             <tbody id="tabela-usuarios-body" class="divide-y">
-              <!-- Preenchido via JS -->
             </tbody>
           </table>
         </div>
