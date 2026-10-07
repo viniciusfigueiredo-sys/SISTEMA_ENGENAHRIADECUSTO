@@ -1,32 +1,23 @@
 // ==========================================
-// BANCO DE DADOS DE USUÁRIOS (MESTRE DEFAULT)
+// ESTADOS E BANCO DE DADOS LOCAL (MEMÓRIA)
 // ==========================================
 let usuariosBD = [
-  { 
-    nome: "Vinícius Souza (Mestre)", 
-    usuario: "vinicius_souzaf", 
-    email: "mestre@brasilpontes.com.br", 
-    senha: "741852963", 
-    perfil: "Mestre", 
-    status: "Aprovado" 
-  }
+  { nome: "Vinícius Souza (Mestre)", usuario: "vinicius_souzaf", email: "mestre@brasilpontes.com.br", senha: "741852963", perfil: "Mestre", status: "Aprovado" }
 ];
-
 let solicitacoesPendentesBD = [];
 
-// ==========================================
-// LINKS DAS PLANILHAS PUBLICADAS NO GOOGLE SHEETS
-// ==========================================
-let urlRealizadoUnificadoCSV = "https://docs.google.com/spreadsheets/d/1S41dXyTC2Y_SJjD3iw86WaUqi0OWNxyf/export?format=csv";
-let urlPrevistoModeloCSV = "https://docs.google.com/spreadsheets/d/1v_sB3klYQRBuJ0SA-kpa2tYA3IVJsFi7ehWzgcPgDsM/export?format=csv";
+// Obter configurações globais e obras do LocalStorage
+let configGlobal = JSON.parse(localStorage.getItem('config_bp')) || {
+  titulo: "Brasil Pontes",
+  urlRealizado: "https://docs.google.com/spreadsheets/d/1S41dXyTC2Y_SJjD3iw86WaUqi0OWNxyf/export?format=csv"
+};
 
-// BANCO DE DADOS GLOBAL DAS OBRAS
-let obrasBD = {};
+// Obras mantidas em cache (mantém as URLs do Previsto configuradas pelo utilizador)
+let obrasBD = JSON.parse(localStorage.getItem('obras_bp')) || {};
 
-// CONFIGURAÇÃO DOS GRÁFICOS DINÂMICOS
 let graficosConfig = [
   { id: "chart_categoria_comp", titulo: "Comparativo Previsto x Realizado por Categoria BP", tipo: "bar", metrica: "categoria" },
-  { id: "chart_curva_s", titulo: "Evolução do Desempenho Orçamentário (Curva S)", tipo: "line", metrica: "curvaS" }
+  { id: "chart_curva_s", titulo: "Evolução do Desempenho Orçamentário", tipo: "line", metrica: "curvaS" }
 ];
 
 let graficosInstancias = {};
@@ -35,9 +26,36 @@ let obraAtivaID = null;
 let multiplicadorCenario = 1;
 
 // ==========================================
-// INICIALIZAÇÃO E PERSISTÊNCIA DA SESSÃO
+// FUNÇÕES UTILITÁRIAS (CONVERSÃO DE LINKS)
+// ==========================================
+function obterLinkCSV(url) {
+  if (!url) return "";
+  if (url.includes("/edit") || url.includes("usp=")) {
+    const match = url.match(/\/d\/([a-zA-Z0-9-_]+)/);
+    if (match && match[1]) {
+      return `https://docs.google.com/spreadsheets/d/${match[1]}/export?format=csv`;
+    }
+  }
+  return url;
+}
+
+const buscarCSV = (url) => new Promise((resolve, reject) => {
+  Papa.parse(obterLinkCSV(url), {
+    download: true,
+    header: true,
+    skipEmptyLines: true,
+    complete: (results) => resolve(results.data),
+    error: (err) => reject(err)
+  });
+});
+
+// ==========================================
+// INICIALIZAÇÃO E SESSÃO
 // ==========================================
 window.onload = function() {
+  document.getElementById('header-app-title').innerText = configGlobal.titulo;
+  document.getElementById('login-app-title').innerText = configGlobal.titulo;
+
   const sessaoSalva = localStorage.getItem('usuario_bp');
   if (sessaoSalva) {
     try { usuarioAutenticado = JSON.parse(sessaoSalva); } catch(e) { usuarioAutenticado = null; }
@@ -52,20 +70,18 @@ function verificarSessao() {
   } else {
     document.getElementById('screen-login').classList.add('hidden');
     document.getElementById('app-container').classList.remove('hidden');
-    sincronizarTodasPlanilhas();
+    popularSeletorObras();
+    atualizarDashboard();
     aplicarPermissoesPerfil();
   }
 }
 
-// ==========================================
 // LOGIN & LOGOUT
-// ==========================================
 function executarLogin() {
   const inputUser = document.getElementById('login-usuario').value.trim();
   const inputSenha = document.getElementById('login-senha').value.trim();
 
   if (!inputUser || !inputSenha) return alert("Preencha usuário e senha.");
-
   const user = usuariosBD.find(u => (u.usuario === inputUser || u.email === inputUser) && u.senha === inputSenha);
 
   if (user) {
@@ -88,122 +104,92 @@ function executarLogout() {
 }
 
 // ==========================================
-// LEITURA E SINCRONIZAÇÃO DAS PLANILHAS
+// SINCRONIZAÇÃO COMPLETA DE DADOS (ASSÍNCRONO)
 // ==========================================
-function sincronizarTodasPlanilhas() {
-  // 1. Ler Planilha Unificada de Realizado
-  Papa.parse(urlRealizadoUnificadoCSV, {
-    download: true,
-    header: true,
-    skipEmptyLines: true,
-    complete: function(results) {
-      extrairEObrasEGastosRealizados(results.data);
-      // 2. Ler Planilha Modelo do Previsto
-      sincronizarPlanilhaPrevisto();
-    },
-    error: function(err) {
-      console.warn("Erro ao ler Realizado. Mantendo dados locais.", err);
-      atualizarDashboard();
-    }
-  });
-}
+async function sincronizarTodasPlanilhas() {
+  const btn = document.getElementById('btn-sync');
+  if (btn) btn.innerText = "⏳ A Sincronizar Dados...";
 
-function extrairEObrasEGastosRealizados(linhasRealizado) {
-  // Resetar apenas os acumulados do REALIZADO
-  Object.keys(obrasBD).forEach(k => {
-    obrasBD[k].realizadoTotal = 0;
-    obrasBD[k].categoriasRealizado = {};
-    obrasBD[k].lancamentos = [];
-  });
-
-  linhasRealizado.forEach(linha => {
-    // Mapeamento exato da Coluna AJ (Departamento)
-    const deptoOriginal = (linha["Departamento"] || linha["DEPARTAMENTO"] || "").trim();
-    
-    if (!deptoOriginal || deptoOriginal === "N/D" || deptoOriginal === "0.0") return;
-
-    const deptoChave = deptoOriginal.toUpperCase();
-
-    // Criar a obra se ainda não existir no cadastro
-    if (!obrasBD[deptoChave]) {
-      obrasBD[deptoChave] = {
-        id: deptoChave,
-        nome: deptoOriginal,
-        cc: deptoOriginal,
-        responsavel: "Engenheiro Responsável",
-        status: "Ativa",
-        urlPrevistoCSV: urlPrevistoModeloCSV,
-        previstoTotal: 0, // Previsto permanece zerado até a leitura da planilha de orçamento
-        realizadoTotal: 0,
-        categoriasPrevisto: {},
-        categoriasRealizado: {},
-        lancamentos: []
-      };
-    }
-
-    // Extração do valor realizado (Coluna Soma de Valor Líquido)
-    let valorStr = linha["Soma de Valor Líquido "] || linha["Soma de Valor Líquido"] || linha["Valor da Conta"] || "0";
-    valorStr = valorStr.toString().replace("R$", "").replace(/\./g, "").replace(",", ".").trim();
-    const valor = Math.abs(parseFloat(valorStr) || 0);
-
-    const categoria = (linha["Categoria"] || "Outros").trim();
-
-    // Aloca EXCLUSIVAMENTE no Realizado
-    if (obrasBD[deptoChave].status !== "Arquivada") {
-      obrasBD[deptoChave].realizadoTotal += valor;
-      obrasBD[deptoChave].categoriasRealizado[categoria] = (obrasBD[deptoChave].categoriasRealizado[categoria] || 0) + valor;
-      obrasBD[deptoChave].lancamentos.push(linha);
-    }
-  });
-
-  popularSeletorObras();
-}
-
-function sincronizarPlanilhaPrevisto() {
-  Papa.parse(urlPrevistoModeloCSV, {
-    download: true,
-    header: true,
-    skipEmptyLines: true,
-    complete: function(results) {
-      processarDadosPrevisto(results.data);
-    },
-    error: function(err) {
-      atualizarDashboard();
-    }
-  });
-}
-
-function processarDadosPrevisto(linhasPrevisto) {
-  // Limpar orçamentos anteriores para cálculo exato
-  Object.keys(obrasBD).forEach(k => {
-    obrasBD[k].previstoTotal = 0;
-    obrasBD[k].categoriasPrevisto = {};
-  });
-
-  linhasPrevisto.forEach(linha => {
-    const catBP = (linha["Categoria BP"] || linha["Natureza/Grupo"] || "Outros").trim();
-    let custoTotalStr = linha["Custo Total (R$)"] || "0";
-    custoTotalStr = custoTotalStr.toString().replace("R$", "").replace(/\./g, "").replace(",", ".").trim();
-    const custoTotal = parseFloat(custoTotalStr) || 0;
-
-    // Atribuição para as obras cadastradas
-    Object.keys(obrasBD).forEach(key => {
-      const obra = obrasBD[key];
-      obra.categoriasPrevisto[catBP] = (obra.categoriasPrevisto[catBP] || 0) + custoTotal;
+  try {
+    // 1. Limpar acumulados atuais de todas as obras (mantendo os links guardados)
+    Object.keys(obrasBD).forEach(k => {
+      obrasBD[k].realizadoTotal = 0;
+      obrasBD[k].categoriasRealizado = {};
+      obrasBD[k].previstoTotal = 0;
+      obrasBD[k].categoriasPrevisto = {};
     });
-  });
 
-  // Somar o total previsto por obra
-  Object.keys(obrasBD).forEach(key => {
-    const obra = obrasBD[key];
-    obra.previstoTotal = Object.values(obra.categoriasPrevisto).reduce((a, b) => a + b, 0);
-  });
+    // 2. Extrair dados da Planilha de Realizado (Unificada)
+    const dadosRealizado = await buscarCSV(configGlobal.urlRealizado).catch(() => []);
+    
+    dadosRealizado.forEach(linha => {
+      // Procura a coluna do departamento/obra de forma flexível
+      const chaveDepto = Object.keys(linha).find(k => k.trim().toUpperCase().includes("DEPARTAMENTO") || k.trim().toUpperCase().includes("CENTRO DE CUSTO"));
+      const deptoOriginal = chaveDepto ? (linha[chaveDepto] || "").trim() : "";
+      
+      if (!deptoOriginal || deptoOriginal === "N/D" || deptoOriginal === "0.0") return;
+      const deptoID = deptoOriginal.toUpperCase();
 
-  atualizarDashboard();
+      if (!obrasBD[deptoID]) {
+        obrasBD[deptoID] = {
+          id: deptoID, nome: deptoOriginal, cc: deptoOriginal, responsavel: "Não Atribuído", status: "Ativa",
+          urlPrevistoCSV: "", previstoTotal: 0, realizadoTotal: 0, categoriasPrevisto: {}, categoriasRealizado: {}
+        };
+      }
+
+      // Procura a coluna do Valor
+      const chaveValor = Object.keys(linha).find(k => k.trim().toUpperCase().includes("VALOR LÍQUIDO") || k.trim().toUpperCase().includes("VALOR DA CONTA"));
+      let valorStr = chaveValor ? String(linha[chaveValor] || "0") : "0";
+      let valor = Math.abs(parseFloat(valorStr.replace("R$", "").replace(/\./g, "").replace(",", ".").trim()) || 0);
+
+      const chaveCategoria = Object.keys(linha).find(k => k.trim().toUpperCase() === "CATEGORIA");
+      const categoria = chaveCategoria ? (linha[chaveCategoria] || "Outros").trim() : "Outros";
+
+      if (obrasBD[deptoID].status !== "Arquivada") {
+        obrasBD[deptoID].realizadoTotal += valor;
+        obrasBD[deptoID].categoriasRealizado[categoria] = (obrasBD[deptoID].categoriasRealizado[categoria] || 0) + valor;
+      }
+    });
+
+    // 3. Processar Planilhas de Previsto (Apenas para obras que tenham um link configurado)
+    const promessasPrevisto = Object.keys(obrasBD).map(async (key) => {
+      const obra = obrasBD[key];
+      if (obra.urlPrevistoCSV && obra.urlPrevistoCSV.trim() !== "") {
+        const dadosPrevisto = await buscarCSV(obra.urlPrevistoCSV).catch(() => []);
+        
+        dadosPrevisto.forEach(linha => {
+          const chaveCat = Object.keys(linha).find(k => k.trim().toUpperCase() === "CATEGORIA BP" || k.trim().toUpperCase() === "NATUREZA/GRUPO");
+          const catBP = chaveCat ? (linha[chaveCat] || "Outros").trim() : "Outros";
+          
+          const chaveCusto = Object.keys(linha).find(k => k.trim().toUpperCase() === "CUSTO TOTAL (R$)");
+          let custoStr = chaveCusto ? String(linha[chaveCusto] || "0") : "0";
+          let custoTotal = parseFloat(custoStr.replace("R$", "").replace(/\./g, "").replace(",", ".").trim()) || 0;
+          
+          obra.categoriasPrevisto[catBP] = (obra.categoriasPrevisto[catBP] || 0) + custoTotal;
+        });
+
+        obra.previstoTotal = Object.values(obra.categoriasPrevisto).reduce((a, b) => a + b, 0);
+      }
+    });
+
+    await Promise.all(promessasPrevisto);
+
+    // Guardar estado final no disco
+    localStorage.setItem('obras_bp', JSON.stringify(obrasBD));
+
+    popularSeletorObras();
+    atualizarDashboard();
+
+  } catch (error) {
+    alert("Ocorreu um erro ao sincronizar os dados. Verifique as permissões de acesso da planilha (Publicar na Web).");
+    console.error(error);
+  } finally {
+    if (btn) btn.innerHTML = "🔄 Sincronizar Google Sheets";
+  }
 }
 
 // ==========================================
-// PAINEL DE CONTROLE / DASHBOARD
+// DASHBOARD & FAROL
 // ==========================================
 function popularSeletorObras() {
   const seletor = document.getElementById('seletor-obra');
@@ -212,7 +198,7 @@ function popularSeletorObras() {
   const chaves = Object.keys(obrasBD).filter(k => obrasBD[k].status !== "Arquivada");
 
   if (chaves.length === 0) {
-    seletor.innerHTML = `<option value="">Nenhuma obra ativa</option>`;
+    seletor.innerHTML = `<option value="">A aguardar sincronização...</option>`;
     obraAtivaID = null;
     return;
   }
@@ -259,18 +245,13 @@ function atualizarDashboard() {
   document.getElementById('kpi-desvio').innerText = (desvio >= 0 ? "+ " : "") + desvio.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
   document.getElementById('kpi-idc').innerText = idc;
 
-  // Renderizar Tabela Comparativa Previsto x Realizado por Categoria com FAROL
+  // Lógica do Farol (Tabela)
   const tbody = document.getElementById('tabela-dre-body');
   tbody.innerHTML = '';
 
-  const todasCategorias = Array.from(new Set([
-    ...Object.keys(obra.categoriasPrevisto || {}),
-    ...Object.keys(obra.categoriasRealizado || {})
-  ]));
+  const todasCategorias = Array.from(new Set([...Object.keys(obra.categoriasPrevisto || {}), ...Object.keys(obra.categoriasRealizado || {})]));
 
-  let countVerde = 0;
-  let countAmarelo = 0;
-  let countVermelho = 0;
+  let countVerde = 0; let countAmarelo = 0; let countVermelho = 0;
 
   if (todasCategorias.length > 0) {
     todasCategorias.forEach(cat => {
@@ -278,41 +259,24 @@ function atualizarDashboard() {
       const real = (obra.categoriasRealizado && obra.categoriasRealizado[cat]) || 0;
       const saldo = prev - real;
       
-      // Cálculo da percentagem de utilização
       let percUso = 0;
-      if (prev > 0) {
-        percUso = (real / prev) * 100;
-      } else if (real > 0) {
-        percUso = 999; // Representação de gasto sem previsão
-      }
+      if (prev > 0) percUso = (real / prev) * 100;
+      else if (real > 0) percUso = 999;
 
-      // Lógica do Farol (Configurado para alerta aos 85%)
-      let farolClass = '';
-      let farolTexto = '';
-      let farolIcone = '';
-      let corSaldo = '';
+      let farolClass = ''; let farolTexto = ''; let farolIcone = ''; let corSaldo = '';
 
       if (percUso > 100 || (prev === 0 && real > 0)) {
         farolClass = 'bg-red-100 text-red-800 border border-red-200';
         farolTexto = prev === 0 ? 'NÃO PREVISTO' : 'ESTOURADO';
-        farolIcone = '🔴';
-        corSaldo = 'text-red-600';
-        countVermelho++;
+        farolIcone = '🔴'; corSaldo = 'text-red-600'; countVermelho++;
       } else if (percUso >= 85) {
         farolClass = 'bg-amber-100 text-amber-800 border border-amber-200';
-        farolTexto = 'ATENÇÃO';
-        farolIcone = '🟡';
-        corSaldo = 'text-amber-600';
-        countAmarelo++;
+        farolTexto = 'ATENÇÃO'; farolIcone = '🟡'; corSaldo = 'text-amber-600'; countAmarelo++;
       } else {
         farolClass = 'bg-emerald-100 text-emerald-800 border border-emerald-200';
-        farolTexto = 'SEGURO';
-        farolIcone = '🟢';
-        corSaldo = 'text-emerald-600';
-        countVerde++;
+        farolTexto = 'SEGURO'; farolIcone = '🟢'; corSaldo = 'text-emerald-600'; countVerde++;
       }
 
-      // Formatador da percentagem
       const percExibicao = percUso === 999 ? "∞" : percUso.toFixed(1) + "%";
 
       tbody.innerHTML += `
@@ -323,18 +287,15 @@ function atualizarDashboard() {
           <td class="p-3 text-center font-bold ${corSaldo}">${percExibicao}</td>
           <td class="p-3 text-right font-black ${corSaldo}">${(saldo >= 0 ? "+ " : "") + saldo.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
           <td class="p-3 text-center">
-            <span class="px-2.5 py-1 rounded-lg text-[10px] font-black uppercase flex items-center justify-center gap-1 ${farolClass}">
-              ${farolIcone} ${farolTexto}
-            </span>
+            <span class="px-2.5 py-1 rounded-lg text-[10px] font-black uppercase flex items-center justify-center gap-1 ${farolClass}">${farolIcone} ${farolTexto}</span>
           </td>
         </tr>
       `;
     });
   } else {
-    tbody.innerHTML = `<tr><td colspan="6" class="p-4 text-center text-gray-400">Nenhum dado cadastrado para esta obra.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="6" class="p-4 text-center text-gray-400">Nenhum dado financeiro para demonstrar.</td></tr>`;
   }
 
-  // Atualizar os contadores do Resumo do Farol no HTML
   document.getElementById('farol-verde-count').innerText = countVerde;
   document.getElementById('farol-amarelo-count').innerText = countAmarelo;
   document.getElementById('farol-vermelho-count').innerText = countVermelho;
@@ -349,18 +310,14 @@ function renderizarGridGraficosDinamicos(obra) {
   const container = document.getElementById('grid-graficos-dinamicos');
   container.innerHTML = '';
 
-  Object.keys(graficosInstancias).forEach(id => {
-    if (graficosInstancias[id]) graficosInstancias[id].destroy();
-  });
+  Object.keys(graficosInstancias).forEach(id => { if (graficosInstancias[id]) graficosInstancias[id].destroy(); });
   graficosInstancias = {};
 
   graficosConfig.forEach(cfg => {
     container.innerHTML += `
       <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
         <h3 class="font-bold text-bp-blue text-base mb-4">${cfg.titulo}</h3>
-        <div class="relative h-72">
-          <canvas id="${cfg.id}"></canvas>
-        </div>
+        <div class="relative h-72"><canvas id="${cfg.id}"></canvas></div>
       </div>
     `;
   });
@@ -384,63 +341,49 @@ function renderizarGridGraficosDinamicos(obra) {
         ]
       };
 
-      graficosInstancias[cfg.id] = new Chart(ctx, {
-        type: cfg.tipo,
-        data: chartData,
-        options: { responsive: true, maintainAspectRatio: false }
-      });
+      graficosInstancias[cfg.id] = new Chart(ctx, { type: cfg.tipo, data: chartData, options: { responsive: true, maintainAspectRatio: false } });
     });
   }, 100);
 }
 
 // ==========================================
-// PAINEL DE CONFIGURAÇÕES E GERENCIAMENTO DE OBRAS
+// CONFIGURAÇÕES E GESTÃO DE OBRAS (C/ VÍNCULO DE PREVISTO)
 // ==========================================
 function abrirModalConfiguracoes() {
-  document.getElementById('config-app-title').value = document.getElementById('header-app-title').innerText;
-  document.getElementById('config-url-unificada').value = urlRealizadoUnificadoCSV;
+  document.getElementById('config-app-title').value = configGlobal.titulo;
+  document.getElementById('config-url-unificada').value = configGlobal.urlRealizado;
   renderizarTabelaGestaoObras();
   renderizarListaGraficosConfig();
   document.getElementById('modal-configuracoes').classList.remove('hidden');
 }
 
-function fecharModalConfiguracoes() {
-  document.getElementById('modal-configuracoes').classList.add('hidden');
-}
+function fecharModalConfiguracoes() { document.getElementById('modal-configuracoes').classList.add('hidden'); }
 
 function trocarAbaConfig(aba) {
-  document.getElementById('cfg-aba-geral').classList.add('hidden');
-  document.getElementById('cfg-aba-obras').classList.add('hidden');
-  document.getElementById('cfg-aba-graficos').classList.add('hidden');
-
-  document.getElementById('tab-btn-geral').className = "pb-2 text-gray-500 hover:text-bp-blue";
-  document.getElementById('tab-btn-obras').className = "pb-2 text-gray-500 hover:text-bp-blue";
-  document.getElementById('tab-btn-graficos').className = "pb-2 text-gray-500 hover:text-bp-blue";
-
-  if (aba === 'geral') {
-    document.getElementById('cfg-aba-geral').classList.remove('hidden');
-    document.getElementById('tab-btn-geral').className = "pb-2 border-b-2 border-bp-blue text-bp-blue font-bold";
-  } else if (aba === 'obras') {
-    document.getElementById('cfg-aba-obras').classList.remove('hidden');
-    document.getElementById('tab-btn-obras').className = "pb-2 border-b-2 border-bp-blue text-bp-blue font-bold";
-    renderizarTabelaGestaoObras();
-  } else if (aba === 'graficos') {
-    document.getElementById('cfg-aba-graficos').classList.remove('hidden');
-    document.getElementById('tab-btn-graficos').className = "pb-2 border-b-2 border-bp-blue text-bp-blue font-bold";
-  }
+  ['geral', 'obras', 'graficos'].forEach(a => {
+    document.getElementById(`cfg-aba-${a}`).classList.add('hidden');
+    document.getElementById(`tab-btn-${a}`).className = "pb-2 text-gray-500 hover:text-bp-blue";
+  });
+  document.getElementById(`cfg-aba-${aba}`).classList.remove('hidden');
+  document.getElementById(`tab-btn-${aba}`).className = "pb-2 border-b-2 border-bp-blue text-bp-blue font-bold";
+  if (aba === 'obras') renderizarTabelaGestaoObras();
 }
 
 function renderizarTabelaGestaoObras() {
   const tbody = document.getElementById('tabela-gestao-obras-body');
   tbody.innerHTML = '';
+  
+  if(Object.keys(obrasBD).length === 0) {
+    tbody.innerHTML = `<tr><td colspan="4" class="p-3 text-center text-gray-400">Clique em 'Sincronizar Google Sheets' no dashboard para descobrir obras.</td></tr>`;
+  }
 
   Object.keys(obrasBD).forEach(id => {
     const o = obrasBD[id];
     tbody.innerHTML += `
       <tr>
-        <td class="p-2 font-bold"><input type="text" value="${o.nome}" onchange="atualizarCampoObra('${id}', 'nome', this.value)" class="border p-1 rounded w-full"></td>
-        <td class="p-2"><input type="text" value="${o.cc}" onchange="atualizarCampoObra('${id}', 'cc', this.value)" class="border p-1 rounded w-full"></td>
-        <td class="p-2 text-center"><span class="px-2 py-0.5 rounded text-[10px] font-bold ${o.status === 'Ativa' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}">${o.status}</span></td>
+        <td class="p-2 font-bold text-gray-600">${o.cc}</td>
+        <td class="p-2"><input type="text" value="${o.nome}" onchange="atualizarCampoObra('${id}', 'nome', this.value)" class="border p-1 rounded w-full"></td>
+        <td class="p-2"><input type="url" placeholder="Cole o link CSV da Planilha Previsto..." value="${o.urlPrevistoCSV}" onchange="atualizarCampoObra('${id}', 'urlPrevistoCSV', this.value)" class="border p-1 rounded w-full text-[10px]"></td>
         <td class="p-2 text-center space-x-1">
           <button onclick="alternarStatusArquivado('${id}')" class="bg-amber-500 text-white px-2 py-1 rounded text-[10px] font-bold">${o.status === 'Ativa' ? 'Arquivar' : 'Reativar'}</button>
           <button onclick="excluirObra('${id}')" class="bg-red-600 text-white px-2 py-1 rounded text-[10px] font-bold">Excluir</button>
@@ -451,12 +394,16 @@ function renderizarTabelaGestaoObras() {
 }
 
 function atualizarCampoObra(id, campo, valor) {
-  if (obrasBD[id]) obrasBD[id][campo] = valor;
+  if (obrasBD[id]) {
+    obrasBD[id][campo] = valor;
+    localStorage.setItem('obras_bp', JSON.stringify(obrasBD));
+  }
 }
 
 function alternarStatusArquivado(id) {
   if (obrasBD[id]) {
     obrasBD[id].status = obrasBD[id].status === 'Ativa' ? 'Arquivada' : 'Ativa';
+    localStorage.setItem('obras_bp', JSON.stringify(obrasBD));
     popularSeletorObras();
     renderizarTabelaGestaoObras();
     atualizarDashboard();
@@ -464,24 +411,21 @@ function alternarStatusArquivado(id) {
 }
 
 function excluirObra(id) {
-  if (confirm(`Tem certeza que deseja excluir a obra ${obrasBD[id].nome}?`)) {
+  if (confirm(`Tem a certeza que deseja excluir os registos da obra ${obrasBD[id].nome}?`)) {
     delete obrasBD[id];
+    localStorage.setItem('obras_bp', JSON.stringify(obrasBD));
     popularSeletorObras();
     renderizarTabelaGestaoObras();
     atualizarDashboard();
   }
 }
 
-// ADICIONAR / REMOVER GRÁFICOS
 function adicionarNovoGrafico() {
   const titulo = document.getElementById('novo-chart-titulo').value.trim();
   const tipo = document.getElementById('novo-chart-tipo').value;
   const metrica = document.getElementById('novo-chart-metrica').value;
-
   if (!titulo) return alert("Digite o título do gráfico.");
-
-  const novoID = `chart_custom_${Date.now()}`;
-  graficosConfig.push({ id: novoID, titulo, tipo, metrica });
+  graficosConfig.push({ id: `chart_custom_${Date.now()}`, titulo, tipo, metrica });
   document.getElementById('novo-chart-titulo').value = '';
   renderizarListaGraficosConfig();
 }
@@ -506,15 +450,22 @@ function renderizarListaGraficosConfig() {
 
 function salvarConfiguracoesGerais() {
   const novoTitulo = document.getElementById('config-app-title').value.trim();
+  const novaURLRealizado = document.getElementById('config-url-unificada').value.trim();
+  
   if (novoTitulo) {
+    configGlobal.titulo = novoTitulo;
     document.getElementById('header-app-title').innerText = novoTitulo;
     document.getElementById('login-app-title').innerText = novoTitulo;
   }
-
-  urlRealizadoUnificadoCSV = document.getElementById('config-url-unificada').value.trim() || urlRealizadoUnificadoCSV;
-  sincronizarTodasPlanilhas();
+  
+  if (novaURLRealizado) configGlobal.urlRealizado = novaURLRealizado;
+  
+  localStorage.setItem('config_bp', JSON.stringify(configGlobal));
   fecharModalConfiguracoes();
-  alert("Configurações salvas e aplicadas!");
+  
+  if (confirm("Configurações salvas! Deseja executar uma nova Sincronização de Dados agora?")) {
+    sincronizarTodasPlanilhas();
+  }
 }
 
 // ==========================================
@@ -562,9 +513,7 @@ function renderizarPainelUsuarios() {
         <td class="p-2 font-bold">${s.nome}</td>
         <td class="p-2">${s.email}</td>
         <td class="p-2 text-bp-blue font-bold">${s.usuario}</td>
-        <td class="p-2 text-center">
-          <button onclick="aprovarSolicitacao(${s.id})" class="bg-emerald-600 text-white px-2 py-1 rounded text-[10px] font-bold">Aprovar</button>
-        </td>
+        <td class="p-2 text-center"><button onclick="aprovarSolicitacao(${s.id})" class="bg-emerald-600 text-white px-2 py-1 rounded text-[10px] font-bold">Aprovar</button></td>
       </tr>
     `;
   });
