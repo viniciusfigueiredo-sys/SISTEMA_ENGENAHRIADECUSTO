@@ -9,10 +9,9 @@ let solicitacoesPendentesBD = [];
 // Obter configurações globais e obras do LocalStorage
 let configGlobal = JSON.parse(localStorage.getItem('config_bp')) || {
   titulo: "Brasil Pontes",
-  urlRealizado: "https://docs.google.com/spreadsheets/d/1S41dXyTC2Y_SJjD3iw86WaUqi0OWNxyf/export?format=csv"
+  urlRealizado: ""
 };
 
-// Obras mantidas em cache (mantém as URLs do Previsto configuradas pelo utilizador)
 let obrasBD = JSON.parse(localStorage.getItem('obras_bp')) || {};
 
 let graficosConfig = [
@@ -26,14 +25,18 @@ let obraAtivaID = null;
 let multiplicadorCenario = 1;
 
 // ==========================================
-// FUNÇÕES UTILITÁRIAS (CONVERSÃO DE LINKS)
+// FUNÇÕES UTILITÁRIAS E LEITURA DA API GOOGLE
 // ==========================================
 function obterLinkCSV(url) {
   if (!url) return "";
+  // Se já for um link publicado para CSV, retorna direto
+  if (url.includes("/pub?output=csv")) return url;
+
+  // Tenta forçar a conversão se for um link de edição "Qualquer um com link"
   if (url.includes("/edit") || url.includes("usp=")) {
     const match = url.match(/\/d\/([a-zA-Z0-9-_]+)/);
     if (match && match[1]) {
-      return `https://docs.google.com/spreadsheets/d/${match[1]}/export?format=csv`;
+      return `https://docs.google.com/spreadsheets/d/${match[1]}/gviz/tq?tqx=out:csv`;
     }
   }
   return url;
@@ -44,7 +47,14 @@ const buscarCSV = (url) => new Promise((resolve, reject) => {
     download: true,
     header: true,
     skipEmptyLines: true,
-    complete: (results) => resolve(results.data),
+    complete: (results) => {
+      // Verifica se o Google bloqueou e retornou uma página HTML de erro ao invés de dados
+      if (results.data.length > 0 && Object.keys(results.data[0]).some(key => key && key.toLowerCase().includes("<!doctype html>"))) {
+        reject("Acesso Bloqueado. A planilha deve ser 'Publicada na Web' no formato CSV.");
+      } else {
+        resolve(results.data);
+      }
+    },
     error: (err) => reject(err)
   });
 });
@@ -104,14 +114,19 @@ function executarLogout() {
 }
 
 // ==========================================
-// SINCRONIZAÇÃO COMPLETA DE DADOS (ASSÍNCRONO)
+// SINCRONIZAÇÃO COMPLETA DE DADOS
 // ==========================================
 async function sincronizarTodasPlanilhas() {
+  if (!configGlobal.urlRealizado) {
+    alert("Vá em Configurações e cole o link da Planilha Unificada do Realizado (Publicada na Web em formato CSV).");
+    return;
+  }
+
   const btn = document.getElementById('btn-sync');
-  if (btn) btn.innerText = "⏳ A Sincronizar Dados...";
+  if (btn) btn.innerText = "⏳ A Sincronizar...";
 
   try {
-    // 1. Limpar acumulados atuais de todas as obras (mantendo os links guardados)
+    // 1. Limpar acumulados atuais de todas as obras (mantendo configurações)
     Object.keys(obrasBD).forEach(k => {
       obrasBD[k].realizadoTotal = 0;
       obrasBD[k].categoriasRealizado = {};
@@ -120,10 +135,9 @@ async function sincronizarTodasPlanilhas() {
     });
 
     // 2. Extrair dados da Planilha de Realizado (Unificada)
-    const dadosRealizado = await buscarCSV(configGlobal.urlRealizado).catch(() => []);
+    const dadosRealizado = await buscarCSV(configGlobal.urlRealizado);
     
     dadosRealizado.forEach(linha => {
-      // Procura a coluna do departamento/obra de forma flexível
       const chaveDepto = Object.keys(linha).find(k => k.trim().toUpperCase().includes("DEPARTAMENTO") || k.trim().toUpperCase().includes("CENTRO DE CUSTO"));
       const deptoOriginal = chaveDepto ? (linha[chaveDepto] || "").trim() : "";
       
@@ -137,7 +151,6 @@ async function sincronizarTodasPlanilhas() {
         };
       }
 
-      // Procura a coluna do Valor
       const chaveValor = Object.keys(linha).find(k => k.trim().toUpperCase().includes("VALOR LÍQUIDO") || k.trim().toUpperCase().includes("VALOR DA CONTA"));
       let valorStr = chaveValor ? String(linha[chaveValor] || "0") : "0";
       let valor = Math.abs(parseFloat(valorStr.replace("R$", "").replace(/\./g, "").replace(",", ".").trim()) || 0);
@@ -151,37 +164,37 @@ async function sincronizarTodasPlanilhas() {
       }
     });
 
-    // 3. Processar Planilhas de Previsto (Apenas para obras que tenham um link configurado)
+    // 3. Processar Planilhas de Previsto das obras
     const promessasPrevisto = Object.keys(obrasBD).map(async (key) => {
       const obra = obrasBD[key];
       if (obra.urlPrevistoCSV && obra.urlPrevistoCSV.trim() !== "") {
-        const dadosPrevisto = await buscarCSV(obra.urlPrevistoCSV).catch(() => []);
-        
-        dadosPrevisto.forEach(linha => {
-          const chaveCat = Object.keys(linha).find(k => k.trim().toUpperCase() === "CATEGORIA BP" || k.trim().toUpperCase() === "NATUREZA/GRUPO");
-          const catBP = chaveCat ? (linha[chaveCat] || "Outros").trim() : "Outros";
-          
-          const chaveCusto = Object.keys(linha).find(k => k.trim().toUpperCase() === "CUSTO TOTAL (R$)");
-          let custoStr = chaveCusto ? String(linha[chaveCusto] || "0") : "0";
-          let custoTotal = parseFloat(custoStr.replace("R$", "").replace(/\./g, "").replace(",", ".").trim()) || 0;
-          
-          obra.categoriasPrevisto[catBP] = (obra.categoriasPrevisto[catBP] || 0) + custoTotal;
-        });
-
-        obra.previstoTotal = Object.values(obra.categoriasPrevisto).reduce((a, b) => a + b, 0);
+        try {
+          const dadosPrevisto = await buscarCSV(obra.urlPrevistoCSV);
+          dadosPrevisto.forEach(linha => {
+            const chaveCat = Object.keys(linha).find(k => k.trim().toUpperCase() === "CATEGORIA BP" || k.trim().toUpperCase() === "NATUREZA/GRUPO");
+            const catBP = chaveCat ? (linha[chaveCat] || "Outros").trim() : "Outros";
+            
+            const chaveCusto = Object.keys(linha).find(k => k.trim().toUpperCase().includes("CUSTO TOTAL"));
+            let custoStr = chaveCusto ? String(linha[chaveCusto] || "0") : "0";
+            let custoTotal = parseFloat(custoStr.replace("R$", "").replace(/\./g, "").replace(",", ".").trim()) || 0;
+            
+            obra.categoriasPrevisto[catBP] = (obra.categoriasPrevisto[catBP] || 0) + custoTotal;
+          });
+          obra.previstoTotal = Object.values(obra.categoriasPrevisto).reduce((a, b) => a + b, 0);
+        } catch(err) {
+          console.warn(`Aviso: Não foi possível ler o Previsto da obra ${obra.nome}. Certifique-se que o link é CSV.`, err);
+        }
       }
     });
 
     await Promise.all(promessasPrevisto);
 
-    // Guardar estado final no disco
     localStorage.setItem('obras_bp', JSON.stringify(obrasBD));
-
     popularSeletorObras();
     atualizarDashboard();
 
   } catch (error) {
-    alert("Ocorreu um erro ao sincronizar os dados. Verifique as permissões de acesso da planilha (Publicar na Web).");
+    alert("Erro na leitura: " + (error || "Verifique o formato da planilha. Lembre-se de converter para Google Sheets e 'Publicar na Web' como CSV."));
     console.error(error);
   } finally {
     if (btn) btn.innerHTML = "🔄 Sincronizar Google Sheets";
@@ -189,7 +202,7 @@ async function sincronizarTodasPlanilhas() {
 }
 
 // ==========================================
-// DASHBOARD & FAROL
+// DASHBOARD E FAROL
 // ==========================================
 function popularSeletorObras() {
   const seletor = document.getElementById('seletor-obra');
@@ -198,7 +211,7 @@ function popularSeletorObras() {
   const chaves = Object.keys(obrasBD).filter(k => obrasBD[k].status !== "Arquivada");
 
   if (chaves.length === 0) {
-    seletor.innerHTML = `<option value="">A aguardar sincronização...</option>`;
+    seletor.innerHTML = `<option value="">Nenhuma obra detectada.</option>`;
     obraAtivaID = null;
     return;
   }
@@ -245,7 +258,7 @@ function atualizarDashboard() {
   document.getElementById('kpi-desvio').innerText = (desvio >= 0 ? "+ " : "") + desvio.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
   document.getElementById('kpi-idc').innerText = idc;
 
-  // Lógica do Farol (Tabela)
+  // Tabela Farol
   const tbody = document.getElementById('tabela-dre-body');
   tbody.innerHTML = '';
 
@@ -293,7 +306,7 @@ function atualizarDashboard() {
       `;
     });
   } else {
-    tbody.innerHTML = `<tr><td colspan="6" class="p-4 text-center text-gray-400">Nenhum dado financeiro para demonstrar.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="6" class="p-4 text-center text-gray-400">Nenhum dado financeiro processado.</td></tr>`;
   }
 
   document.getElementById('farol-verde-count').innerText = countVerde;
@@ -304,7 +317,7 @@ function atualizarDashboard() {
 }
 
 // ==========================================
-// RENDERIZAÇÃO DE GRÁFICOS DINÂMICOS
+// RENDERIZAÇÃO DE GRÁFICOS
 // ==========================================
 function renderizarGridGraficosDinamicos(obra) {
   const container = document.getElementById('grid-graficos-dinamicos');
@@ -347,11 +360,11 @@ function renderizarGridGraficosDinamicos(obra) {
 }
 
 // ==========================================
-// CONFIGURAÇÕES E GESTÃO DE OBRAS (C/ VÍNCULO DE PREVISTO)
+// CONFIGURAÇÕES E GERENCIAMENTO DE OBRAS
 // ==========================================
 function abrirModalConfiguracoes() {
   document.getElementById('config-app-title').value = configGlobal.titulo;
-  document.getElementById('config-url-unificada').value = configGlobal.urlRealizado;
+  document.getElementById('config-url-unificada').value = configGlobal.urlRealizado || "";
   renderizarTabelaGestaoObras();
   renderizarListaGraficosConfig();
   document.getElementById('modal-configuracoes').classList.remove('hidden');
@@ -374,7 +387,7 @@ function renderizarTabelaGestaoObras() {
   tbody.innerHTML = '';
   
   if(Object.keys(obrasBD).length === 0) {
-    tbody.innerHTML = `<tr><td colspan="4" class="p-3 text-center text-gray-400">Clique em 'Sincronizar Google Sheets' no dashboard para descobrir obras.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="4" class="p-3 text-center text-gray-400">Nenhuma obra na memória. Execute a sincronização.</td></tr>`;
   }
 
   Object.keys(obrasBD).forEach(id => {
@@ -383,7 +396,7 @@ function renderizarTabelaGestaoObras() {
       <tr>
         <td class="p-2 font-bold text-gray-600">${o.cc}</td>
         <td class="p-2"><input type="text" value="${o.nome}" onchange="atualizarCampoObra('${id}', 'nome', this.value)" class="border p-1 rounded w-full"></td>
-        <td class="p-2"><input type="url" placeholder="Cole o link CSV da Planilha Previsto..." value="${o.urlPrevistoCSV}" onchange="atualizarCampoObra('${id}', 'urlPrevistoCSV', this.value)" class="border p-1 rounded w-full text-[10px]"></td>
+        <td class="p-2"><input type="url" placeholder="Cole o Link (Publicado Web > CSV)..." value="${o.urlPrevistoCSV}" onchange="atualizarCampoObra('${id}', 'urlPrevistoCSV', this.value)" class="border p-1 rounded w-full text-[10px]"></td>
         <td class="p-2 text-center space-x-1">
           <button onclick="alternarStatusArquivado('${id}')" class="bg-amber-500 text-white px-2 py-1 rounded text-[10px] font-bold">${o.status === 'Ativa' ? 'Arquivar' : 'Reativar'}</button>
           <button onclick="excluirObra('${id}')" class="bg-red-600 text-white px-2 py-1 rounded text-[10px] font-bold">Excluir</button>
@@ -411,7 +424,7 @@ function alternarStatusArquivado(id) {
 }
 
 function excluirObra(id) {
-  if (confirm(`Tem a certeza que deseja excluir os registos da obra ${obrasBD[id].nome}?`)) {
+  if (confirm(`Excluir ${obrasBD[id].nome}? Ela reaparecerá na próxima sincronização se continuar na planilha.`)) {
     delete obrasBD[id];
     localStorage.setItem('obras_bp', JSON.stringify(obrasBD));
     popularSeletorObras();
@@ -459,17 +472,17 @@ function salvarConfiguracoesGerais() {
   }
   
   if (novaURLRealizado) configGlobal.urlRealizado = novaURLRealizado;
-  
   localStorage.setItem('config_bp', JSON.stringify(configGlobal));
+  
   fecharModalConfiguracoes();
   
-  if (confirm("Configurações salvas! Deseja executar uma nova Sincronização de Dados agora?")) {
+  if (confirm("Configurações salvas! Sincronizar dados agora para aplicar o novo link?")) {
     sincronizarTodasPlanilhas();
   }
 }
 
 // ==========================================
-// GESTÃO DE USUÁRIOS E PERMISSÕES
+// GESTÃO DE USUÁRIOS
 // ==========================================
 function abrirModalUsuarios() { renderizarPainelUsuarios(); document.getElementById('modal-usuarios').classList.remove('hidden'); }
 function fecharModalUsuarios() { document.getElementById('modal-usuarios').classList.add('hidden'); }
@@ -496,7 +509,6 @@ function solicitarCadastro() {
   const senha = document.getElementById('solic-senha').value.trim();
 
   if (!nome || !email || !usuario || !senha) return alert("Preencha os campos.");
-
   solicitacoesPendentesBD.push({ id: Date.now(), nome, email, usuario, senha, perfil: "Engenheiro", status: "Pendente" });
   exibirFormLogin();
   alert("Solicitação enviada!");
@@ -546,7 +558,6 @@ function aprovarSolicitacao(id) {
 function aplicarPermissoesPerfil() {
   document.getElementById('user-display-name').innerText = usuarioAutenticado.nome;
   document.getElementById('user-display-role').innerText = usuarioAutenticado.perfil;
-
   if (usuarioAutenticado.perfil === "Mestre") {
     document.getElementById('btn-gestao-usuarios').classList.remove('hidden');
     document.getElementById('btn-configuracoes').classList.remove('hidden');
