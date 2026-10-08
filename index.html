@@ -23,18 +23,18 @@
         <p class="text-xs text-gray-500 font-medium">Controladoria & Engenharia de Custos</p>
       </div>
 
-      <!-- FORMULÁRIO DE LOGIN (AGORA ACEITA A TECLA ENTER) -->
-      <form id="form-login" onsubmit="executarLogin(event)" class="space-y-4">
+      <!-- FORMULÁRIO DE LOGIN (Protegido - Sem <form> para evitar recarregamento) -->
+      <div id="box-login" class="space-y-4">
         <div>
           <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Usuário ou E-mail:</label>
-          <input type="text" id="login-usuario" placeholder="Digite seu usuário..." class="w-full text-xs border border-gray-300 rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-[#003399]">
+          <input type="text" id="login-usuario" onkeypress="if(event.key === 'Enter') executarLogin()" placeholder="Digite seu usuário..." class="w-full text-xs border border-gray-300 rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-[#003399]">
         </div>
         <div>
           <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Senha de Acesso:</label>
-          <input type="password" id="login-senha" placeholder="••••••••" class="w-full text-xs border border-gray-300 rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-[#003399]">
+          <input type="password" id="login-senha" onkeypress="if(event.key === 'Enter') executarLogin()" placeholder="••••••••" class="w-full text-xs border border-gray-300 rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-[#003399]">
         </div>
 
-        <button type="submit" id="btn-entrar" class="w-full bg-[#003399] hover:bg-[#002266] text-white font-bold text-xs py-3 rounded-lg transition-all shadow-md">
+        <button type="button" id="btn-entrar" onclick="executarLogin()" class="w-full bg-[#003399] hover:bg-[#002266] text-white font-bold text-xs py-3 rounded-lg transition-all shadow-md">
           Entrar no Sistema
         </button>
 
@@ -43,38 +43,38 @@
             <button type="button" onclick="exibirFormSolicitacao()" class="text-[#003399] font-bold hover:underline">Solicitar Acesso</button>
           </p>
         </div>
-      </form>
+      </div>
 
       <!-- FORMULÁRIO DE SOLICITAÇÃO -->
-      <form id="form-solicitacao" onsubmit="solicitarCadastro(event)" class="space-y-4 hidden">
+      <div id="box-solicitacao" class="space-y-4 hidden">
         <div class="bg-amber-50 border-l-4 border-amber-400 p-2.5 rounded text-[11px] text-amber-800">
           ℹ️ Seu cadastro precisará da <strong>aprovação do usuário Mestre</strong>.
         </div>
         <div>
           <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Nome Completo:</label>
-          <input type="text" id="solic-nome" required placeholder="Seu nome..." class="w-full text-xs border border-gray-300 rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-[#003399]">
+          <input type="text" id="solic-nome" placeholder="Seu nome..." class="w-full text-xs border border-gray-300 rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-[#003399]">
         </div>
         <div>
           <label class="block text-xs font-bold text-gray-700 uppercase mb-1">E-mail Corporativo:</label>
-          <input type="email" id="solic-email" required placeholder="seuemail@brasilpontes.com.br" class="w-full text-xs border border-gray-300 rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-[#003399]">
+          <input type="email" id="solic-email" placeholder="seuemail@brasilpontes.com.br" class="w-full text-xs border border-gray-300 rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-[#003399]">
         </div>
         <div>
           <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Usuário desejado:</label>
-          <input type="text" id="solic-usuario" required placeholder="ex: joao_silva" class="w-full text-xs border border-gray-300 rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-[#003399]">
+          <input type="text" id="solic-usuario" placeholder="ex: joao_silva" class="w-full text-xs border border-gray-300 rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-[#003399]">
         </div>
         <div>
           <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Senha:</label>
-          <input type="password" id="solic-senha" required placeholder="••••••••" class="w-full text-xs border border-gray-300 rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-[#003399]">
+          <input type="password" id="solic-senha" placeholder="••••••••" class="w-full text-xs border border-gray-300 rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-[#003399]">
         </div>
 
-        <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs py-3 rounded-lg transition-all shadow-md">
+        <button type="button" onclick="solicitarCadastro()" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs py-3 rounded-lg transition-all shadow-md">
           Enviar Solicitação ao Mestre
         </button>
 
         <div class="text-center pt-2 border-t border-gray-100">
           <button type="button" onclick="exibirFormLogin()" class="text-xs text-gray-500 font-bold hover:underline">← Voltar para o Login</button>
         </div>
-      </form>
+      </div>
     </div>
   </div>
 
@@ -325,11 +325,12 @@
     </div>
   </div>
 
-  <!-- SCRIPTS MOVIDOS PARA O FUNDO PARA EVITAR TRAVAMENTO DE RENDERIZAÇÃO -->
+  <!-- SCRIPTS EXTERNOS -->
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  
   <script src="app.js"></script>
 </body>
 </html>
