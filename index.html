@@ -1,402 +1,568 @@
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Brasil Pontes - Controladoria & Engenharia de Custos</title>
-  
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
-  <link rel="stylesheet" href="style.css">
+// ==========================================
+// ESTADOS E BANCO DE DADOS LOCAL (MEMÓRIA)
+// ==========================================
+let usuariosBD = [
+  { nome: "Vinícius Souza (Mestre)", usuario: "vinicius_souzaf", email: "mestre@brasilpontes.com.br", senha: "741852963", perfil: "Mestre", status: "Aprovado" }
+];
+let solicitacoesPendentesBD = [];
 
-  <script>
-    tailwind.config = {
-      theme: {
-        extend: {
-          colors: {
-            bp: {
-              blue: '#003399',
-              light: '#00CFFF',
-              dark: '#002266',
-              bg: '#F4F6F9'
-            }
-          }
+// Obter configurações globais e obras do LocalStorage
+let configGlobal = JSON.parse(localStorage.getItem('config_bp')) || {
+  titulo: "Brasil Pontes",
+  urlRealizado: ""
+};
+
+let obrasBD = JSON.parse(localStorage.getItem('obras_bp')) || {};
+
+let graficosConfig = [
+  { id: "chart_categoria_comp", titulo: "Comparativo Previsto x Realizado por Categoria BP", tipo: "bar", metrica: "categoria" },
+  { id: "chart_curva_s", titulo: "Evolução do Desempenho Orçamentário", tipo: "line", metrica: "curvaS" }
+];
+
+let graficosInstancias = {};
+let usuarioAutenticado = null;
+let obraAtivaID = null;
+let multiplicadorCenario = 1;
+
+// ==========================================
+// FUNÇÕES UTILITÁRIAS E LEITURA DA API GOOGLE
+// ==========================================
+function obterLinkCSV(url) {
+  if (!url) return "";
+  // Se já for um link publicado para CSV, retorna direto
+  if (url.includes("/pub?output=csv")) return url;
+
+  // Tenta forçar a conversão se for um link de edição "Qualquer um com link"
+  if (url.includes("/edit") || url.includes("usp=")) {
+    const match = url.match(/\/d\/([a-zA-Z0-9-_]+)/);
+    if (match && match[1]) {
+      return `https://docs.google.com/spreadsheets/d/${match[1]}/gviz/tq?tqx=out:csv`;
+    }
+  }
+  return url;
+}
+
+const buscarCSV = (url) => new Promise((resolve, reject) => {
+  Papa.parse(obterLinkCSV(url), {
+    download: true,
+    header: true,
+    skipEmptyLines: true,
+    complete: (results) => {
+      // Verifica se o Google bloqueou e retornou uma página HTML de erro ao invés de dados
+      if (results.data.length > 0 && Object.keys(results.data[0]).some(key => key && key.toLowerCase().includes("<!doctype html>"))) {
+        reject("Acesso Bloqueado. A planilha deve ser 'Publicada na Web' no formato CSV.");
+      } else {
+        resolve(results.data);
+      }
+    },
+    error: (err) => reject(err)
+  });
+});
+
+// ==========================================
+// INICIALIZAÇÃO E SESSÃO
+// ==========================================
+window.onload = function() {
+  document.getElementById('header-app-title').innerText = configGlobal.titulo;
+  document.getElementById('login-app-title').innerText = configGlobal.titulo;
+
+  const sessaoSalva = localStorage.getItem('usuario_bp');
+  if (sessaoSalva) {
+    try { usuarioAutenticado = JSON.parse(sessaoSalva); } catch(e) { usuarioAutenticado = null; }
+  }
+  verificarSessao();
+};
+
+function verificarSessao() {
+  if (!usuarioAutenticado) {
+    document.getElementById('screen-login').classList.remove('hidden');
+    document.getElementById('app-container').classList.add('hidden');
+  } else {
+    document.getElementById('screen-login').classList.add('hidden');
+    document.getElementById('app-container').classList.remove('hidden');
+    popularSeletorObras();
+    atualizarDashboard();
+    aplicarPermissoesPerfil();
+  }
+}
+
+// LOGIN & LOGOUT
+function executarLogin() {
+  const inputUser = document.getElementById('login-usuario').value.trim();
+  const inputSenha = document.getElementById('login-senha').value.trim();
+
+  if (!inputUser || !inputSenha) return alert("Preencha usuário e senha.");
+  const user = usuariosBD.find(u => (u.usuario === inputUser || u.email === inputUser) && u.senha === inputSenha);
+
+  if (user) {
+    if (user.status === "Aprovado") {
+      usuarioAutenticado = user;
+      localStorage.setItem('usuario_bp', JSON.stringify(user));
+      verificarSessao();
+    } else {
+      alert("Acesso pendente de aprovação pelo Mestre.");
+    }
+  } else {
+    alert("Usuário ou senha incorretos.");
+  }
+}
+
+function executarLogout() {
+  usuarioAutenticado = null;
+  localStorage.removeItem('usuario_bp');
+  verificarSessao();
+}
+
+// ==========================================
+// SINCRONIZAÇÃO COMPLETA DE DADOS
+// ==========================================
+async function sincronizarTodasPlanilhas() {
+  if (!configGlobal.urlRealizado) {
+    alert("Vá em Configurações e cole o link da Planilha Unificada do Realizado (Publicada na Web em formato CSV).");
+    return;
+  }
+
+  const btn = document.getElementById('btn-sync');
+  if (btn) btn.innerText = "⏳ A Sincronizar...";
+
+  try {
+    // 1. Limpar acumulados atuais de todas as obras (mantendo configurações)
+    Object.keys(obrasBD).forEach(k => {
+      obrasBD[k].realizadoTotal = 0;
+      obrasBD[k].categoriasRealizado = {};
+      obrasBD[k].previstoTotal = 0;
+      obrasBD[k].categoriasPrevisto = {};
+    });
+
+    // 2. Extrair dados da Planilha de Realizado (Unificada)
+    const dadosRealizado = await buscarCSV(configGlobal.urlRealizado);
+    
+    dadosRealizado.forEach(linha => {
+      const chaveDepto = Object.keys(linha).find(k => k.trim().toUpperCase().includes("DEPARTAMENTO") || k.trim().toUpperCase().includes("CENTRO DE CUSTO"));
+      const deptoOriginal = chaveDepto ? (linha[chaveDepto] || "").trim() : "";
+      
+      if (!deptoOriginal || deptoOriginal === "N/D" || deptoOriginal === "0.0") return;
+      const deptoID = deptoOriginal.toUpperCase();
+
+      if (!obrasBD[deptoID]) {
+        obrasBD[deptoID] = {
+          id: deptoID, nome: deptoOriginal, cc: deptoOriginal, responsavel: "Não Atribuído", status: "Ativa",
+          urlPrevistoCSV: "", previstoTotal: 0, realizadoTotal: 0, categoriasPrevisto: {}, categoriasRealizado: {}
+        };
+      }
+
+      const chaveValor = Object.keys(linha).find(k => k.trim().toUpperCase().includes("VALOR LÍQUIDO") || k.trim().toUpperCase().includes("VALOR DA CONTA"));
+      let valorStr = chaveValor ? String(linha[chaveValor] || "0") : "0";
+      let valor = Math.abs(parseFloat(valorStr.replace("R$", "").replace(/\./g, "").replace(",", ".").trim()) || 0);
+
+      const chaveCategoria = Object.keys(linha).find(k => k.trim().toUpperCase() === "CATEGORIA");
+      const categoria = chaveCategoria ? (linha[chaveCategoria] || "Outros").trim() : "Outros";
+
+      if (obrasBD[deptoID].status !== "Arquivada") {
+        obrasBD[deptoID].realizadoTotal += valor;
+        obrasBD[deptoID].categoriasRealizado[categoria] = (obrasBD[deptoID].categoriasRealizado[categoria] || 0) + valor;
+      }
+    });
+
+    // 3. Processar Planilhas de Previsto das obras
+    const promessasPrevisto = Object.keys(obrasBD).map(async (key) => {
+      const obra = obrasBD[key];
+      if (obra.urlPrevistoCSV && obra.urlPrevistoCSV.trim() !== "") {
+        try {
+          const dadosPrevisto = await buscarCSV(obra.urlPrevistoCSV);
+          dadosPrevisto.forEach(linha => {
+            const chaveCat = Object.keys(linha).find(k => k.trim().toUpperCase() === "CATEGORIA BP" || k.trim().toUpperCase() === "NATUREZA/GRUPO");
+            const catBP = chaveCat ? (linha[chaveCat] || "Outros").trim() : "Outros";
+            
+            const chaveCusto = Object.keys(linha).find(k => k.trim().toUpperCase().includes("CUSTO TOTAL"));
+            let custoStr = chaveCusto ? String(linha[chaveCusto] || "0") : "0";
+            let custoTotal = parseFloat(custoStr.replace("R$", "").replace(/\./g, "").replace(",", ".").trim()) || 0;
+            
+            obra.categoriasPrevisto[catBP] = (obra.categoriasPrevisto[catBP] || 0) + custoTotal;
+          });
+          obra.previstoTotal = Object.values(obra.categoriasPrevisto).reduce((a, b) => a + b, 0);
+        } catch(err) {
+          console.warn(`Aviso: Não foi possível ler o Previsto da obra ${obra.nome}. Certifique-se que o link é CSV.`, err);
         }
       }
-    }
-  </script>
-</head>
-<body class="bg-bp-bg font-sans text-gray-800 antialiased min-h-screen flex flex-col">
+    });
 
-  <!-- TELA DE LOGIN / CADASTRO -->
-  <div id="screen-login" class="fixed inset-0 bg-bp-blue z-50 flex items-center justify-center p-4">
-    <div class="bg-white rounded-2xl max-w-md w-full p-8 shadow-2xl border border-bp-light/20 space-y-6 relative">
-      <div class="text-center space-y-2">
-        <div class="inline-flex bg-bp-blue p-3 rounded-xl shadow-md mb-2">
-          <span class="text-white font-black text-3xl tracking-tighter flex items-center">
-            <span class="text-bp-light mr-1">✦</span>BP
-          </span>
-        </div>
-        <h2 id="login-app-title" class="text-2xl font-black text-bp-blue">Brasil Pontes</h2>
-        <p class="text-xs text-gray-500 font-medium">Controladoria & Engenharia de Custos</p>
+    await Promise.all(promessasPrevisto);
+
+    localStorage.setItem('obras_bp', JSON.stringify(obrasBD));
+    popularSeletorObras();
+    atualizarDashboard();
+
+  } catch (error) {
+    alert("Erro na leitura: " + (error || "Verifique o formato da planilha. Lembre-se de converter para Google Sheets e 'Publicar na Web' como CSV."));
+    console.error(error);
+  } finally {
+    if (btn) btn.innerHTML = "🔄 Sincronizar Google Sheets";
+  }
+}
+
+// ==========================================
+// DASHBOARD E FAROL
+// ==========================================
+function popularSeletorObras() {
+  const seletor = document.getElementById('seletor-obra');
+  seletor.innerHTML = '';
+  
+  const chaves = Object.keys(obrasBD).filter(k => obrasBD[k].status !== "Arquivada");
+
+  if (chaves.length === 0) {
+    seletor.innerHTML = `<option value="">Nenhuma obra detectada.</option>`;
+    obraAtivaID = null;
+    return;
+  }
+
+  chaves.forEach(k => {
+    seletor.innerHTML += `<option value="${k}">${obrasBD[k].nome}</option>`;
+  });
+
+  if (!obraAtivaID || !obrasBD[obraAtivaID] || obrasBD[obraAtivaID].status === "Arquivada") {
+    obraAtivaID = chaves[0];
+  }
+  seletor.value = obraAtivaID;
+}
+
+function alterarObraAtiva(id) {
+  obraAtivaID = id;
+  atualizarDashboard();
+}
+
+function aplicarCenario(fator) {
+  multiplicadorCenario = parseFloat(fator);
+  atualizarDashboard();
+}
+
+function atualizarDashboard() {
+  if (!obraAtivaID || !obrasBD[obraAtivaID]) return;
+
+  const obra = obrasBD[obraAtivaID];
+
+  document.getElementById('obra-titulo').innerText = obra.nome;
+  document.getElementById('obra-cc').innerText = obra.cc;
+  document.getElementById('obra-resp').innerText = obra.responsavel;
+  
+  const badge = document.getElementById('obra-badge-status');
+  badge.innerText = obra.status;
+  badge.className = obra.status === "Ativa" ? "bg-emerald-100 text-emerald-800 text-xs font-bold px-2.5 py-0.5 rounded-full" : "bg-amber-100 text-amber-800 text-xs font-bold px-2.5 py-0.5 rounded-full";
+
+  const previstoAjustado = obra.previstoTotal * multiplicadorCenario;
+  const desvio = previstoAjustado - obra.realizadoTotal;
+  const idc = obra.realizadoTotal > 0 ? (previstoAjustado / obra.realizadoTotal).toFixed(2) : "0.00";
+
+  document.getElementById('kpi-previsto').innerText = previstoAjustado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  document.getElementById('kpi-realizado').innerText = obra.realizadoTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  document.getElementById('kpi-desvio').innerText = (desvio >= 0 ? "+ " : "") + desvio.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  document.getElementById('kpi-idc').innerText = idc;
+
+  // Tabela Farol
+  const tbody = document.getElementById('tabela-dre-body');
+  tbody.innerHTML = '';
+
+  const todasCategorias = Array.from(new Set([...Object.keys(obra.categoriasPrevisto || {}), ...Object.keys(obra.categoriasRealizado || {})]));
+
+  let countVerde = 0; let countAmarelo = 0; let countVermelho = 0;
+
+  if (todasCategorias.length > 0) {
+    todasCategorias.forEach(cat => {
+      const prev = ((obra.categoriasPrevisto && obra.categoriasPrevisto[cat]) || 0) * multiplicadorCenario;
+      const real = (obra.categoriasRealizado && obra.categoriasRealizado[cat]) || 0;
+      const saldo = prev - real;
+      
+      let percUso = 0;
+      if (prev > 0) percUso = (real / prev) * 100;
+      else if (real > 0) percUso = 999;
+
+      let farolClass = ''; let farolTexto = ''; let farolIcone = ''; let corSaldo = '';
+
+      if (percUso > 100 || (prev === 0 && real > 0)) {
+        farolClass = 'bg-red-100 text-red-800 border border-red-200';
+        farolTexto = prev === 0 ? 'NÃO PREVISTO' : 'ESTOURADO';
+        farolIcone = '🔴'; corSaldo = 'text-red-600'; countVermelho++;
+      } else if (percUso >= 85) {
+        farolClass = 'bg-amber-100 text-amber-800 border border-amber-200';
+        farolTexto = 'ATENÇÃO'; farolIcone = '🟡'; corSaldo = 'text-amber-600'; countAmarelo++;
+      } else {
+        farolClass = 'bg-emerald-100 text-emerald-800 border border-emerald-200';
+        farolTexto = 'SEGURO'; farolIcone = '🟢'; corSaldo = 'text-emerald-600'; countVerde++;
+      }
+
+      const percExibicao = percUso === 999 ? "∞" : percUso.toFixed(1) + "%";
+
+      tbody.innerHTML += `
+        <tr class="hover:bg-gray-50 transition-colors">
+          <td class="p-3 text-bp-blue font-bold">${cat}</td>
+          <td class="p-3 text-right">${prev.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
+          <td class="p-3 text-right">${real.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
+          <td class="p-3 text-center font-bold ${corSaldo}">${percExibicao}</td>
+          <td class="p-3 text-right font-black ${corSaldo}">${(saldo >= 0 ? "+ " : "") + saldo.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
+          <td class="p-3 text-center">
+            <span class="px-2.5 py-1 rounded-lg text-[10px] font-black uppercase flex items-center justify-center gap-1 ${farolClass}">${farolIcone} ${farolTexto}</span>
+          </td>
+        </tr>
+      `;
+    });
+  } else {
+    tbody.innerHTML = `<tr><td colspan="6" class="p-4 text-center text-gray-400">Nenhum dado financeiro processado.</td></tr>`;
+  }
+
+  document.getElementById('farol-verde-count').innerText = countVerde;
+  document.getElementById('farol-amarelo-count').innerText = countAmarelo;
+  document.getElementById('farol-vermelho-count').innerText = countVermelho;
+
+  renderizarGridGraficosDinamicos(obra);
+}
+
+// ==========================================
+// RENDERIZAÇÃO DE GRÁFICOS
+// ==========================================
+function renderizarGridGraficosDinamicos(obra) {
+  const container = document.getElementById('grid-graficos-dinamicos');
+  container.innerHTML = '';
+
+  Object.keys(graficosInstancias).forEach(id => { if (graficosInstancias[id]) graficosInstancias[id].destroy(); });
+  graficosInstancias = {};
+
+  graficosConfig.forEach(cfg => {
+    container.innerHTML += `
+      <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+        <h3 class="font-bold text-bp-blue text-base mb-4">${cfg.titulo}</h3>
+        <div class="relative h-72"><canvas id="${cfg.id}"></canvas></div>
       </div>
+    `;
+  });
 
-      <div id="box-login" class="space-y-4">
-        <div>
-          <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Usuário ou E-mail:</label>
-          <input type="text" id="login-usuario" placeholder="Digite seu usuário..." class="w-full text-xs border border-gray-300 rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-bp-blue">
-        </div>
-        <div>
-          <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Senha de Acesso:</label>
-          <input type="password" id="login-senha" placeholder="••••••••" class="w-full text-xs border border-gray-300 rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-bp-blue">
-        </div>
+  setTimeout(() => {
+    graficosConfig.forEach(cfg => {
+      const canvasElem = document.getElementById(cfg.id);
+      if (!canvasElem) return;
 
-        <button type="button" onclick="executarLogin()" class="w-full bg-bp-blue hover:bg-bp-dark text-white font-bold text-xs py-3 rounded-lg transition-all shadow-md">
-          Entrar no Sistema
-        </button>
+      const ctx = canvasElem.getContext('2d');
+      const cats = Array.from(new Set([...Object.keys(obra.categoriasPrevisto || {}), ...Object.keys(obra.categoriasRealizado || {})]));
+      
+      const prevVals = cats.map(c => ((obra.categoriasPrevisto && obra.categoriasPrevisto[c]) || 0) * multiplicadorCenario);
+      const realVals = cats.map(c => (obra.categoriasRealizado && obra.categoriasRealizado[c]) || 0);
 
-        <div class="text-center pt-2 border-t border-gray-100">
-          <p class="text-xs text-gray-500">Não possui conta? 
-            <button type="button" onclick="exibirFormSolicitacao()" class="text-bp-blue font-bold hover:underline">Solicitar Acesso</button>
-          </p>
-        </div>
+      const chartData = {
+        labels: cats.length ? cats : ['Sem dados'],
+        datasets: [
+          { label: 'Previsto (R$)', data: prevVals.length ? prevVals : [0], backgroundColor: '#003399', borderColor: '#003399' },
+          { label: 'Realizado (R$)', data: realVals.length ? realVals : [0], backgroundColor: '#00CFFF', borderColor: '#00CFFF' }
+        ]
+      };
+
+      graficosInstancias[cfg.id] = new Chart(ctx, { type: cfg.tipo, data: chartData, options: { responsive: true, maintainAspectRatio: false } });
+    });
+  }, 100);
+}
+
+// ==========================================
+// CONFIGURAÇÕES E GERENCIAMENTO DE OBRAS
+// ==========================================
+function abrirModalConfiguracoes() {
+  document.getElementById('config-app-title').value = configGlobal.titulo;
+  document.getElementById('config-url-unificada').value = configGlobal.urlRealizado || "";
+  renderizarTabelaGestaoObras();
+  renderizarListaGraficosConfig();
+  document.getElementById('modal-configuracoes').classList.remove('hidden');
+}
+
+function fecharModalConfiguracoes() { document.getElementById('modal-configuracoes').classList.add('hidden'); }
+
+function trocarAbaConfig(aba) {
+  ['geral', 'obras', 'graficos'].forEach(a => {
+    document.getElementById(`cfg-aba-${a}`).classList.add('hidden');
+    document.getElementById(`tab-btn-${a}`).className = "pb-2 text-gray-500 hover:text-bp-blue";
+  });
+  document.getElementById(`cfg-aba-${aba}`).classList.remove('hidden');
+  document.getElementById(`tab-btn-${aba}`).className = "pb-2 border-b-2 border-bp-blue text-bp-blue font-bold";
+  if (aba === 'obras') renderizarTabelaGestaoObras();
+}
+
+function renderizarTabelaGestaoObras() {
+  const tbody = document.getElementById('tabela-gestao-obras-body');
+  tbody.innerHTML = '';
+  
+  if(Object.keys(obrasBD).length === 0) {
+    tbody.innerHTML = `<tr><td colspan="4" class="p-3 text-center text-gray-400">Nenhuma obra na memória. Execute a sincronização.</td></tr>`;
+  }
+
+  Object.keys(obrasBD).forEach(id => {
+    const o = obrasBD[id];
+    tbody.innerHTML += `
+      <tr>
+        <td class="p-2 font-bold text-gray-600">${o.cc}</td>
+        <td class="p-2"><input type="text" value="${o.nome}" onchange="atualizarCampoObra('${id}', 'nome', this.value)" class="border p-1 rounded w-full"></td>
+        <td class="p-2"><input type="url" placeholder="Cole o Link (Publicado Web > CSV)..." value="${o.urlPrevistoCSV}" onchange="atualizarCampoObra('${id}', 'urlPrevistoCSV', this.value)" class="border p-1 rounded w-full text-[10px]"></td>
+        <td class="p-2 text-center space-x-1">
+          <button onclick="alternarStatusArquivado('${id}')" class="bg-amber-500 text-white px-2 py-1 rounded text-[10px] font-bold">${o.status === 'Ativa' ? 'Arquivar' : 'Reativar'}</button>
+          <button onclick="excluirObra('${id}')" class="bg-red-600 text-white px-2 py-1 rounded text-[10px] font-bold">Excluir</button>
+        </td>
+      </tr>
+    `;
+  });
+}
+
+function atualizarCampoObra(id, campo, valor) {
+  if (obrasBD[id]) {
+    obrasBD[id][campo] = valor;
+    localStorage.setItem('obras_bp', JSON.stringify(obrasBD));
+  }
+}
+
+function alternarStatusArquivado(id) {
+  if (obrasBD[id]) {
+    obrasBD[id].status = obrasBD[id].status === 'Ativa' ? 'Arquivada' : 'Ativa';
+    localStorage.setItem('obras_bp', JSON.stringify(obrasBD));
+    popularSeletorObras();
+    renderizarTabelaGestaoObras();
+    atualizarDashboard();
+  }
+}
+
+function excluirObra(id) {
+  if (confirm(`Excluir ${obrasBD[id].nome}? Ela reaparecerá na próxima sincronização se continuar na planilha.`)) {
+    delete obrasBD[id];
+    localStorage.setItem('obras_bp', JSON.stringify(obrasBD));
+    popularSeletorObras();
+    renderizarTabelaGestaoObras();
+    atualizarDashboard();
+  }
+}
+
+function adicionarNovoGrafico() {
+  const titulo = document.getElementById('novo-chart-titulo').value.trim();
+  const tipo = document.getElementById('novo-chart-tipo').value;
+  const metrica = document.getElementById('novo-chart-metrica').value;
+  if (!titulo) return alert("Digite o título do gráfico.");
+  graficosConfig.push({ id: `chart_custom_${Date.now()}`, titulo, tipo, metrica });
+  document.getElementById('novo-chart-titulo').value = '';
+  renderizarListaGraficosConfig();
+}
+
+function removerGrafico(id) {
+  graficosConfig = graficosConfig.filter(g => g.id !== id);
+  renderizarListaGraficosConfig();
+}
+
+function renderizarListaGraficosConfig() {
+  const div = document.getElementById('lista-graficos-config');
+  div.innerHTML = '';
+  graficosConfig.forEach(g => {
+    div.innerHTML += `
+      <div class="flex justify-between items-center bg-white p-2 border rounded text-xs">
+        <div><strong class="text-bp-blue">${g.titulo}</strong> (${g.tipo.toUpperCase()})</div>
+        <button type="button" onclick="removerGrafico('${g.id}')" class="text-red-600 font-bold hover:underline">Remover</button>
       </div>
+    `;
+  });
+}
 
-      <div id="box-solicitacao" class="space-y-4 hidden">
-        <div class="bg-amber-50 border-l-4 border-amber-400 p-2.5 rounded text-[11px] text-amber-800">
-          ℹ️ Seu cadastro precisará da <strong>aprovação do usuário Mestre</strong>.
-        </div>
-        <div>
-          <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Nome Completo:</label>
-          <input type="text" id="solic-nome" placeholder="Seu nome..." class="w-full text-xs border border-gray-300 rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-bp-blue">
-        </div>
-        <div>
-          <label class="block text-xs font-bold text-gray-700 uppercase mb-1">E-mail Corporativo:</label>
-          <input type="email" id="solic-email" placeholder="seuemail@brasilpontes.com.br" class="w-full text-xs border border-gray-300 rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-bp-blue">
-        </div>
-        <div>
-          <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Usuário desejado:</label>
-          <input type="text" id="solic-usuario" placeholder="ex: joao_silva" class="w-full text-xs border border-gray-300 rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-bp-blue">
-        </div>
-        <div>
-          <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Senha:</label>
-          <input type="password" id="solic-senha" placeholder="••••••••" class="w-full text-xs border border-gray-300 rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-bp-blue">
-        </div>
+function salvarConfiguracoesGerais() {
+  const novoTitulo = document.getElementById('config-app-title').value.trim();
+  const novaURLRealizado = document.getElementById('config-url-unificada').value.trim();
+  
+  if (novoTitulo) {
+    configGlobal.titulo = novoTitulo;
+    document.getElementById('header-app-title').innerText = novoTitulo;
+    document.getElementById('login-app-title').innerText = novoTitulo;
+  }
+  
+  if (novaURLRealizado) configGlobal.urlRealizado = novaURLRealizado;
+  localStorage.setItem('config_bp', JSON.stringify(configGlobal));
+  
+  fecharModalConfiguracoes();
+  
+  if (confirm("Configurações salvas! Sincronizar dados agora para aplicar o novo link?")) {
+    sincronizarTodasPlanilhas();
+  }
+}
 
-        <button type="button" onclick="solicitarCadastro()" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs py-3 rounded-lg transition-all shadow-md">
-          Enviar Solicitação ao Mestre
-        </button>
+// ==========================================
+// GESTÃO DE USUÁRIOS
+// ==========================================
+function abrirModalUsuarios() { renderizarPainelUsuarios(); document.getElementById('modal-usuarios').classList.remove('hidden'); }
+function fecharModalUsuarios() { document.getElementById('modal-usuarios').classList.add('hidden'); }
 
-        <div class="text-center pt-2 border-t border-gray-100">
-          <button type="button" onclick="exibirFormLogin()" class="text-xs text-gray-500 font-bold hover:underline">← Voltar para o Login</button>
-        </div>
-      </div>
-    </div>
-  </div>
+function criarUsuarioDireto() {
+  const nome = document.getElementById('novo-usr-nome').value.trim();
+  const email = document.getElementById('novo-usr-email').value.trim();
+  const usuario = document.getElementById('novo-usr-login').value.trim();
+  const senha = document.getElementById('novo-usr-senha').value.trim();
+  const perfil = document.getElementById('novo-usr-perfil').value;
 
-  <!-- SISTEMA PRINCIPAL -->
-  <div id="app-container" class="hidden min-h-screen flex flex-col">
-    <header class="bg-bp-blue text-white shadow-lg sticky top-0 z-40">
-      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
-        <div class="flex items-center space-x-4">
-          <div class="bg-white p-2 rounded-lg shadow-sm flex items-center justify-center">
-            <span class="text-bp-blue font-black text-2xl tracking-tighter flex items-center">
-              <span class="text-bp-light mr-0.5">✦</span>BP
-            </span>
-          </div>
-          <div>
-            <h1 id="header-app-title" class="font-bold text-lg leading-tight">Brasil Pontes</h1>
-            <p class="text-xs text-bp-light font-medium">Controladoria & Engenharia de Custos</p>
-          </div>
-        </div>
+  if (!nome || !email || !usuario || !senha) return alert("Preencha todos os campos.");
+  if (usuariosBD.some(u => u.usuario === usuario || u.email === email)) return alert("Login/e-mail já cadastrado.");
 
-        <div class="flex items-center space-x-4">
-          <div class="flex flex-col">
-            <label for="seletor-obra" class="text-xs text-gray-200 font-medium">Obra em Análise:</label>
-            <select id="seletor-obra" onchange="alterarObraAtiva(this.value)" class="bg-bp-dark text-white text-sm font-semibold rounded-lg px-3 py-1.5 border border-bp-light/40 focus:outline-none focus:ring-2 focus:ring-bp-light">
-            </select>
-          </div>
+  usuariosBD.push({ nome, usuario, email, senha, perfil, status: "Aprovado" });
+  renderizarPainelUsuarios();
+  alert(`Usuário ${usuario} cadastrado!`);
+}
 
-          <div class="border-l border-bp-dark pl-4 flex items-center space-x-3">
-            <div class="text-right hidden md:block">
-              <p id="user-display-name" class="text-sm font-semibold">---</p>
-              <p id="user-display-role" class="text-xs text-bp-light font-bold uppercase">---</p>
-            </div>
-            
-            <button onclick="abrirModalConfiguracoes()" id="btn-configuracoes" class="bg-bp-dark hover:bg-bp-blue text-bp-light border border-bp-light/50 text-xs font-bold px-3 py-2 rounded-lg transition-all">
-              ⚙️ Configurações
-            </button>
+function solicitarCadastro() {
+  const nome = document.getElementById('solic-nome').value.trim();
+  const email = document.getElementById('solic-email').value.trim();
+  const usuario = document.getElementById('solic-usuario').value.trim();
+  const senha = document.getElementById('solic-senha').value.trim();
 
-            <button onclick="abrirModalUsuarios()" id="btn-gestao-usuarios" class="bg-bp-dark hover:bg-bp-blue text-bp-light border border-bp-light/50 text-xs font-bold px-3 py-2 rounded-lg transition-all relative">
-              👥 Usuários
-              <span id="badge-pendentes" class="hidden absolute -top-1 -right-1 bg-red-500 text-white text-[9px] font-black px-1.5 py-0.5 rounded-full border border-white">0</span>
-            </button>
-            
-            <button onclick="executarLogout()" class="bg-red-600 hover:bg-red-700 text-white text-xs font-bold px-3 py-2 rounded-lg transition-all shadow">
-              Sair
-            </button>
-          </div>
-        </div>
-      </div>
-    </header>
+  if (!nome || !email || !usuario || !senha) return alert("Preencha os campos.");
+  solicitacoesPendentesBD.push({ id: Date.now(), nome, email, usuario, senha, perfil: "Engenheiro", status: "Pendente" });
+  exibirFormLogin();
+  alert("Solicitação enviada!");
+}
 
-    <main class="flex-grow max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+function renderizarPainelUsuarios() {
+  const tbodyPend = document.getElementById('tabela-pendentes-body');
+  document.getElementById('count-pendentes').innerText = solicitacoesPendentesBD.length;
+  tbodyPend.innerHTML = solicitacoesPendentesBD.length === 0 ? `<tr><td colspan="4" class="p-3 text-center text-gray-400">Nenhuma solicitação pendente.</td></tr>` : '';
 
-      <!-- BARRA DE AÇÕES -->
-      <section class="bg-white p-5 rounded-xl shadow-sm border border-gray-200 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-        <div>
-          <div class="flex items-center gap-3">
-            <h2 id="obra-titulo" class="text-2xl font-black text-bp-blue">---</h2>
-            <span id="obra-badge-status" class="bg-emerald-100 text-emerald-800 text-xs font-bold px-2.5 py-0.5 rounded-full">Ativa</span>
-          </div>
-          <p class="text-xs text-gray-500 mt-1">Departamento / CC: <span id="obra-cc" class="font-semibold text-gray-700">---</span> | Gestor: <span id="obra-resp" class="font-semibold text-gray-700">---</span></p>
-        </div>
+  solicitacoesPendentesBD.forEach(s => {
+    tbodyPend.innerHTML += `
+      <tr>
+        <td class="p-2 font-bold">${s.nome}</td>
+        <td class="p-2">${s.email}</td>
+        <td class="p-2 text-bp-blue font-bold">${s.usuario}</td>
+        <td class="p-2 text-center"><button onclick="aprovarSolicitacao(${s.id})" class="bg-emerald-600 text-white px-2 py-1 rounded text-[10px] font-bold">Aprovar</button></td>
+      </tr>
+    `;
+  });
 
-        <div class="flex flex-wrap items-center gap-3">
-          <div class="flex items-center gap-2 bg-bp-bg p-2 rounded-lg border">
-            <span class="text-xs font-bold text-gray-600">Cenário:</span>
-            <select id="seletor-cenario" onchange="aplicarCenario(this.value)" class="text-xs font-bold bg-white text-bp-blue border rounded p-1">
-              <option value="1">Base (Realista)</option>
-              <option value="1.1">Otimista (+10% Custo)</option>
-              <option value="0.9">Pessimista (-10% Custo)</option>
-            </select>
-          </div>
+  const tbodyAtivos = document.getElementById('tabela-usuarios-body');
+  tbodyAtivos.innerHTML = '';
+  usuariosBD.forEach(u => {
+    tbodyAtivos.innerHTML += `
+      <tr>
+        <td class="p-2 font-bold">${u.nome}</td>
+        <td class="p-2 text-gray-500">${u.usuario} (${u.email})</td>
+        <td class="p-2"><span class="bg-bp-blue text-white px-2 py-0.5 rounded text-[10px] font-bold">${u.perfil}</span></td>
+        <td class="p-2 text-center"><span class="text-emerald-600 font-bold">● Ativo</span></td>
+      </tr>
+    `;
+  });
+}
 
-          <button onclick="sincronizarTodasPlanilhas()" id="btn-sync" class="bg-bp-blue hover:bg-bp-dark text-white text-xs font-bold px-4 py-2 rounded-lg transition-all flex items-center gap-1 shadow">
-            🔄 Sincronizar Google Sheets
-          </button>
-        </div>
-      </section>
+function aprovarSolicitacao(id) {
+  const index = solicitacoesPendentesBD.findIndex(s => s.id === id);
+  if (index !== -1) {
+    const sol = solicitacoesPendentesBD[index];
+    sol.status = "Aprovado";
+    usuariosBD.push(sol);
+    solicitacoesPendentesBD.splice(index, 1);
+    renderizarPainelUsuarios();
+  }
+}
 
-      <!-- CARDS DE KPIS -->
-      <section class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
-        <div class="bg-white p-5 rounded-xl shadow-sm border-l-4 border-bp-blue">
-          <p class="text-xs font-bold text-gray-400 uppercase">Custo Total Previsto</p>
-          <p id="kpi-previsto" class="text-2xl font-black text-bp-blue mt-1">R$ 0,00</p>
-        </div>
-
-        <div class="bg-white p-5 rounded-xl shadow-sm border-l-4 border-bp-light">
-          <p class="text-xs font-bold text-gray-400 uppercase">Custo Total Realizado</p>
-          <p id="kpi-realizado" class="text-2xl font-black text-gray-800 mt-1">R$ 0,00</p>
-        </div>
-
-        <div id="card-desvio" class="bg-white p-5 rounded-xl shadow-sm border-l-4 border-emerald-500">
-          <p class="text-xs font-bold text-gray-400 uppercase">Saldo Orçamentário</p>
-          <p id="kpi-desvio" class="text-2xl font-black text-emerald-600 mt-1">R$ 0,00</p>
-        </div>
-
-        <div class="bg-white p-5 rounded-xl shadow-sm border-l-4 border-amber-500">
-          <p class="text-xs font-bold text-gray-400 uppercase">Índice IDC (Desempenho)</p>
-          <p id="kpi-idc" class="text-2xl font-black text-amber-600 mt-1">0.00</p>
-        </div>
-      </section>
-
-      <!-- TABELA COM FAROL -->
-      <section class="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-        <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-4">
-          <h3 class="text-base font-bold text-bp-blue">Demonstrativo e Farol por Categoria BP</h3>
-          
-          <div class="flex flex-wrap gap-2">
-            <div class="flex items-center gap-1.5 text-xs font-bold text-emerald-800 bg-emerald-100 px-3 py-1.5 rounded-lg border border-emerald-200">
-              <span>🟢 Seguras:</span> <span id="farol-verde-count" class="text-sm">0</span>
-            </div>
-            <div class="flex items-center gap-1.5 text-xs font-bold text-amber-800 bg-amber-100 px-3 py-1.5 rounded-lg border border-amber-200">
-              <span>🟡 Atenção (85%+):</span> <span id="farol-amarelo-count" class="text-sm">0</span>
-            </div>
-            <div class="flex items-center gap-1.5 text-xs font-bold text-red-800 bg-red-100 px-3 py-1.5 rounded-lg border border-red-200">
-              <span>🔴 Estouradas:</span> <span id="farol-vermelho-count" class="text-sm">0</span>
-            </div>
-          </div>
-        </div>
-
-        <div class="overflow-x-auto">
-          <table class="w-full text-left text-xs">
-            <thead class="bg-bp-blue text-white uppercase">
-              <tr>
-                <th class="p-3">Categoria / Natureza</th>
-                <th class="p-3 text-right">Previsto (R$)</th>
-                <th class="p-3 text-right">Realizado (R$)</th>
-                <th class="p-3 text-center">% Uso</th>
-                <th class="p-3 text-right">Desvio / Saldo (R$)</th>
-                <th class="p-3 text-center">Farol / Status</th>
-              </tr>
-            </thead>
-            <tbody id="tabela-dre-body" class="divide-y divide-gray-200 font-semibold">
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      <!-- PAINEL DE GRÁFICOS DINÂMICOS -->
-      <section id="grid-graficos-dinamicos" class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-      </section>
-
-    </main>
-  </div>
-
-  <!-- MODAL: CONFIGURAÇÕES -->
-  <div id="modal-configuracoes" class="fixed inset-0 bg-black/60 backdrop-blur-sm hidden z-50 flex items-center justify-center p-4">
-    <div class="bg-white rounded-2xl max-w-5xl w-full p-6 shadow-2xl border border-gray-100 space-y-6 max-h-[90vh] overflow-y-auto">
-      <div class="flex justify-between items-center border-b pb-3">
-        <h3 class="text-lg font-bold text-bp-blue">⚙️ Painel de Configurações do Sistema</h3>
-        <button onclick="fecharModalConfiguracoes()" class="text-gray-400 hover:text-gray-600 font-bold">✕</button>
-      </div>
-
-      <div class="flex border-b text-xs font-bold gap-4">
-        <button onclick="trocarAbaConfig('geral')" id="tab-btn-geral" class="pb-2 border-b-2 border-bp-blue text-bp-blue">Geral & Link Principal</button>
-        <button onclick="trocarAbaConfig('obras')" id="tab-btn-obras" class="pb-2 text-gray-500 hover:text-bp-blue">🏢 Gerir Obras & Links do Previsto</button>
-        <button onclick="trocarAbaConfig('graficos')" id="tab-btn-graficos" class="pb-2 text-gray-500 hover:text-bp-blue">📊 Personalizar Gráficos</button>
-      </div>
-
-      <div id="cfg-aba-geral" class="space-y-4 text-xs">
-        <div class="bg-amber-50 border-l-4 border-amber-400 p-3 rounded text-[11px] text-amber-800">
-          <strong>Aviso sobre Links do Google Sheets:</strong> Cole o link de partilha padrão. O sistema tentará converter automaticamente para leitura CSV.
-        </div>
-        <div class="bg-bp-bg p-4 rounded-xl border space-y-3">
-          <p class="font-bold text-bp-blue uppercase">Configurações Gerais</p>
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div>
-              <label class="font-bold">Nome da Empresa / Aplicação:</label>
-              <input type="text" id="config-app-title" class="w-full border p-2 rounded-lg mt-1" placeholder="Brasil Pontes">
-            </div>
-            <div>
-              <label class="font-bold">URL Planilha REALIZADO (Todas as obras):</label>
-              <input type="url" id="config-url-unificada" class="w-full border p-2 rounded-lg mt-1" placeholder="https://docs.google.com/spreadsheets/d/.../edit">
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div id="cfg-aba-obras" class="space-y-4 text-xs hidden">
-        <div class="bg-bp-bg p-4 rounded-xl border space-y-3">
-          <p class="font-bold text-bp-blue uppercase">Gerenciamento de Obras (Extraídas do Realizado)</p>
-          <div class="overflow-x-auto">
-            <table class="w-full text-left bg-white rounded-lg overflow-hidden border min-w-max">
-              <thead class="bg-bp-blue text-white font-bold uppercase text-[10px]">
-                <tr>
-                  <th class="p-2">Departamento / Filtro (Chave)</th>
-                  <th class="p-2">Nome Amigável da Obra</th>
-                  <th class="p-2">URL Planilha PREVISTO (Desta Obra)</th>
-                  <th class="p-2 text-center">Ações</th>
-                </tr>
-              </thead>
-              <tbody id="tabela-gestao-obras-body" class="divide-y">
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-
-      <div id="cfg-aba-graficos" class="space-y-4 text-xs hidden">
-        <div class="bg-bp-bg p-4 rounded-xl border space-y-3">
-          <p class="font-bold text-bp-blue uppercase">Adicionar Novo Gráfico Dinâmico</p>
-          <div class="grid grid-cols-3 gap-3">
-            <div>
-              <label class="font-bold">Título do Gráfico:</label>
-              <input type="text" id="novo-chart-titulo" placeholder="Ex: Previsto x Realizado por Categoria" class="w-full border p-2 rounded-lg mt-1">
-            </div>
-            <div>
-              <label class="font-bold">Tipo de Gráfico:</label>
-              <select id="novo-chart-tipo" class="w-full border p-2 rounded-lg mt-1 font-bold">
-                <option value="bar">Barra Comparativa</option>
-                <option value="line">Linha (Evolução / Curva S)</option>
-                <option value="doughnut">Rosca / Pizza</option>
-              </select>
-            </div>
-            <div>
-              <label class="font-bold">Métrica de Dados:</label>
-              <select id="novo-chart-metrica" class="w-full border p-2 rounded-lg mt-1 font-bold">
-                <option value="categoria">Previsto x Realizado por Categoria</option>
-                <option value="curvaS">Evolução Físico-Financeira (Curva S)</option>
-              </select>
-            </div>
-          </div>
-          <button type="button" onclick="adicionarNovoGrafico()" class="bg-bp-blue text-white font-bold px-4 py-2 rounded-lg hover:bg-bp-dark">➕ Adicionar Gráfico</button>
-        </div>
-
-        <div id="lista-graficos-config" class="space-y-2">
-        </div>
-      </div>
-
-      <div class="flex justify-end border-t pt-3">
-        <button type="button" onclick="salvarConfiguracoesGerais()" class="bg-emerald-600 text-white font-bold px-6 py-2 rounded-lg hover:bg-emerald-700 shadow-md">
-          Salvar Alterações
-        </button>
-      </div>
-    </div>
-  </div>
-
-  <!-- MODAL: GESTÃO DE USUÁRIOS -->
-  <div id="modal-usuarios" class="fixed inset-0 bg-black/60 backdrop-blur-sm hidden z-50 flex items-center justify-center p-4">
-    <!-- (Mantido o código do Modal de Usuários igual ao anterior) -->
-    <div class="bg-white rounded-2xl max-w-3xl w-full p-6 shadow-2xl border border-gray-100 space-y-4 max-h-[90vh] overflow-y-auto">
-      <div class="flex justify-between items-center border-b pb-3">
-        <h3 class="text-lg font-bold text-bp-blue">Gestão de Usuários e Controle Mestre</h3>
-        <button onclick="fecharModalUsuarios()" class="text-gray-400 hover:text-gray-600 font-bold">✕</button>
-      </div>
-
-      <div class="bg-bp-bg p-4 rounded-xl space-y-3 text-xs border border-gray-200">
-        <p class="font-bold text-bp-blue uppercase">➕ Criar Novo Usuário</p>
-        <div class="grid grid-cols-2 gap-3">
-          <input type="text" id="novo-usr-nome" placeholder="Nome Completo" class="border p-2 rounded-lg">
-          <input type="email" id="novo-usr-email" placeholder="E-mail Corporativo" class="border p-2 rounded-lg">
-        </div>
-        <div class="grid grid-cols-3 gap-3">
-          <input type="text" id="novo-usr-login" placeholder="Nome de Usuário (Login)" class="border p-2 rounded-lg">
-          <input type="password" id="novo-usr-senha" placeholder="Senha" class="border p-2 rounded-lg">
-          <select id="novo-usr-perfil" class="border p-2 rounded-lg font-bold">
-            <option value="Engenheiro">Engenheiro</option>
-            <option value="Orçamentista">Orçamentista</option>
-            <option value="Dono">Dono / Diretoria</option>
-            <option value="Mestre">Mestre</option>
-          </select>
-        </div>
-        <button type="button" onclick="criarUsuarioDireto()" class="w-full bg-bp-blue text-white font-bold py-2 rounded-lg hover:bg-bp-dark">Cadastrar Usuário</button>
-      </div>
-
-      <div id="secao-solicitacoes" class="bg-amber-50 p-4 rounded-xl space-y-3 text-xs border border-amber-200">
-        <div class="flex justify-between items-center">
-          <p class="font-bold text-amber-900 uppercase">⚠️ Solicitações Pendentes</p>
-          <span id="count-pendentes" class="bg-amber-200 text-amber-900 font-bold px-2 py-0.5 rounded-full">0</span>
-        </div>
-        
-        <div class="overflow-x-auto">
-          <table class="w-full text-left bg-white rounded-lg overflow-hidden shadow-sm">
-            <thead class="bg-amber-100 text-amber-900 font-bold uppercase text-[10px]">
-              <tr>
-                <th class="p-2">Nome</th>
-                <th class="p-2">E-mail</th>
-                <th class="p-2">Usuário</th>
-                <th class="p-2 text-center">Ação</th>
-              </tr>
-            </thead>
-            <tbody id="tabela-pendentes-body" class="divide-y">
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <div class="space-y-2 text-xs">
-        <p class="font-bold text-bp-blue uppercase">Usuários Cadastrados</p>
-        <div class="overflow-y-auto max-h-48 border rounded-lg">
-          <table class="w-full text-left">
-            <thead class="bg-gray-100 text-gray-600 font-bold uppercase text-[10px]">
-              <tr>
-                <th class="p-2">Nome</th>
-                <th class="p-2">Usuário / E-mail</th>
-                <th class="p-2">Perfil</th>
-                <th class="p-2 text-center">Status</th>
-              </tr>
-            </thead>
-            <tbody id="tabela-usuarios-body" class="divide-y">
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <script src="app.js"></script>
-</body>
-</html>
+function aplicarPermissoesPerfil() {
+  document.getElementById('user-display-name').innerText = usuarioAutenticado.nome;
+  document.getElementById('user-display-role').innerText = usuarioAutenticado.perfil;
+  if (usuarioAutenticado.perfil === "Mestre") {
+    document.getElementById('btn-gestao-usuarios').classList.remove('hidden');
+    document.getElementById('btn-configuracoes').classList.remove('hidden');
+  } else {
+    document.getElementById('btn-gestao-usuarios').classList.add('hidden');
+    document.getElementById('btn-configuracoes').classList.add('hidden');
+  }
+}
