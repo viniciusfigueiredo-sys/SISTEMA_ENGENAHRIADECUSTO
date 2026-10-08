@@ -1,5 +1,5 @@
 // ==========================================
-// CONFIGURAÇÃO DO SUPABASE E PROTEÇÕES GLOBAIS
+// CONFIGURAÇÃO SEGURA DO SUPABASE E VARIÁVEIS
 // ==========================================
 let supabaseClient = null;
 
@@ -8,10 +8,10 @@ try {
     supabaseClient = window.supabase.createClient('https://dgolbcuhjruncildelth.supabase.co', 'sb_publishable_xAc46P9gmgmzMyKIyl9OJA__9MoyMFK');
   }
 } catch (e) {
-  console.warn("Aviso: Falha ao carregar Supabase. Sistema offline ativado.", e);
+  console.warn("Aviso: Falha ao inicializar biblioteca do Supabase.", e);
 }
 
-// CHAVE MESTRA - Acesso 100% garantido e independente de qualquer banco de dados
+// CHAVE MESTRA: Acesso 100% garantido e independente de qualquer banco de dados
 const MASTER_USER = { 
   id: "local_master", 
   nome: "Vinícius Souza (Mestre)", 
@@ -52,10 +52,11 @@ if (!obrasBD || typeof obrasBD !== 'object') obrasBD = {};
 // ==========================================
 function obterLinkCSV(url) {
   if (!url) return "";
-  if (url.includes("/pub?output=csv")) return url;
-  if (url.includes("/edit") || url.includes("usp=")) {
-    const match = url.match(/\/d\/([a-zA-Z0-9-_]+)/);
-    if (match && match[1]) return `https://docs.google.com/spreadsheets/d/${match[1]}/gviz/tq?tqx=out:csv`;
+  // Se for o link normal de visualização do Google Sheets, converte forçadamente para o export CSV nativo
+  const regexID = /\/d\/([a-zA-Z0-9-_]+)/;
+  const match = url.match(regexID);
+  if (match && match[1]) {
+    return `https://docs.google.com/spreadsheets/d/${match[1]}/export?format=csv`;
   }
   return url;
 }
@@ -63,9 +64,17 @@ function obterLinkCSV(url) {
 const buscarCSV = (url) => new Promise((resolve, reject) => {
   if (typeof Papa === 'undefined') return reject("Biblioteca PapaParse não carregada.");
   Papa.parse(obterLinkCSV(url), {
-    download: true, header: true, skipEmptyLines: true,
-    complete: (res) => resolve(res.data),
-    error: (err) => reject(err)
+    download: true, 
+    header: true, 
+    skipEmptyLines: true,
+    complete: (res) => {
+      // Bloqueio de ecrã de login do Google
+      if (res.data.length > 0 && Object.keys(res.data[0]).some(k => k && k.toLowerCase().includes("<!doctype html>"))) {
+        return reject("O link não está público. Publique a folha de cálculo na web.");
+      }
+      resolve(res.data);
+    },
+    error: (err) => reject(err.message || "Não foi possível transferir o ficheiro CSV.")
   });
 });
 
@@ -77,7 +86,6 @@ window.onload = async function() {
     document.getElementById('header-app-title').innerText = configGlobal.titulo || "Brasil Pontes";
     document.getElementById('login-app-title').innerText = configGlobal.titulo || "Brasil Pontes";
 
-    // Tenta carregar do Supabase silenciosamente (não bloqueia a tela se falhar)
     if (supabaseClient) {
       const { data: config } = await supabaseClient.from('configuracoes').select('*').limit(1).single();
       if (config) { 
@@ -103,10 +111,9 @@ window.onload = async function() {
       }
     }
   } catch (e) { 
-    console.warn("Utilizando sistema em modo offline temporário.", e); 
+    console.warn("Aviso: Utilizando sistema em modo offline local.", e); 
   }
   
-  // Validação de Sessão Salva
   const sessao = localStorage.getItem('usuario_bp_id');
   if (sessao) {
     if (sessao === "local_master") usuarioAutenticado = MASTER_USER;
@@ -132,7 +139,9 @@ function verificarSessao() {
 // ==========================================
 // LOGIN BLINDADO (ENTRA INSTANTANEAMENTE COM A SENHA MESTRE)
 // ==========================================
-async function executarLogin() {
+async function executarLogin(e) {
+  if (e) e.preventDefault(); 
+  
   const inputUser = document.getElementById('login-usuario').value.trim();
   const inputSenha = document.getElementById('login-senha').value.trim();
 
@@ -142,7 +151,7 @@ async function executarLogin() {
   const txtOriginal = btn.innerText;
   btn.innerText = "A autenticar...";
 
-  // 1. BYPASS MESTRE: IGNORA BANCO DE DADOS E ENTRA DIRETO
+  // 1. Bypass Garantido (Mestre Local)
   if ((inputUser === MASTER_USER.usuario || inputUser === MASTER_USER.email) && inputSenha === MASTER_USER.senha) {
     usuarioAutenticado = MASTER_USER;
     localStorage.setItem('usuario_bp_id', MASTER_USER.id);
@@ -151,10 +160,10 @@ async function executarLogin() {
     return;
   }
 
-  // 2. CONSULTA SUPABASE PARA OUTROS USUÁRIOS
+  // 2. Consulta Supabase
   try {
     if (supabaseClient) {
-      const { data: user, error } = await supabaseClient.from('usuarios')
+      const { data: user } = await supabaseClient.from('usuarios')
         .select('*')
         .or(`usuario.eq.${inputUser},email.eq.${inputUser}`)
         .eq('senha', inputSenha)
@@ -176,7 +185,7 @@ async function executarLogin() {
     console.warn("Aviso de BD:", err);
   }
 
-  // 3. FALLBACK LOCAL SE TUDO FALHAR
+  // 3. Fallback Local
   const userLocal = usuariosBD.find(u => (u.usuario === inputUser || u.email === inputUser) && u.senha === inputSenha);
   if (userLocal) {
     if (userLocal.status === "Aprovado") {
@@ -184,7 +193,7 @@ async function executarLogin() {
       localStorage.setItem('usuario_bp_id', userLocal.id); 
       verificarSessao();
     } else {
-      alert("Acesso pendente de aprovação pelo Mestre.");
+      alert("Acesso pendente de aprovação.");
     }
   } else {
     alert("Usuário ou senha incorretos.");
@@ -200,13 +209,13 @@ function executarLogout() {
 }
 
 function exibirFormSolicitacao() { 
-  document.getElementById('box-login').classList.add('hidden'); 
-  document.getElementById('box-solicitacao').classList.remove('hidden'); 
+  document.getElementById('form-login').classList.add('hidden'); 
+  document.getElementById('form-solicitacao').classList.remove('hidden'); 
 }
 
 function exibirFormLogin() { 
-  document.getElementById('box-solicitacao').classList.add('hidden'); 
-  document.getElementById('box-login').classList.remove('hidden'); 
+  document.getElementById('form-solicitacao').classList.add('hidden'); 
+  document.getElementById('form-login').classList.remove('hidden'); 
 }
 
 // ==========================================
@@ -225,19 +234,25 @@ async function sincronizarTodasPlanilhas() {
       obrasBD[k].previstoTotal = 0; obrasBD[k].categoriasPrevisto = {};
     });
 
+    // Limpeza de chaves de coluna para o Realizado (para prevenir erros com espaços invisíveis do Excel)
     dadosRealizado.forEach(linha => {
-      const chvDepto = Object.keys(linha).find(k => k.toUpperCase().includes("DEPARTAMENTO") || k.toUpperCase().includes("CENTRO DE CUSTO"));
+      const colunas = Object.keys(linha);
+      const chvDepto = colunas.find(k => k && (k.toUpperCase().includes("DEPARTAMENTO") || k.toUpperCase().includes("CENTRO DE CUSTO")));
       const deptoOriginal = chvDepto ? (linha[chvDepto] || "").trim() : "";
-      if (!deptoOriginal || deptoOriginal === "N/D") return;
+      
+      if (!deptoOriginal || deptoOriginal === "N/D" || deptoOriginal === "0.0") return;
       const deptoID = deptoOriginal.toUpperCase();
 
       if (!obrasBD[deptoID]) {
         obrasBD[deptoID] = { id: deptoID, nome: deptoOriginal, cc: deptoOriginal, responsavel: "Não Atribuído", status: "Ativa", urlPrevistoCSV: "", previstoTotal: 0, realizadoTotal: 0, categoriasPrevisto: {}, categoriasRealizado: {} };
       }
 
-      const chvVal = Object.keys(linha).find(k => k.toUpperCase().includes("VALOR LÍQUIDO") || k.toUpperCase().includes("VALOR DA CONTA"));
-      let valor = Math.abs(parseFloat(String(linha[chvVal] || "0").replace("R$", "").replace(/\./g, "").replace(",", ".").trim()) || 0);
-      const categoria = (linha["Categoria"] || "Outros").trim();
+      const chvVal = colunas.find(k => k && (k.toUpperCase().includes("VALOR LÍQUIDO") || k.toUpperCase().includes("VALOR DA CONTA")));
+      let valorStr = chvVal ? String(linha[chvVal] || "0") : "0";
+      let valor = Math.abs(parseFloat(valorStr.replace("R$", "").replace(/\./g, "").replace(",", ".").trim()) || 0);
+
+      const chvCat = colunas.find(k => k && k.toUpperCase() === "CATEGORIA");
+      const categoria = chvCat ? (linha[chvCat] || "Outros").trim() : "Outros";
 
       if (obrasBD[deptoID].status !== "Arquivada") {
         obrasBD[deptoID].realizadoTotal += valor;
@@ -245,16 +260,21 @@ async function sincronizarTodasPlanilhas() {
       }
     });
 
+    // Previsto
     const promessasPrevisto = Object.keys(obrasBD).map(async (key) => {
       const obra = obrasBD[key];
       if (obra.urlPrevistoCSV && obra.urlPrevistoCSV.trim() !== "") {
         try {
           const dP = await buscarCSV(obra.urlPrevistoCSV);
           dP.forEach(linha => {
-            const chvCat = Object.keys(linha).find(k => k.toUpperCase().includes("CATEGORIA"));
+            const colunas = Object.keys(linha);
+            const chvCat = colunas.find(k => k && (k.toUpperCase().includes("CATEGORIA BP") || k.toUpperCase().includes("NATUREZA/GRUPO")));
             const catBP = chvCat ? (linha[chvCat] || "Outros").trim() : "Outros";
-            const chvCst = Object.keys(linha).find(k => k.toUpperCase().includes("CUSTO TOTAL"));
-            let custo = parseFloat(String(linha[chvCst] || "0").replace("R$", "").replace(/\./g, "").replace(",", ".").trim()) || 0;
+            
+            const chvCst = colunas.find(k => k && k.toUpperCase().includes("CUSTO TOTAL"));
+            let custoStr = chvCst ? String(linha[chvCst] || "0") : "0";
+            let custo = parseFloat(custoStr.replace("R$", "").replace(/\./g, "").replace(",", ".").trim()) || 0;
+            
             obra.categoriasPrevisto[catBP] = (obra.categoriasPrevisto[catBP] || 0) + custo;
           });
           obra.previstoTotal = Object.values(obra.categoriasPrevisto).reduce((a, b) => a + b, 0);
@@ -264,6 +284,7 @@ async function sincronizarTodasPlanilhas() {
 
     await Promise.all(promessasPrevisto);
 
+    // Guardar Supabase
     if (supabaseClient) {
       for (const key in obrasBD) {
         const o = obrasBD[key];
@@ -275,8 +296,10 @@ async function sincronizarTodasPlanilhas() {
     localStorage.setItem('obras_bp', JSON.stringify(obrasBD));
     popularSeletorObras();
     atualizarDashboard();
+
   } catch (error) {
-    alert("Falha na sincronização. Verifique o link no Menu Configurações.");
+    alert("Falha na sincronização. Certifique-se que o link de partilha Google Sheets está configurado como 'Qualquer pessoa com o link' nas permissões de leitura.");
+    console.error(error);
   } finally {
     if (btn) btn.innerHTML = "🔄 Sincronizar Base de Dados";
   }
@@ -286,7 +309,7 @@ function popularSeletorObras() {
   const seletor = document.getElementById('seletor-obra');
   seletor.innerHTML = '';
   const chaves = Object.keys(obrasBD).filter(k => obrasBD[k].status !== "Arquivada");
-  if (chaves.length === 0) return seletor.innerHTML = `<option value="">A aguardar dados...</option>`;
+  if (chaves.length === 0) return seletor.innerHTML = `<option value="">Sem obras ativas...</option>`;
   chaves.forEach(k => seletor.innerHTML += `<option value="${k}">${obrasBD[k].nome}</option>`);
   if (!obraAtivaID || !obrasBD[obraAtivaID] || obrasBD[obraAtivaID].status === "Arquivada") obraAtivaID = chaves[0];
   seletor.value = obraAtivaID;
@@ -494,15 +517,16 @@ async function criarUsuarioDireto() {
   renderizarPainelUsuarios(); alert("Usuário registado!");
 }
 
-function solicitarCadastro() {
+async function solicitarCadastro(e) {
+  if (e) e.preventDefault();
   const nome = document.getElementById('solic-nome').value.trim();
   const email = document.getElementById('solic-email').value.trim();
   const usuario = document.getElementById('solic-usuario').value.trim();
   const senha = document.getElementById('solic-senha').value.trim();
   if (!nome || !email || !usuario || !senha) return alert("Preencha os campos.");
   
-  if (supabaseClient) { try { supabaseClient.from('usuarios').insert([{ nome, email, usuario, senha, perfil: "Engenheiro", status: "Pendente" }]); } catch(e){} }
-  solicitacoesPendentesBD.push({ id: Date.now().toString(), nome, email, usuario, senha, perfil: "Engenheiro", status: "Pendente" });
+  if (supabaseClient) { try { await supabaseClient.from('usuarios').insert([{ nome, email, usuario, senha, perfil: "Engenheiro", status: "Pendente" }]); } catch(e){} }
+  else { solicitacoesPendentesBD.push({ id: Date.now().toString(), nome, email, usuario, senha, perfil: "Engenheiro", status: "Pendente" }); }
   
   exibirFormLogin(); alert("Solicitação registada!");
 }
