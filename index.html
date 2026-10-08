@@ -4,46 +4,22 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Brasil Pontes - Controladoria & Engenharia de Custos</title>
-  
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
-  <!-- SUPABASE JS -->
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  
   <link rel="stylesheet" href="style.css">
-
-  <script>
-    tailwind.config = {
-      theme: {
-        extend: {
-          colors: {
-            bp: {
-              blue: '#003399',
-              light: '#00CFFF',
-              dark: '#002266',
-              bg: '#F4F6F9'
-            }
-          }
-        }
-      }
-    }
-  </script>
 </head>
-<body class="bg-bp-bg font-sans text-gray-800 antialiased min-h-screen flex flex-col">
+<body class="bg-[#F4F6F9] font-sans text-gray-800 antialiased min-h-screen flex flex-col">
 
   <!-- ========================================== -->
   <!-- TELA DE LOGIN / CADASTRO (FUNDO AZUL)      -->
   <!-- ========================================== -->
-  <div id="screen-login" class="fixed inset-0 bg-bp-blue z-50 flex items-center justify-center p-4">
-    <div class="bg-white rounded-2xl max-w-md w-full p-8 shadow-2xl border border-bp-light/20 space-y-6 relative">
+  <div id="screen-login" class="fixed inset-0 bg-[#003399] z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-md w-full p-8 shadow-2xl space-y-6 relative">
       <div class="text-center space-y-2">
-        <div class="inline-flex bg-bp-blue p-3 rounded-xl shadow-md mb-2">
+        <div class="inline-flex bg-[#003399] p-3 rounded-xl shadow-md mb-2">
           <span class="text-white font-black text-3xl tracking-tighter flex items-center">
-            <span class="text-bp-light mr-1">✦</span>BP
+            <span class="text-[#00CFFF] mr-1">✦</span>BP
           </span>
         </div>
-        <h2 id="login-app-title" class="text-2xl font-black text-bp-blue">Brasil Pontes</h2>
+        <h2 id="login-app-title" class="text-2xl font-black text-[#003399]">Brasil Pontes</h2>
         <p class="text-xs text-gray-500 font-medium">Controladoria & Engenharia de Custos</p>
       </div>
 
@@ -51,20 +27,20 @@
       <div id="box-login" class="space-y-4">
         <div>
           <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Usuário ou E-mail:</label>
-          <input type="text" id="login-usuario" placeholder="Digite seu usuário..." class="w-full text-xs border border-gray-300 rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-bp-blue">
+          <input type="text" id="login-usuario" placeholder="Digite seu usuário..." class="w-full text-xs border border-gray-300 rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-[#003399]">
         </div>
         <div>
           <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Senha de Acesso:</label>
-          <input type="password" id="login-senha" placeholder="••••••••" class="w-full text-xs border border-gray-300 rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-bp-blue">
+          <input type="password" id="login-senha" placeholder="••••••••" class="w-full text-xs border border-gray-300 rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-[#003399]">
         </div>
 
-        <button type="button" onclick="executarLogin()" class="w-full bg-bp-blue hover:bg-bp-dark text-white font-bold text-xs py-3 rounded-lg transition-all shadow-md">
+        <button type="button" onclick="executarLogin()" class="w-full bg-[#003399] hover:bg-[#002266] text-white font-bold text-xs py-3 rounded-lg transition-all shadow-md">
           Entrar no Sistema
         </button>
 
         <div class="text-center pt-2 border-t border-gray-100">
           <p class="text-xs text-gray-500">Não possui conta? 
-            <button type="button" onclick="exibirFormSolicitacao()" class="text-bp-blue font-bold hover:underline">Solicitar Acesso</button>
+            <button type="button" onclick="exibirFormSolicitacao()" class="text-[#003399] font-bold hover:underline">Solicitar Acesso</button>
           </p>
         </div>
       </div>
@@ -76,19 +52,19 @@
         </div>
         <div>
           <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Nome Completo:</label>
-          <input type="text" id="solic-nome" placeholder="Seu nome..." class="w-full text-xs border border-gray-300 rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-bp-blue">
+          <input type="text" id="solic-nome" placeholder="Seu nome..." class="w-full text-xs border border-gray-300 rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-[#003399]">
         </div>
         <div>
           <label class="block text-xs font-bold text-gray-700 uppercase mb-1">E-mail Corporativo:</label>
-          <input type="email" id="solic-email" placeholder="seuemail@brasilpontes.com.br" class="w-full text-xs border border-gray-300 rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-bp-blue">
+          <input type="email" id="solic-email" placeholder="seuemail@brasilpontes.com.br" class="w-full text-xs border border-gray-300 rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-[#003399]">
         </div>
         <div>
           <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Usuário desejado:</label>
-          <input type="text" id="solic-usuario" placeholder="ex: joao_silva" class="w-full text-xs border border-gray-300 rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-bp-blue">
+          <input type="text" id="solic-usuario" placeholder="ex: joao_silva" class="w-full text-xs border border-gray-300 rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-[#003399]">
         </div>
         <div>
           <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Senha:</label>
-          <input type="password" id="solic-senha" placeholder="••••••••" class="w-full text-xs border border-gray-300 rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-bp-blue">
+          <input type="password" id="solic-senha" placeholder="••••••••" class="w-full text-xs border border-gray-300 rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-[#003399]">
         </div>
 
         <button type="button" onclick="solicitarCadastro()" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs py-3 rounded-lg transition-all shadow-md">
@@ -106,38 +82,38 @@
   <!-- SISTEMA PRINCIPAL                          -->
   <!-- ========================================== -->
   <div id="app-container" class="hidden min-h-screen flex flex-col">
-    <header class="bg-bp-blue text-white shadow-lg sticky top-0 z-40">
+    <header class="bg-[#003399] text-white shadow-lg sticky top-0 z-40">
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
         <div class="flex items-center space-x-4">
           <div class="bg-white p-2 rounded-lg shadow-sm flex items-center justify-center">
-            <span class="text-bp-blue font-black text-2xl tracking-tighter flex items-center">
-              <span class="text-bp-light mr-0.5">✦</span>BP
+            <span class="text-[#003399] font-black text-2xl tracking-tighter flex items-center">
+              <span class="text-[#00CFFF] mr-0.5">✦</span>BP
             </span>
           </div>
           <div>
             <h1 id="header-app-title" class="font-bold text-lg leading-tight">Brasil Pontes</h1>
-            <p class="text-xs text-bp-light font-medium">Controladoria & Engenharia de Custos</p>
+            <p class="text-xs text-[#00CFFF] font-medium">Controladoria & Engenharia de Custos</p>
           </div>
         </div>
 
         <div class="flex items-center space-x-4">
           <div class="flex flex-col">
             <label for="seletor-obra" class="text-xs text-gray-200 font-medium">Obra em Análise:</label>
-            <select id="seletor-obra" onchange="alterarObraAtiva(this.value)" class="bg-bp-dark text-white text-sm font-semibold rounded-lg px-3 py-1.5 border border-bp-light/40 focus:outline-none focus:ring-2 focus:ring-bp-light">
+            <select id="seletor-obra" onchange="alterarObraAtiva(this.value)" class="bg-[#002266] text-white text-sm font-semibold rounded-lg px-3 py-1.5 border border-[#00CFFF]/40 focus:outline-none">
             </select>
           </div>
 
-          <div class="border-l border-bp-dark pl-4 flex items-center space-x-3">
+          <div class="border-l border-[#002266] pl-4 flex items-center space-x-3">
             <div class="text-right hidden md:block">
               <p id="user-display-name" class="text-sm font-semibold">---</p>
-              <p id="user-display-role" class="text-xs text-bp-light font-bold uppercase">---</p>
+              <p id="user-display-role" class="text-xs text-[#00CFFF] font-bold uppercase">---</p>
             </div>
             
-            <button onclick="abrirModalConfiguracoes()" id="btn-configuracoes" class="bg-bp-dark hover:bg-bp-blue text-bp-light border border-bp-light/50 text-xs font-bold px-3 py-2 rounded-lg transition-all">
+            <button onclick="abrirModalConfiguracoes()" id="btn-configuracoes" class="bg-[#002266] hover:bg-[#003399] text-[#00CFFF] border border-[#00CFFF]/50 text-xs font-bold px-3 py-2 rounded-lg transition-all">
               ⚙️ Configurações
             </button>
 
-            <button onclick="abrirModalUsuarios()" id="btn-gestao-usuarios" class="bg-bp-dark hover:bg-bp-blue text-bp-light border border-bp-light/50 text-xs font-bold px-3 py-2 rounded-lg transition-all relative">
+            <button onclick="abrirModalUsuarios()" id="btn-gestao-usuarios" class="bg-[#002266] hover:bg-[#003399] text-[#00CFFF] border border-[#00CFFF]/50 text-xs font-bold px-3 py-2 rounded-lg transition-all relative">
               👥 Usuários
               <span id="badge-pendentes" class="hidden absolute -top-1 -right-1 bg-red-500 text-white text-[9px] font-black px-1.5 py-0.5 rounded-full border border-white">0</span>
             </button>
@@ -152,41 +128,39 @@
 
     <main class="flex-grow max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
 
-      <!-- BARRA DE AÇÕES -->
       <section class="bg-white p-5 rounded-xl shadow-sm border border-gray-200 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <div class="flex items-center gap-3">
-            <h2 id="obra-titulo" class="text-2xl font-black text-bp-blue">---</h2>
+            <h2 id="obra-titulo" class="text-2xl font-black text-[#003399]">---</h2>
             <span id="obra-badge-status" class="bg-emerald-100 text-emerald-800 text-xs font-bold px-2.5 py-0.5 rounded-full">Ativa</span>
           </div>
           <p class="text-xs text-gray-500 mt-1">Departamento / Filtro: <span id="obra-cc" class="font-semibold text-gray-700">---</span> | Gestor: <span id="obra-resp" class="font-semibold text-gray-700">---</span></p>
         </div>
 
         <div class="flex flex-wrap items-center gap-3">
-          <div class="flex items-center gap-2 bg-bp-bg p-2 rounded-lg border">
+          <div class="flex items-center gap-2 bg-[#F4F6F9] p-2 rounded-lg border">
             <span class="text-xs font-bold text-gray-600">Cenário:</span>
-            <select id="seletor-cenario" onchange="aplicarCenario(this.value)" class="text-xs font-bold bg-white text-bp-blue border rounded p-1">
+            <select id="seletor-cenario" onchange="aplicarCenario(this.value)" class="text-xs font-bold bg-white text-[#003399] border rounded p-1">
               <option value="1">Base (Realista)</option>
               <option value="1.1">Otimista (+10% Custo)</option>
               <option value="0.9">Pessimista (-10% Custo)</option>
             </select>
           </div>
 
-          <button onclick="sincronizarTodasPlanilhas()" id="btn-sync" class="bg-bp-blue hover:bg-bp-dark text-white text-xs font-bold px-4 py-2 rounded-lg transition-all flex items-center gap-1 shadow">
+          <button onclick="sincronizarTodasPlanilhas()" id="btn-sync" class="bg-[#003399] hover:bg-[#002266] text-white text-xs font-bold px-4 py-2 rounded-lg transition-all flex items-center gap-1 shadow">
             🔄 Sincronizar Base de Dados
           </button>
         </div>
       </section>
 
-      <!-- CARDS DE KPIS -->
       <section class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
-        <div class="bg-white p-5 rounded-xl shadow-sm border-l-4 border-bp-blue">
-          <p class="text-xs font-bold text-gray-400 uppercase">Custo Total Previsto</p>
-          <p id="kpi-previsto" class="text-2xl font-black text-bp-blue mt-1">R$ 0,00</p>
+        <div class="bg-white p-5 rounded-xl shadow-sm border-l-4 border-[#003399]">
+          <p class="text-xs font-bold text-gray-400 uppercase">Custo Previsto</p>
+          <p id="kpi-previsto" class="text-2xl font-black text-[#003399] mt-1">R$ 0,00</p>
         </div>
 
-        <div class="bg-white p-5 rounded-xl shadow-sm border-l-4 border-bp-light">
-          <p class="text-xs font-bold text-gray-400 uppercase">Custo Total Realizado</p>
+        <div class="bg-white p-5 rounded-xl shadow-sm border-l-4 border-[#00CFFF]">
+          <p class="text-xs font-bold text-gray-400 uppercase">Custo Realizado</p>
           <p id="kpi-realizado" class="text-2xl font-black text-gray-800 mt-1">R$ 0,00</p>
         </div>
 
@@ -196,15 +170,14 @@
         </div>
 
         <div class="bg-white p-5 rounded-xl shadow-sm border-l-4 border-amber-500">
-          <p class="text-xs font-bold text-gray-400 uppercase">Índice IDC (Desempenho)</p>
+          <p class="text-xs font-bold text-gray-400 uppercase">Índice IDC</p>
           <p id="kpi-idc" class="text-2xl font-black text-amber-600 mt-1">0.00</p>
         </div>
       </section>
 
-      <!-- TABELA DEMONSTRATIVA COM FAROL -->
       <section class="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
         <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-4">
-          <h3 class="text-base font-bold text-bp-blue">Demonstrativo e Farol por Categoria BP</h3>
+          <h3 class="text-base font-bold text-[#003399]">Demonstrativo e Farol por Categoria</h3>
           
           <div class="flex flex-wrap gap-2">
             <div class="flex items-center gap-1.5 text-xs font-bold text-emerald-800 bg-emerald-100 px-3 py-1.5 rounded-lg border border-emerald-200">
@@ -221,13 +194,13 @@
 
         <div class="overflow-x-auto">
           <table class="w-full text-left text-xs">
-            <thead class="bg-bp-blue text-white uppercase">
+            <thead class="bg-[#003399] text-white uppercase">
               <tr>
                 <th class="p-3">Categoria / Natureza</th>
                 <th class="p-3 text-right">Previsto (R$)</th>
                 <th class="p-3 text-right">Realizado (R$)</th>
                 <th class="p-3 text-center">% Uso</th>
-                <th class="p-3 text-right">Desvio / Saldo (R$)</th>
+                <th class="p-3 text-right">Desvio / Saldo</th>
                 <th class="p-3 text-center">Farol / Status</th>
               </tr>
             </thead>
@@ -237,119 +210,99 @@
         </div>
       </section>
 
-      <!-- PAINEL DE GRÁFICOS DINÂMICOS -->
-      <section id="grid-graficos-dinamicos" class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-      </section>
-
+      <section id="grid-graficos-dinamicos" class="grid grid-cols-1 lg:grid-cols-2 gap-6"></section>
     </main>
   </div>
 
-  <!-- MODAL: CONFIGURAÇÕES -->
+  <!-- MODAIS (Configurações e Usuários) ... -->
   <div id="modal-configuracoes" class="fixed inset-0 bg-black/60 backdrop-blur-sm hidden z-50 flex items-center justify-center p-4">
     <div class="bg-white rounded-2xl max-w-5xl w-full p-6 shadow-2xl border border-gray-100 space-y-6 max-h-[90vh] overflow-y-auto">
       <div class="flex justify-between items-center border-b pb-3">
-        <h3 class="text-lg font-bold text-bp-blue">⚙️ Painel de Configurações do Sistema</h3>
+        <h3 class="text-lg font-bold text-[#003399]">⚙️ Painel de Configurações do Sistema</h3>
         <button onclick="fecharModalConfiguracoes()" class="text-gray-400 hover:text-gray-600 font-bold">✕</button>
       </div>
 
       <div class="flex border-b text-xs font-bold gap-4">
-        <button onclick="trocarAbaConfig('geral')" id="tab-btn-geral" class="pb-2 border-b-2 border-bp-blue text-bp-blue">Geral & Link Principal</button>
-        <button onclick="trocarAbaConfig('obras')" id="tab-btn-obras" class="pb-2 text-gray-500 hover:text-bp-blue">🏢 Gerir Obras & Links do Previsto</button>
-        <button onclick="trocarAbaConfig('graficos')" id="tab-btn-graficos" class="pb-2 text-gray-500 hover:text-bp-blue">📊 Personalizar Gráficos</button>
+        <button onclick="trocarAbaConfig('geral')" id="tab-btn-geral" class="pb-2 border-b-2 border-[#003399] text-[#003399]">Geral & Link Principal</button>
+        <button onclick="trocarAbaConfig('obras')" id="tab-btn-obras" class="pb-2 text-gray-500 hover:text-[#003399]">🏢 Gerir Obras</button>
+        <button onclick="trocarAbaConfig('graficos')" id="tab-btn-graficos" class="pb-2 text-gray-500 hover:text-[#003399]">📊 Gráficos</button>
       </div>
 
+      <!-- ABA GERAL -->
       <div id="cfg-aba-geral" class="space-y-4 text-xs">
         <div class="bg-amber-50 border-l-4 border-amber-400 p-3 rounded text-[11px] text-amber-800">
-          <strong>Aviso sobre Links:</strong> Cole o link de partilha padrão. O sistema tentará converter automaticamente para leitura CSV.
+          <strong>Aviso sobre Links:</strong> Cole o link de partilha padrão do Google Sheets. O sistema tentará converter automaticamente para CSV.
         </div>
-        <div class="bg-bp-bg p-4 rounded-xl border space-y-3">
-          <p class="font-bold text-bp-blue uppercase">Configurações Gerais</p>
+        <div class="bg-[#F4F6F9] p-4 rounded-xl border space-y-3">
+          <p class="font-bold text-[#003399] uppercase">Configurações Gerais</p>
           <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div>
               <label class="font-bold">Nome da Empresa / Aplicação:</label>
               <input type="text" id="config-app-title" class="w-full border p-2 rounded-lg mt-1" placeholder="Brasil Pontes">
             </div>
             <div>
-              <label class="font-bold">URL Planilha REALIZADO (Todas as obras):</label>
+              <label class="font-bold">URL Planilha REALIZADO Unificada:</label>
               <input type="url" id="config-url-unificada" class="w-full border p-2 rounded-lg mt-1" placeholder="https://docs.google.com/spreadsheets/d/.../edit">
             </div>
           </div>
         </div>
       </div>
 
+      <!-- ABA OBRAS -->
       <div id="cfg-aba-obras" class="space-y-4 text-xs hidden">
-        <div class="bg-bp-bg p-4 rounded-xl border space-y-3">
-          <p class="font-bold text-bp-blue uppercase">Gerenciamento de Obras (Extraídas do Realizado)</p>
+        <div class="bg-[#F4F6F9] p-4 rounded-xl border space-y-3">
+          <p class="font-bold text-[#003399] uppercase">Gerenciamento de Obras</p>
           <div class="overflow-x-auto">
             <table class="w-full text-left bg-white rounded-lg overflow-hidden border min-w-max">
-              <thead class="bg-bp-blue text-white font-bold uppercase text-[10px]">
+              <thead class="bg-[#003399] text-white font-bold uppercase text-[10px]">
                 <tr>
-                  <th class="p-2">Departamento / Filtro (Chave)</th>
-                  <th class="p-2">Nome Amigável da Obra</th>
+                  <th class="p-2">Departamento / Filtro</th>
+                  <th class="p-2">Nome Amigável</th>
                   <th class="p-2">URL Planilha PREVISTO (Desta Obra)</th>
                   <th class="p-2 text-center">Ações</th>
                 </tr>
               </thead>
-              <tbody id="tabela-gestao-obras-body" class="divide-y">
-              </tbody>
+              <tbody id="tabela-gestao-obras-body" class="divide-y"></tbody>
             </table>
           </div>
         </div>
       </div>
 
+      <!-- ABA GRÁFICOS -->
       <div id="cfg-aba-graficos" class="space-y-4 text-xs hidden">
-        <div class="bg-bp-bg p-4 rounded-xl border space-y-3">
-          <p class="font-bold text-bp-blue uppercase">Adicionar Novo Gráfico Dinâmico</p>
+        <div class="bg-[#F4F6F9] p-4 rounded-xl border space-y-3">
+          <p class="font-bold text-[#003399] uppercase">Adicionar Gráfico</p>
           <div class="grid grid-cols-3 gap-3">
-            <div>
-              <label class="font-bold">Título do Gráfico:</label>
-              <input type="text" id="novo-chart-titulo" placeholder="Ex: Previsto x Realizado por Categoria" class="w-full border p-2 rounded-lg mt-1">
-            </div>
-            <div>
-              <label class="font-bold">Tipo de Gráfico:</label>
-              <select id="novo-chart-tipo" class="w-full border p-2 rounded-lg mt-1 font-bold">
-                <option value="bar">Barra Comparativa</option>
-                <option value="line">Linha (Evolução / Curva S)</option>
-                <option value="doughnut">Rosca / Pizza</option>
-              </select>
-            </div>
-            <div>
-              <label class="font-bold">Métrica de Dados:</label>
-              <select id="novo-chart-metrica" class="w-full border p-2 rounded-lg mt-1 font-bold">
-                <option value="categoria">Previsto x Realizado por Categoria</option>
-                <option value="curvaS">Evolução Físico-Financeira (Curva S)</option>
-              </select>
-            </div>
+            <div><label class="font-bold">Título:</label><input type="text" id="novo-chart-titulo" class="w-full border p-2 rounded-lg mt-1"></div>
+            <div><label class="font-bold">Tipo:</label><select id="novo-chart-tipo" class="w-full border p-2 rounded-lg mt-1 font-bold"><option value="bar">Barra</option><option value="line">Linha</option><option value="doughnut">Rosca</option></select></div>
+            <div><label class="font-bold">Métrica:</label><select id="novo-chart-metrica" class="w-full border p-2 rounded-lg mt-1 font-bold"><option value="categoria">Por Categoria</option><option value="curvaS">Curva S</option></select></div>
           </div>
-          <button type="button" onclick="adicionarNovoGrafico()" class="bg-bp-blue text-white font-bold px-4 py-2 rounded-lg hover:bg-bp-dark">➕ Adicionar Gráfico</button>
+          <button type="button" onclick="adicionarNovoGrafico()" class="bg-[#003399] text-white font-bold px-4 py-2 rounded-lg">➕ Adicionar Gráfico</button>
         </div>
         <div id="lista-graficos-config" class="space-y-2"></div>
       </div>
 
       <div class="flex justify-end border-t pt-3">
-        <button type="button" onclick="salvarConfiguracoesGerais()" class="bg-emerald-600 text-white font-bold px-6 py-2 rounded-lg hover:bg-emerald-700 shadow-md">
-          Salvar Alterações
-        </button>
+        <button type="button" onclick="salvarConfiguracoesGerais()" class="bg-emerald-600 text-white font-bold px-6 py-2 rounded-lg shadow-md">Salvar Alterações</button>
       </div>
     </div>
   </div>
 
-  <!-- MODAL: GESTÃO DE USUÁRIOS -->
   <div id="modal-usuarios" class="fixed inset-0 bg-black/60 backdrop-blur-sm hidden z-50 flex items-center justify-center p-4">
     <div class="bg-white rounded-2xl max-w-3xl w-full p-6 shadow-2xl border border-gray-100 space-y-4 max-h-[90vh] overflow-y-auto">
       <div class="flex justify-between items-center border-b pb-3">
-        <h3 class="text-lg font-bold text-bp-blue">Gestão de Usuários e Controle Mestre</h3>
+        <h3 class="text-lg font-bold text-[#003399]">Gestão de Usuários e Controle Mestre</h3>
         <button onclick="fecharModalUsuarios()" class="text-gray-400 hover:text-gray-600 font-bold">✕</button>
       </div>
 
-      <div class="bg-bp-bg p-4 rounded-xl space-y-3 text-xs border border-gray-200">
-        <p class="font-bold text-bp-blue uppercase">➕ Criar Novo Usuário</p>
+      <div class="bg-[#F4F6F9] p-4 rounded-xl space-y-3 text-xs border border-gray-200">
+        <p class="font-bold text-[#003399] uppercase">➕ Criar Novo Usuário</p>
         <div class="grid grid-cols-2 gap-3">
           <input type="text" id="novo-usr-nome" placeholder="Nome Completo" class="border p-2 rounded-lg">
-          <input type="email" id="novo-usr-email" placeholder="E-mail Corporativo" class="border p-2 rounded-lg">
+          <input type="email" id="novo-usr-email" placeholder="E-mail" class="border p-2 rounded-lg">
         </div>
         <div class="grid grid-cols-3 gap-3">
-          <input type="text" id="novo-usr-login" placeholder="Nome de Usuário (Login)" class="border p-2 rounded-lg">
+          <input type="text" id="novo-usr-login" placeholder="Login" class="border p-2 rounded-lg">
           <input type="password" id="novo-usr-senha" placeholder="Senha" class="border p-2 rounded-lg">
           <select id="novo-usr-perfil" class="border p-2 rounded-lg font-bold">
             <option value="Engenheiro">Engenheiro</option>
@@ -358,40 +311,15 @@
             <option value="Mestre">Mestre</option>
           </select>
         </div>
-        <button type="button" onclick="criarUsuarioDireto()" class="w-full bg-bp-blue text-white font-bold py-2 rounded-lg hover:bg-bp-dark">Cadastrar Usuário</button>
-      </div>
-
-      <div id="secao-solicitacoes" class="bg-amber-50 p-4 rounded-xl space-y-3 text-xs border border-amber-200">
-        <div class="flex justify-between items-center">
-          <p class="font-bold text-amber-900 uppercase">⚠️ Solicitações Pendentes</p>
-          <span id="count-pendentes" class="bg-amber-200 text-amber-900 font-bold px-2 py-0.5 rounded-full">0</span>
-        </div>
-        <div class="overflow-x-auto">
-          <table class="w-full text-left bg-white rounded-lg overflow-hidden shadow-sm">
-            <thead class="bg-amber-100 text-amber-900 font-bold uppercase text-[10px]">
-              <tr>
-                <th class="p-2">Nome</th>
-                <th class="p-2">E-mail</th>
-                <th class="p-2">Usuário</th>
-                <th class="p-2 text-center">Ação</th>
-              </tr>
-            </thead>
-            <tbody id="tabela-pendentes-body" class="divide-y"></tbody>
-          </table>
-        </div>
+        <button type="button" onclick="criarUsuarioDireto()" class="w-full bg-[#003399] text-white font-bold py-2 rounded-lg">Cadastrar Usuário</button>
       </div>
 
       <div class="space-y-2 text-xs">
-        <p class="font-bold text-bp-blue uppercase">Usuários Cadastrados</p>
+        <p class="font-bold text-[#003399] uppercase">Usuários Cadastrados / Pendentes</p>
         <div class="overflow-y-auto max-h-48 border rounded-lg">
           <table class="w-full text-left">
             <thead class="bg-gray-100 text-gray-600 font-bold uppercase text-[10px]">
-              <tr>
-                <th class="p-2">Nome</th>
-                <th class="p-2">Usuário / E-mail</th>
-                <th class="p-2">Perfil</th>
-                <th class="p-2 text-center">Status</th>
-              </tr>
+              <tr><th class="p-2">Nome</th><th class="p-2">Usuário</th><th class="p-2">Perfil</th><th class="p-2 text-center">Ação/Status</th></tr>
             </thead>
             <tbody id="tabela-usuarios-body" class="divide-y"></tbody>
           </table>
@@ -400,7 +328,13 @@
     </div>
   </div>
 
+  <!-- SCRIPTS EXTERNOS (MOVIDOS PARA O FUNDO PARA EVITAR TRAVAMENTO DE TELA) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  
+  <!-- SCRIPT DO SISTEMA -->
   <script src="app.js"></script>
 </body>
 </html>
-
