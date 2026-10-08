@@ -7,20 +7,9 @@ try {
   if (window.supabase) {
     supabaseClient = window.supabase.createClient('https://dgolbcuhjruncildelth.supabase.co', 'sb_publishable_xAc46P9gmgmzMyKIyl9OJA__9MoyMFK');
   }
-} catch (e) {
-  console.warn("Aviso: Falha ao inicializar biblioteca do Supabase.", e);
-}
+} catch (e) { console.warn("Supabase indisponível.", e); }
 
-// CHAVE MESTRA: Acesso 100% garantido e independente de qualquer banco de dados
-const MASTER_USER = { 
-  id: "local_master", 
-  nome: "Vinícius Souza (Mestre)", 
-  usuario: "vinicius_souzaf", 
-  email: "mestre@brasilpontes.com.br", 
-  senha: "741852963", 
-  perfil: "Mestre", 
-  status: "Aprovado" 
-};
+const MASTER_USER = { id: "local_master", nome: "Vinícius Souza (Mestre)", usuario: "vinicius_souzaf", email: "mestre@brasilpontes.com.br", senha: "741852963", perfil: "Mestre", status: "Aprovado" };
 
 let usuariosBD = [MASTER_USER];
 let solicitacoesPendentesBD = [];
@@ -33,53 +22,81 @@ let usuarioAutenticado = null;
 let obraAtivaID = null;
 let multiplicadorCenario = 1;
 
-// Recuperação segura do LocalStorage
 let configGlobal = { titulo: "Brasil Pontes", urlRealizado: "" };
-try { 
-  const cfg = localStorage.getItem('config_bp'); 
-  if (cfg && cfg !== "undefined") configGlobal = JSON.parse(cfg); 
-} catch(e){}
+try { const cfg = localStorage.getItem('config_bp'); if (cfg && cfg !== "undefined") configGlobal = JSON.parse(cfg); } catch(e){}
 
 let obrasBD = {};
-try { 
-  const obs = localStorage.getItem('obras_bp'); 
-  if (obs && obs !== "undefined") obrasBD = JSON.parse(obs); 
-} catch(e){}
+try { const obs = localStorage.getItem('obras_bp'); if (obs && obs !== "undefined") obrasBD = JSON.parse(obs); } catch(e){}
 if (!obrasBD || typeof obrasBD !== 'object') obrasBD = {};
 
 // ==========================================
-// UTILITÁRIOS DE LEITURA (CSV / GOOGLE)
+// UTILITÁRIOS INTELIGENTES DE LEITURA (CSV)
 // ==========================================
 function obterLinkCSV(url) {
   if (!url) return "";
-  // Se for o link normal de visualização do Google Sheets, converte forçadamente para o export CSV nativo
-  const regexID = /\/d\/([a-zA-Z0-9-_]+)/;
-  const match = url.match(regexID);
-  if (match && match[1]) {
-    return `https://docs.google.com/spreadsheets/d/${match[1]}/export?format=csv`;
+  if (url.includes("/pub?output=csv")) return url;
+  if (url.includes("/edit") || url.includes("usp=")) {
+    const match = url.match(/\/d\/([a-zA-Z0-9-_]+)/);
+    if (match && match[1]) return `https://docs.google.com/spreadsheets/d/${match[1]}/export?format=csv`;
   }
   return url;
 }
 
+// FORMATADOR UNIVERSAL DE DINHEIRO (Aceita US e BR)
+function parseMonetario(valorStr) {
+  if (!valorStr) return 0;
+  let str = String(valorStr).replace(/[R$\s]/g, '').trim(); // Remove R$ e espaços
+  let lastComma = str.lastIndexOf(',');
+  let lastDot = str.lastIndexOf('.');
+  
+  if (lastComma > lastDot) {
+      str = str.replace(/\./g, '').replace(',', '.'); // Formato BR: 1.000,00 -> 1000.00
+  } else {
+      str = str.replace(/,/g, ''); // Formato US: 1,000.00 -> 1000.00
+  }
+  return Math.abs(parseFloat(str) || 0); // Puxa valor absoluto para abater gastos
+}
+
+// BUSCA CSV COM "RADAR" DE CABEÇALHOS
 const buscarCSV = (url) => new Promise((resolve, reject) => {
   if (typeof Papa === 'undefined') return reject("Biblioteca PapaParse não carregada.");
   Papa.parse(obterLinkCSV(url), {
     download: true, 
-    header: true, 
+    header: false, // Lemos em matriz para varrer o lixo do topo
     skipEmptyLines: true,
     complete: (res) => {
-      // Bloqueio de ecrã de login do Google
-      if (res.data.length > 0 && Object.keys(res.data[0]).some(k => k && k.toLowerCase().includes("<!doctype html>"))) {
-        return reject("O link não está público. Publique a folha de cálculo na web.");
+      const data = res.data;
+      if (data.length === 0) return resolve([]);
+      if (data[0] && typeof data[0][0] === 'string' && data[0][0].toLowerCase().includes("<!doctype html>")) {
+        return reject("O link não está público. Publique na Web como CSV.");
       }
-      resolve(res.data);
+
+      // Procura a linha que tem o cabeçalho real (ignora as linhas de título do ERP)
+      let headerIndex = 0;
+      for (let i = 0; i < Math.min(15, data.length); i++) {
+        const rowStr = data[i].join("").toUpperCase();
+        if (rowStr.includes("DEPARTAMENTO") || rowStr.includes("CATEGORIA") || rowStr.includes("VALOR")) {
+          headerIndex = i;
+          break;
+        }
+      }
+
+      const headers = data[headerIndex].map(h => (h || "").trim());
+      const formatado = [];
+
+      for (let i = headerIndex + 1; i < data.length; i++) {
+        let obj = {};
+        data[i].forEach((cell, idx) => { if (headers[idx]) obj[headers[idx]] = cell; });
+        formatado.push(obj);
+      }
+      resolve(formatado);
     },
-    error: (err) => reject(err.message || "Não foi possível transferir o ficheiro CSV.")
+    error: (err) => reject(err.message || "Erro ao baixar arquivo.")
   });
 });
 
 // ==========================================
-// INICIALIZAÇÃO SEGURA DA APLICAÇÃO
+// INICIALIZAÇÃO
 // ==========================================
 window.onload = async function() {
   try {
@@ -88,10 +105,7 @@ window.onload = async function() {
 
     if (supabaseClient) {
       const { data: config } = await supabaseClient.from('configuracoes').select('*').limit(1).single();
-      if (config) { 
-        configGlobal.titulo = config.titulo || "Brasil Pontes"; 
-        configGlobal.urlRealizado = config.url_realizado || ""; 
-      }
+      if (config) { configGlobal.titulo = config.titulo || "Brasil Pontes"; configGlobal.urlRealizado = config.url_realizado || ""; }
       
       const { data: users } = await supabaseClient.from('usuarios').select('*');
       if (users && Array.isArray(users)) {
@@ -110,16 +124,13 @@ window.onload = async function() {
         });
       }
     }
-  } catch (e) { 
-    console.warn("Aviso: Utilizando sistema em modo offline local.", e); 
-  }
+  } catch (e) { console.warn("Modo offline."); }
   
   const sessao = localStorage.getItem('usuario_bp_id');
   if (sessao) {
     if (sessao === "local_master") usuarioAutenticado = MASTER_USER;
     else usuarioAutenticado = usuariosBD.find(u => u.id === sessao || u.usuario === sessao);
   }
-  
   verificarSessao();
 };
 
@@ -137,94 +148,55 @@ function verificarSessao() {
 }
 
 // ==========================================
-// LOGIN BLINDADO (ENTRA INSTANTANEAMENTE COM A SENHA MESTRE)
+// LOGIN BLINDADO
 // ==========================================
 async function executarLogin(e) {
   if (e) e.preventDefault(); 
-  
   const inputUser = document.getElementById('login-usuario').value.trim();
   const inputSenha = document.getElementById('login-senha').value.trim();
 
-  if (!inputUser || !inputSenha) return alert("Por favor, preencha todos os campos.");
-
+  if (!inputUser || !inputSenha) return alert("Preencha tudo.");
   const btn = document.getElementById('btn-entrar');
   const txtOriginal = btn.innerText;
   btn.innerText = "A autenticar...";
 
-  // 1. Bypass Garantido (Mestre Local)
   if ((inputUser === MASTER_USER.usuario || inputUser === MASTER_USER.email) && inputSenha === MASTER_USER.senha) {
-    usuarioAutenticado = MASTER_USER;
-    localStorage.setItem('usuario_bp_id', MASTER_USER.id);
-    verificarSessao();
-    btn.innerText = txtOriginal;
-    return;
+    usuarioAutenticado = MASTER_USER; localStorage.setItem('usuario_bp_id', MASTER_USER.id);
+    verificarSessao(); btn.innerText = txtOriginal; return;
   }
 
-  // 2. Consulta Supabase
   try {
     if (supabaseClient) {
-      const { data: user } = await supabaseClient.from('usuarios')
-        .select('*')
-        .or(`usuario.eq.${inputUser},email.eq.${inputUser}`)
-        .eq('senha', inputSenha)
-        .single();
-          
+      const { data: user } = await supabaseClient.from('usuarios').select('*').or(`usuario.eq.${inputUser},email.eq.${inputUser}`).eq('senha', inputSenha).single();
       if (user) {
         if (user.status === "Aprovado") {
-          usuarioAutenticado = user; 
-          localStorage.setItem('usuario_bp_id', user.id); 
-          verificarSessao();
-        } else {
-          alert("Acesso pendente de aprovação pelo Mestre.");
-        }
-        btn.innerText = txtOriginal;
-        return;
+          usuarioAutenticado = user; localStorage.setItem('usuario_bp_id', user.id); verificarSessao();
+        } else alert("Acesso pendente de aprovação.");
+        btn.innerText = txtOriginal; return;
       }
     }
-  } catch (err) {
-    console.warn("Aviso de BD:", err);
-  }
+  } catch (err) {}
 
-  // 3. Fallback Local
   const userLocal = usuariosBD.find(u => (u.usuario === inputUser || u.email === inputUser) && u.senha === inputSenha);
   if (userLocal) {
-    if (userLocal.status === "Aprovado") {
-      usuarioAutenticado = userLocal; 
-      localStorage.setItem('usuario_bp_id', userLocal.id); 
-      verificarSessao();
-    } else {
-      alert("Acesso pendente de aprovação.");
-    }
-  } else {
-    alert("Usuário ou senha incorretos.");
-  }
+    if (userLocal.status === "Aprovado") { usuarioAutenticado = userLocal; localStorage.setItem('usuario_bp_id', userLocal.id); verificarSessao(); }
+    else alert("Acesso pendente.");
+  } else alert("Usuário ou senha incorretos.");
   
   btn.innerText = txtOriginal;
 }
 
-function executarLogout() { 
-  usuarioAutenticado = null; 
-  localStorage.removeItem('usuario_bp_id'); 
-  verificarSessao(); 
-}
-
-function exibirFormSolicitacao() { 
-  document.getElementById('form-login').classList.add('hidden'); 
-  document.getElementById('form-solicitacao').classList.remove('hidden'); 
-}
-
-function exibirFormLogin() { 
-  document.getElementById('form-solicitacao').classList.add('hidden'); 
-  document.getElementById('form-login').classList.remove('hidden'); 
-}
+function executarLogout() { usuarioAutenticado = null; localStorage.removeItem('usuario_bp_id'); verificarSessao(); }
+function exibirFormSolicitacao() { document.getElementById('form-login').classList.add('hidden'); document.getElementById('form-solicitacao').classList.remove('hidden'); }
+function exibirFormLogin() { document.getElementById('form-solicitacao').classList.add('hidden'); document.getElementById('form-login').classList.remove('hidden'); }
 
 // ==========================================
-// MOTOR DE SINCRONIZAÇÃO E DASHBOARD
+// MOTOR DE SINCRONIZAÇÃO MATEMÁTICA
 // ==========================================
 async function sincronizarTodasPlanilhas() {
   if (!configGlobal.urlRealizado) return alert("Menu Configurações: Adicione o Link do Realizado.");
   const btn = document.getElementById('btn-sync');
-  if (btn) btn.innerText = "⏳ A Sincronizar BD...";
+  if (btn) btn.innerText = "⏳ A Extrair Dados...";
 
   try {
     const dadosRealizado = await buscarCSV(configGlobal.urlRealizado);
@@ -234,10 +206,8 @@ async function sincronizarTodasPlanilhas() {
       obrasBD[k].previstoTotal = 0; obrasBD[k].categoriasPrevisto = {};
     });
 
-    // Limpeza de chaves de coluna para o Realizado (para prevenir erros com espaços invisíveis do Excel)
     dadosRealizado.forEach(linha => {
-      const colunas = Object.keys(linha);
-      const chvDepto = colunas.find(k => k && (k.toUpperCase().includes("DEPARTAMENTO") || k.toUpperCase().includes("CENTRO DE CUSTO")));
+      const chvDepto = Object.keys(linha).find(k => k.toUpperCase().includes("DEPARTAMENTO") || k.toUpperCase().includes("CENTRO DE CUSTO"));
       const deptoOriginal = chvDepto ? (linha[chvDepto] || "").trim() : "";
       
       if (!deptoOriginal || deptoOriginal === "N/D" || deptoOriginal === "0.0") return;
@@ -247,11 +217,11 @@ async function sincronizarTodasPlanilhas() {
         obrasBD[deptoID] = { id: deptoID, nome: deptoOriginal, cc: deptoOriginal, responsavel: "Não Atribuído", status: "Ativa", urlPrevistoCSV: "", previstoTotal: 0, realizadoTotal: 0, categoriasPrevisto: {}, categoriasRealizado: {} };
       }
 
-      const chvVal = colunas.find(k => k && (k.toUpperCase().includes("VALOR LÍQUIDO") || k.toUpperCase().includes("VALOR DA CONTA")));
-      let valorStr = chvVal ? String(linha[chvVal] || "0") : "0";
-      let valor = Math.abs(parseFloat(valorStr.replace("R$", "").replace(/\./g, "").replace(",", ".").trim()) || 0);
+      // Procura a coluna de Valor e aplica o Parse Monetário Inteligente
+      const chvVal = Object.keys(linha).find(k => k.toUpperCase().includes("VALOR LÍQUIDO") || k.toUpperCase().includes("VALOR DA CONTA"));
+      let valor = parseMonetario(linha[chvVal]);
 
-      const chvCat = colunas.find(k => k && k.toUpperCase() === "CATEGORIA");
+      const chvCat = Object.keys(linha).find(k => k.toUpperCase() === "CATEGORIA");
       const categoria = chvCat ? (linha[chvCat] || "Outros").trim() : "Outros";
 
       if (obrasBD[deptoID].status !== "Arquivada") {
@@ -260,20 +230,17 @@ async function sincronizarTodasPlanilhas() {
       }
     });
 
-    // Previsto
     const promessasPrevisto = Object.keys(obrasBD).map(async (key) => {
       const obra = obrasBD[key];
       if (obra.urlPrevistoCSV && obra.urlPrevistoCSV.trim() !== "") {
         try {
           const dP = await buscarCSV(obra.urlPrevistoCSV);
           dP.forEach(linha => {
-            const colunas = Object.keys(linha);
-            const chvCat = colunas.find(k => k && (k.toUpperCase().includes("CATEGORIA BP") || k.toUpperCase().includes("NATUREZA/GRUPO")));
+            const chvCat = Object.keys(linha).find(k => k.toUpperCase().includes("CATEGORIA"));
             const catBP = chvCat ? (linha[chvCat] || "Outros").trim() : "Outros";
             
-            const chvCst = colunas.find(k => k && k.toUpperCase().includes("CUSTO TOTAL"));
-            let custoStr = chvCst ? String(linha[chvCst] || "0") : "0";
-            let custo = parseFloat(custoStr.replace("R$", "").replace(/\./g, "").replace(",", ".").trim()) || 0;
+            const chvCst = Object.keys(linha).find(k => k.toUpperCase().includes("CUSTO TOTAL") || k.toUpperCase().includes("VALOR"));
+            let custo = parseMonetario(linha[chvCst]);
             
             obra.categoriasPrevisto[catBP] = (obra.categoriasPrevisto[catBP] || 0) + custo;
           });
@@ -284,7 +251,6 @@ async function sincronizarTodasPlanilhas() {
 
     await Promise.all(promessasPrevisto);
 
-    // Guardar Supabase
     if (supabaseClient) {
       for (const key in obrasBD) {
         const o = obrasBD[key];
@@ -296,20 +262,21 @@ async function sincronizarTodasPlanilhas() {
     localStorage.setItem('obras_bp', JSON.stringify(obrasBD));
     popularSeletorObras();
     atualizarDashboard();
-
   } catch (error) {
-    alert("Falha na sincronização. Certifique-se que o link de partilha Google Sheets está configurado como 'Qualquer pessoa com o link' nas permissões de leitura.");
-    console.error(error);
+    alert("Falha na sincronização dos dados.\nMotivo: " + error);
   } finally {
     if (btn) btn.innerHTML = "🔄 Sincronizar Base de Dados";
   }
 }
 
+// ==========================================
+// DASHBOARD E FARÓIS
+// ==========================================
 function popularSeletorObras() {
   const seletor = document.getElementById('seletor-obra');
   seletor.innerHTML = '';
   const chaves = Object.keys(obrasBD).filter(k => obrasBD[k].status !== "Arquivada");
-  if (chaves.length === 0) return seletor.innerHTML = `<option value="">Sem obras ativas...</option>`;
+  if (chaves.length === 0) return seletor.innerHTML = `<option value="">Sem dados validados...</option>`;
   chaves.forEach(k => seletor.innerHTML += `<option value="${k}">${obrasBD[k].nome}</option>`);
   if (!obraAtivaID || !obrasBD[obraAtivaID] || obrasBD[obraAtivaID].status === "Arquivada") obraAtivaID = chaves[0];
   seletor.value = obraAtivaID;
@@ -485,7 +452,7 @@ async function salvarConfiguracoesGerais() {
 }
 
 // ==========================================
-// USUÁRIOS
+// USUÁRIOS E PERMISSÕES
 // ==========================================
 function aplicarPermissoesPerfil() {
   document.getElementById('user-display-name').innerText = usuarioAutenticado.nome;
