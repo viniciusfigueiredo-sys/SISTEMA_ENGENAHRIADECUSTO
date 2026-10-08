@@ -8,6 +8,9 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+  <!-- SUPABASE JS -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  
   <link rel="stylesheet" href="style.css">
 
   <script>
@@ -29,7 +32,9 @@
 </head>
 <body class="bg-bp-bg font-sans text-gray-800 antialiased min-h-screen flex flex-col">
 
-  <!-- TELA DE LOGIN / CADASTRO -->
+  <!-- ========================================== -->
+  <!-- TELA DE LOGIN / CADASTRO (FUNDO AZUL)      -->
+  <!-- ========================================== -->
   <div id="screen-login" class="fixed inset-0 bg-bp-blue z-50 flex items-center justify-center p-4">
     <div class="bg-white rounded-2xl max-w-md w-full p-8 shadow-2xl border border-bp-light/20 space-y-6 relative">
       <div class="text-center space-y-2">
@@ -42,6 +47,7 @@
         <p class="text-xs text-gray-500 font-medium">Controladoria & Engenharia de Custos</p>
       </div>
 
+      <!-- FORMULÁRIO DE LOGIN -->
       <div id="box-login" class="space-y-4">
         <div>
           <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Usuário ou E-mail:</label>
@@ -63,6 +69,7 @@
         </div>
       </div>
 
+      <!-- FORMULÁRIO DE SOLICITAÇÃO -->
       <div id="box-solicitacao" class="space-y-4 hidden">
         <div class="bg-amber-50 border-l-4 border-amber-400 p-2.5 rounded text-[11px] text-amber-800">
           ℹ️ Seu cadastro precisará da <strong>aprovação do usuário Mestre</strong>.
@@ -95,7 +102,9 @@
     </div>
   </div>
 
-  <!-- SISTEMA PRINCIPAL -->
+  <!-- ========================================== -->
+  <!-- SISTEMA PRINCIPAL                          -->
+  <!-- ========================================== -->
   <div id="app-container" class="hidden min-h-screen flex flex-col">
     <header class="bg-bp-blue text-white shadow-lg sticky top-0 z-40">
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
@@ -150,7 +159,7 @@
             <h2 id="obra-titulo" class="text-2xl font-black text-bp-blue">---</h2>
             <span id="obra-badge-status" class="bg-emerald-100 text-emerald-800 text-xs font-bold px-2.5 py-0.5 rounded-full">Ativa</span>
           </div>
-          <p class="text-xs text-gray-500 mt-1">Departamento / CC: <span id="obra-cc" class="font-semibold text-gray-700">---</span> | Gestor: <span id="obra-resp" class="font-semibold text-gray-700">---</span></p>
+          <p class="text-xs text-gray-500 mt-1">Departamento / Filtro: <span id="obra-cc" class="font-semibold text-gray-700">---</span> | Gestor: <span id="obra-resp" class="font-semibold text-gray-700">---</span></p>
         </div>
 
         <div class="flex flex-wrap items-center gap-3">
@@ -164,7 +173,7 @@
           </div>
 
           <button onclick="sincronizarTodasPlanilhas()" id="btn-sync" class="bg-bp-blue hover:bg-bp-dark text-white text-xs font-bold px-4 py-2 rounded-lg transition-all flex items-center gap-1 shadow">
-            🔄 Sincronizar Google Sheets
+            🔄 Sincronizar Base de Dados
           </button>
         </div>
       </section>
@@ -192,7 +201,7 @@
         </div>
       </section>
 
-      <!-- TABELA COM FAROL -->
+      <!-- TABELA DEMONSTRATIVA COM FAROL -->
       <section class="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
         <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-4">
           <h3 class="text-base font-bold text-bp-blue">Demonstrativo e Farol por Categoria BP</h3>
@@ -251,7 +260,7 @@
 
       <div id="cfg-aba-geral" class="space-y-4 text-xs">
         <div class="bg-amber-50 border-l-4 border-amber-400 p-3 rounded text-[11px] text-amber-800">
-          <strong>Aviso sobre Links do Google Sheets:</strong> Cole o link de partilha padrão. O sistema tentará converter automaticamente para leitura CSV.
+          <strong>Aviso sobre Links:</strong> Cole o link de partilha padrão. O sistema tentará converter automaticamente para leitura CSV.
         </div>
         <div class="bg-bp-bg p-4 rounded-xl border space-y-3">
           <p class="font-bold text-bp-blue uppercase">Configurações Gerais</p>
@@ -314,9 +323,7 @@
           </div>
           <button type="button" onclick="adicionarNovoGrafico()" class="bg-bp-blue text-white font-bold px-4 py-2 rounded-lg hover:bg-bp-dark">➕ Adicionar Gráfico</button>
         </div>
-
-        <div id="lista-graficos-config" class="space-y-2">
-        </div>
+        <div id="lista-graficos-config" class="space-y-2"></div>
       </div>
 
       <div class="flex justify-end border-t pt-3">
@@ -329,7 +336,6 @@
 
   <!-- MODAL: GESTÃO DE USUÁRIOS -->
   <div id="modal-usuarios" class="fixed inset-0 bg-black/60 backdrop-blur-sm hidden z-50 flex items-center justify-center p-4">
-    <!-- (Mantido o código do Modal de Usuários igual ao anterior) -->
     <div class="bg-white rounded-2xl max-w-3xl w-full p-6 shadow-2xl border border-gray-100 space-y-4 max-h-[90vh] overflow-y-auto">
       <div class="flex justify-between items-center border-b pb-3">
         <h3 class="text-lg font-bold text-bp-blue">Gestão de Usuários e Controle Mestre</h3>
@@ -360,7 +366,6 @@
           <p class="font-bold text-amber-900 uppercase">⚠️ Solicitações Pendentes</p>
           <span id="count-pendentes" class="bg-amber-200 text-amber-900 font-bold px-2 py-0.5 rounded-full">0</span>
         </div>
-        
         <div class="overflow-x-auto">
           <table class="w-full text-left bg-white rounded-lg overflow-hidden shadow-sm">
             <thead class="bg-amber-100 text-amber-900 font-bold uppercase text-[10px]">
@@ -371,8 +376,7 @@
                 <th class="p-2 text-center">Ação</th>
               </tr>
             </thead>
-            <tbody id="tabela-pendentes-body" class="divide-y">
-            </tbody>
+            <tbody id="tabela-pendentes-body" class="divide-y"></tbody>
           </table>
         </div>
       </div>
@@ -389,8 +393,7 @@
                 <th class="p-2 text-center">Status</th>
               </tr>
             </thead>
-            <tbody id="tabela-usuarios-body" class="divide-y">
-            </tbody>
+            <tbody id="tabela-usuarios-body" class="divide-y"></tbody>
           </table>
         </div>
       </div>
