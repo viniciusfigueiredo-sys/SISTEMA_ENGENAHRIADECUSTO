@@ -1,7 +1,6 @@
 // ==========================================
 // CONFIGURAÇÃO DO SUPABASE (BANCO DE DADOS)
 // ==========================================
-// Credenciais exatas fornecidas para ligação do frontend
 const SUPABASE_URL = 'https://dgolbcuhjruncildelth.supabase.co'; 
 const SUPABASE_KEY = 'sb_publishable_xAc46P9gmgmzMyKIyl9OJA__9MoyMFK';
 
@@ -11,10 +10,14 @@ const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // ==========================================
 // VARIÁVEIS DE ESTADO E MEMÓRIA DO SISTEMA
 // ==========================================
-let usuariosBD = [];
+// FALLBACK DE SEGURANÇA: Mestre sempre disponível caso o Supabase falhe
+let usuariosBD = [
+  { id: "local_master", nome: "Vinícius Souza (Mestre)", usuario: "vinicius_souzaf", email: "mestre@brasilpontes.com.br", senha: "741852963", perfil: "Mestre", status: "Aprovado" }
+];
 let solicitacoesPendentesBD = [];
-let configGlobal = { titulo: "Brasil Pontes", urlRealizado: "" };
-let obrasBD = {};
+
+let configGlobal = JSON.parse(localStorage.getItem('config_bp')) || { titulo: "Brasil Pontes", urlRealizado: "" };
+let obrasBD = JSON.parse(localStorage.getItem('obras_bp')) || {};
 
 let graficosConfig = [
   { id: "chart_categoria_comp", titulo: "Comparativo Previsto x Realizado por Categoria BP", tipo: "bar", metrica: "categoria" },
@@ -64,7 +67,7 @@ window.onload = async function() {
   
   const sessaoSalva = localStorage.getItem('usuario_bp_id');
   if (sessaoSalva) {
-    usuarioAutenticado = usuariosBD.find(u => u.id === sessaoSalva);
+    usuarioAutenticado = usuariosBD.find(u => u.id === sessaoSalva || u.usuario === sessaoSalva);
   }
   verificarSessao();
 };
@@ -72,27 +75,24 @@ window.onload = async function() {
 async function carregarDadosIniciaisBanco() {
   try {
     // 1. Carregar Configurações Globais
-    const { data: config, error: errCfg } = await supabase.from('configuracoes').select('*').limit(1).single();
+    const { data: config } = await supabase.from('configuracoes').select('*').limit(1).single();
     if (config) {
       configGlobal.titulo = config.titulo || "Brasil Pontes";
       configGlobal.urlRealizado = config.url_realizado || "";
-    } else if (errCfg && errCfg.code === 'PGRST116') {
-      // Se não existir na base de dados, criar por defeito
-      await supabase.from('configuracoes').insert([{ titulo: 'Brasil Pontes', url_realizado: '' }]);
     }
     document.getElementById('header-app-title').innerText = configGlobal.titulo;
     document.getElementById('login-app-title').innerText = configGlobal.titulo;
 
-    // 2. Carregar Utilizadores
+    // 2. Carregar Utilizadores do Supabase e mesclar com o Fallback
     const { data: users } = await supabase.from('usuarios').select('*');
-    if (users) {
+    if (users && users.length > 0) {
       usuariosBD = users.filter(u => u.status === 'Aprovado');
       solicitacoesPendentesBD = users.filter(u => u.status === 'Pendente');
     }
 
     // 3. Carregar Obras
     const { data: obras } = await supabase.from('obras').select('*');
-    if (obras) {
+    if (obras && obras.length > 0) {
       obras.forEach(o => {
         obrasBD[o.id] = {
           id: o.id, nome: o.nome, cc: o.cc, responsavel: o.responsavel, status: o.status, urlPrevistoCSV: o.url_previsto,
@@ -104,7 +104,7 @@ async function carregarDadosIniciaisBanco() {
       });
     }
   } catch (error) {
-    console.error("Erro na leitura do banco:", error);
+    console.warn("Aviso: Falha ao carregar dados iniciais do Supabase. Utilizando memória local.", error);
   }
 }
 
@@ -121,31 +121,58 @@ function verificarSessao() {
   }
 }
 
-// LOGIN E SOLICITAÇÕES
+// ==========================================
+// LOGIN E SOLICITAÇÕES (COM FALLBACK ANTI-FALHA)
+// ==========================================
 async function executarLogin() {
   const inputUser = document.getElementById('login-usuario').value.trim();
   const inputSenha = document.getElementById('login-senha').value.trim();
 
-  if (!inputUser || !inputSenha) return alert("Preencha utilizador e palavra-passe.");
-  
-  // Validação assíncrona na base de dados
-  const { data: user, error } = await supabase.from('usuarios')
-    .select('*')
-    .or(`usuario.eq.${inputUser},email.eq.${inputUser}`)
-    .eq('senha', inputSenha)
-    .single();
+  if (!inputUser || !inputSenha) return alert("Preencha usuário e senha.");
 
-  if (user) {
-    if (user.status === "Aprovado") {
-      usuarioAutenticado = user;
-      localStorage.setItem('usuario_bp_id', user.id);
+  const btn = document.querySelector('#box-login button');
+  btn.innerText = "A autenticar...";
+
+  try {
+    // 1. Tentar validar no banco Supabase
+    const { data: user, error } = await supabase.from('usuarios')
+      .select('*')
+      .or(`usuario.eq.${inputUser},email.eq.${inputUser}`)
+      .eq('senha', inputSenha)
+      .single();
+
+    if (user) {
+      if (user.status === "Aprovado") {
+        usuarioAutenticado = user;
+        localStorage.setItem('usuario_bp_id', user.id);
+        verificarSessao();
+        btn.innerText = "Entrar no Sistema";
+        return;
+      } else {
+        btn.innerText = "Entrar no Sistema";
+        return alert("Acesso pendente de aprovação pelo Mestre.");
+      }
+    }
+  } catch (err) {
+    console.warn("Supabase bloqueado ou vazio. Acionando Fallback Local...", err);
+  }
+
+  // 2. Fallback de Segurança (Busca no array local caso o Supabase falhe/vazio)
+  const userLocal = usuariosBD.find(u => (u.usuario === inputUser || u.email === inputUser) && u.senha === inputSenha);
+  
+  if (userLocal) {
+    if (userLocal.status === "Aprovado") {
+      usuarioAutenticado = userLocal;
+      localStorage.setItem('usuario_bp_id', userLocal.usuario); // Usamos o login como ID local
       verificarSessao();
     } else {
       alert("Acesso pendente de aprovação pelo Mestre.");
     }
   } else {
-    alert("Utilizador ou palavra-passe incorretos.");
+    alert("Usuário ou senha incorretos.");
   }
+
+  btn.innerText = "Entrar no Sistema";
 }
 
 function executarLogout() {
@@ -176,7 +203,6 @@ async function sincronizarTodasPlanilhas() {
   try {
     const dadosRealizado = await buscarCSV(configGlobal.urlRealizado);
     
-    // Resetar somatórios em memória para recálculo
     Object.keys(obrasBD).forEach(k => {
       obrasBD[k].realizadoTotal = 0; obrasBD[k].categoriasRealizado = {};
       obrasBD[k].previstoTotal = 0; obrasBD[k].categoriasPrevisto = {};
@@ -205,7 +231,6 @@ async function sincronizarTodasPlanilhas() {
       }
     });
 
-    // Puxar links de orçamentos previstos das Obras
     const promessasPrevisto = Object.keys(obrasBD).map(async (key) => {
       const obra = obrasBD[key];
       if (obra.urlPrevistoCSV && obra.urlPrevistoCSV.trim() !== "") {
@@ -227,18 +252,19 @@ async function sincronizarTodasPlanilhas() {
 
     await Promise.all(promessasPrevisto);
 
-    // Guardar tudo permanentemente no Supabase
+    // Guardar no Supabase e em cache local
     for (const key in obrasBD) {
       const o = obrasBD[key];
       const dadosJson = { previstoTotal: o.previstoTotal, realizadoTotal: o.realizadoTotal, categoriasPrevisto: o.categoriasPrevisto, categoriasRealizado: o.categoriasRealizado };
       await supabase.from('obras').upsert({ id: o.id, nome: o.nome, cc: o.cc, responsavel: o.responsavel, status: o.status, url_previsto: o.urlPrevistoCSV, dados_json: dadosJson });
     }
 
+    localStorage.setItem('obras_bp', JSON.stringify(obrasBD));
     popularSeletorObras();
     atualizarDashboard();
 
   } catch (error) {
-    alert("Erro na leitura de ficheiros. Verifique os links de partilha e o formato da planilha (CSV/Pub). Detalhes: " + error);
+    alert("Erro na leitura de ficheiros. Verifique os links de partilha e o formato da planilha. Detalhes: " + error);
   } finally {
     if (btn) btn.innerHTML = "🔄 Sincronizar Base de Dados";
   }
@@ -251,8 +277,11 @@ function popularSeletorObras() {
   const seletor = document.getElementById('seletor-obra');
   seletor.innerHTML = '';
   const chaves = Object.keys(obrasBD).filter(k => obrasBD[k].status !== "Arquivada");
+  
   if (chaves.length === 0) return seletor.innerHTML = `<option value="">A aguardar sincronização...</option>`;
+  
   chaves.forEach(k => seletor.innerHTML += `<option value="${k}">${obrasBD[k].nome}</option>`);
+  
   if (!obraAtivaID || !obrasBD[obraAtivaID] || obrasBD[obraAtivaID].status === "Arquivada") obraAtivaID = chaves[0];
   seletor.value = obraAtivaID;
 }
@@ -281,7 +310,6 @@ function atualizarDashboard() {
   document.getElementById('kpi-desvio').innerText = (desvio >= 0 ? "+ " : "") + desvio.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
   document.getElementById('kpi-idc').innerText = idc;
 
-  // Renderizar Tabela e Farol
   const tbody = document.getElementById('tabela-dre-body');
   tbody.innerHTML = '';
   const cats = Array.from(new Set([...Object.keys(obra.categoriasPrevisto || {}), ...Object.keys(obra.categoriasRealizado || {})]));
@@ -381,7 +409,7 @@ function renderizarTabelaGestaoObras() {
       <tr>
         <td class="p-2 font-bold text-gray-600">${o.cc}</td>
         <td class="p-2"><input type="text" value="${o.nome}" onchange="atualizarCampoObra('${id}', 'nome', this.value)" class="border p-1 w-full"></td>
-        <td class="p-2"><input type="url" value="${o.urlPrevistoCSV}" onchange="atualizarCampoObra('${id}', 'urlPrevistoCSV', this.value)" class="border p-1 w-full text-[10px]"></td>
+        <td class="p-2"><input type="url" value="${o.urlPrevistoCSV}" onchange="atualizarCampoObra('${id}', 'urlPrevistoCSV', this.value)" class="border p-1 w-full text-[10px]" placeholder="Link CSV do Previsto..."></td>
         <td class="p-2 text-center space-x-1">
           <button onclick="alternarStatusArquivado('${id}')" class="bg-amber-500 text-white px-2 py-1 rounded text-[10px] font-bold">${o.status === 'Ativa' ? 'Arquivar' : 'Reativar'}</button>
         </td>
@@ -393,6 +421,7 @@ function renderizarTabelaGestaoObras() {
 async function atualizarCampoObra(id, campo, valor) {
   if (obrasBD[id]) {
     obrasBD[id][campo] = valor;
+    localStorage.setItem('obras_bp', JSON.stringify(obrasBD));
     await supabase.from('obras').update({ [campo === 'urlPrevistoCSV' ? 'url_previsto' : campo]: valor }).eq('id', id);
   }
 }
@@ -400,12 +429,12 @@ async function atualizarCampoObra(id, campo, valor) {
 async function alternarStatusArquivado(id) {
   if (obrasBD[id]) {
     obrasBD[id].status = obrasBD[id].status === 'Ativa' ? 'Arquivada' : 'Ativa';
+    localStorage.setItem('obras_bp', JSON.stringify(obrasBD));
     await supabase.from('obras').update({ status: obrasBD[id].status }).eq('id', id);
     popularSeletorObras(); renderizarTabelaGestaoObras(); atualizarDashboard();
   }
 }
 
-// GRÁFICOS PERSONALIZADOS
 function adicionarNovoGrafico() {
   const titulo = document.getElementById('novo-chart-titulo').value.trim();
   const tipo = document.getElementById('novo-chart-tipo').value;
@@ -415,7 +444,9 @@ function adicionarNovoGrafico() {
   document.getElementById('novo-chart-titulo').value = '';
   renderizarListaGraficosConfig();
 }
+
 function removerGrafico(id) { graficosConfig = graficosConfig.filter(g => g.id !== id); renderizarListaGraficosConfig(); }
+
 function renderizarListaGraficosConfig() {
   const div = document.getElementById('lista-graficos-config'); div.innerHTML = '';
   graficosConfig.forEach(g => {
@@ -426,13 +457,11 @@ function renderizarListaGraficosConfig() {
 async function salvarConfiguracoesGerais() {
   configGlobal.titulo = document.getElementById('config-app-title').value.trim();
   configGlobal.urlRealizado = document.getElementById('config-url-unificada').value.trim();
+  localStorage.setItem('config_bp', JSON.stringify(configGlobal));
   
-  // Guardar no Supabase
-  const { error } = await supabase.from('configuracoes').update({ titulo: configGlobal.titulo, url_realizado: configGlobal.urlRealizado }).eq('id', 1);
+  await supabase.from('configuracoes').upsert({ id: 1, titulo: configGlobal.titulo, url_realizado: configGlobal.urlRealizado });
   
-  if (error) console.error("Erro a guardar configurações", error);
   document.getElementById('header-app-title').innerText = configGlobal.titulo;
-  
   fecharModalConfiguracoes();
   if (confirm("Configurações salvas. Sincronizar dados agora para aplicar o link?")) sincronizarTodasPlanilhas();
 }
