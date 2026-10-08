@@ -3,25 +3,30 @@
 // ==========================================
 const SUPABASE_URL = 'https://dgolbcuhjruncildelth.supabase.co'; 
 const SUPABASE_KEY = 'sb_publishable_xAc46P9gmgmzMyKIyl9OJA__9MoyMFK';
-
-// Inicializar cliente do Supabase
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 // ==========================================
 // VARIÁVEIS DE ESTADO E MEMÓRIA DO SISTEMA
 // ==========================================
-// FALLBACK DE SEGURANÇA: Mestre sempre disponível caso o Supabase falhe
-let usuariosBD = [
-  { id: "local_master", nome: "Vinícius Souza (Mestre)", usuario: "vinicius_souzaf", email: "mestre@brasilpontes.com.br", senha: "741852963", perfil: "Mestre", status: "Aprovado" }
-];
-let solicitacoesPendentesBD = [];
+// CHAVE MESTRA: Acesso 100% garantido caso o banco falhe
+const MASTER_USER = { 
+  id: "local_master", 
+  nome: "Vinícius Souza (Mestre)", 
+  usuario: "vinicius_souzaf", 
+  email: "mestre@brasilpontes.com.br", 
+  senha: "741852963", 
+  perfil: "Mestre", 
+  status: "Aprovado" 
+};
 
+let usuariosBD = [MASTER_USER];
+let solicitacoesPendentesBD = [];
 let configGlobal = JSON.parse(localStorage.getItem('config_bp')) || { titulo: "Brasil Pontes", urlRealizado: "" };
 let obrasBD = JSON.parse(localStorage.getItem('obras_bp')) || {};
 
 let graficosConfig = [
-  { id: "chart_categoria_comp", titulo: "Comparativo Previsto x Realizado por Categoria BP", tipo: "bar", metrica: "categoria" },
-  { id: "chart_curva_s", titulo: "Evolução do Desempenho Orçamentário", tipo: "line", metrica: "curvaS" }
+  { id: "chart_categoria_comp", titulo: "Comparativo Previsto x Realizado", tipo: "bar", metrica: "categoria" },
+  { id: "chart_curva_s", titulo: "Evolução do Desempenho", tipo: "line", metrica: "curvaS" }
 ];
 let graficosInstancias = {};
 let usuarioAutenticado = null;
@@ -29,7 +34,7 @@ let obraAtivaID = null;
 let multiplicadorCenario = 1;
 
 // ==========================================
-// FUNÇÕES UTILITÁRIAS (LEITURA CSV DO GOOGLE SHEETS)
+// FUNÇÕES UTILITÁRIAS (LEITURA CSV DO GOOGLE)
 // ==========================================
 function obterLinkCSV(url) {
   if (!url) return "";
@@ -63,48 +68,54 @@ const buscarCSV = (url) => new Promise((resolve, reject) => {
 // INICIALIZAÇÃO, CARREGAMENTO E SESSÃO
 // ==========================================
 window.onload = async function() {
-  await carregarDadosIniciaisBanco();
+  document.getElementById('header-app-title').innerText = configGlobal.titulo;
+  document.getElementById('login-app-title').innerText = configGlobal.titulo;
+
+  try {
+    // Tenta carregar do Supabase sem travar a tela se falhar
+    await carregarDadosIniciaisBanco();
+  } catch (e) {
+    console.warn("Aviso: Falha ao comunicar com Supabase. Continuando offline.", e);
+  }
   
   const sessaoSalva = localStorage.getItem('usuario_bp_id');
   if (sessaoSalva) {
-    usuarioAutenticado = usuariosBD.find(u => u.id === sessaoSalva || u.usuario === sessaoSalva);
+    if (sessaoSalva === "local_master") {
+      usuarioAutenticado = MASTER_USER;
+    } else {
+      usuarioAutenticado = usuariosBD.find(u => u.id === sessaoSalva || u.usuario === sessaoSalva);
+    }
   }
   verificarSessao();
 };
 
 async function carregarDadosIniciaisBanco() {
-  try {
-    // 1. Carregar Configurações Globais
-    const { data: config } = await supabase.from('configuracoes').select('*').limit(1).single();
-    if (config) {
-      configGlobal.titulo = config.titulo || "Brasil Pontes";
-      configGlobal.urlRealizado = config.url_realizado || "";
-    }
-    document.getElementById('header-app-title').innerText = configGlobal.titulo;
-    document.getElementById('login-app-title').innerText = configGlobal.titulo;
+  // Configurações
+  const { data: config } = await supabase.from('configuracoes').select('*').limit(1).single();
+  if (config) {
+    configGlobal.titulo = config.titulo || "Brasil Pontes";
+    configGlobal.urlRealizado = config.url_realizado || "";
+  }
+  
+  // Utilizadores
+  const { data: users } = await supabase.from('usuarios').select('*');
+  if (users && users.length > 0) {
+    usuariosBD = users.filter(u => u.status === 'Aprovado');
+    solicitacoesPendentesBD = users.filter(u => u.status === 'Pendente');
+  }
 
-    // 2. Carregar Utilizadores do Supabase e mesclar com o Fallback
-    const { data: users } = await supabase.from('usuarios').select('*');
-    if (users && users.length > 0) {
-      usuariosBD = users.filter(u => u.status === 'Aprovado');
-      solicitacoesPendentesBD = users.filter(u => u.status === 'Pendente');
-    }
-
-    // 3. Carregar Obras
-    const { data: obras } = await supabase.from('obras').select('*');
-    if (obras && obras.length > 0) {
-      obras.forEach(o => {
-        obrasBD[o.id] = {
-          id: o.id, nome: o.nome, cc: o.cc, responsavel: o.responsavel, status: o.status, urlPrevistoCSV: o.url_previsto,
-          previstoTotal: o.dados_json?.previstoTotal || 0,
-          realizadoTotal: o.dados_json?.realizadoTotal || 0,
-          categoriasPrevisto: o.dados_json?.categoriasPrevisto || {},
-          categoriasRealizado: o.dados_json?.categoriasRealizado || {}
-        };
-      });
-    }
-  } catch (error) {
-    console.warn("Aviso: Falha ao carregar dados iniciais do Supabase. Utilizando memória local.", error);
+  // Obras
+  const { data: obras } = await supabase.from('obras').select('*');
+  if (obras && obras.length > 0) {
+    obras.forEach(o => {
+      obrasBD[o.id] = {
+        id: o.id, nome: o.nome, cc: o.cc, responsavel: o.responsavel, status: o.status, urlPrevistoCSV: o.url_previsto,
+        previstoTotal: o.dados_json?.previstoTotal || 0,
+        realizadoTotal: o.dados_json?.realizadoTotal || 0,
+        categoriasPrevisto: o.dados_json?.categoriasPrevisto || {},
+        categoriasRealizado: o.dados_json?.categoriasRealizado || {}
+      };
+    });
   }
 }
 
@@ -122,19 +133,28 @@ function verificarSessao() {
 }
 
 // ==========================================
-// LOGIN E SOLICITAÇÕES (COM FALLBACK ANTI-FALHA)
+// LOGIN BLINDADO (COM BYPASS MESTRE)
 // ==========================================
 async function executarLogin() {
   const inputUser = document.getElementById('login-usuario').value.trim();
   const inputSenha = document.getElementById('login-senha').value.trim();
 
-  if (!inputUser || !inputSenha) return alert("Preencha usuário e senha.");
+  if (!inputUser || !inputSenha) return alert("Preencha utilizador e palavra-passe.");
 
   const btn = document.querySelector('#box-login button');
   btn.innerText = "A autenticar...";
 
+  // 1. BYPASS MESTRE (Entra sempre, ignorando falhas no Supabase)
+  if ((inputUser === MASTER_USER.usuario || inputUser === MASTER_USER.email) && inputSenha === MASTER_USER.senha) {
+    usuarioAutenticado = MASTER_USER;
+    localStorage.setItem('usuario_bp_id', MASTER_USER.id);
+    verificarSessao();
+    btn.innerText = "Entrar no Sistema";
+    return;
+  }
+
+  // 2. Consulta Padrão no Supabase (Para outros utilizadores)
   try {
-    // 1. Tentar validar no banco Supabase
     const { data: user, error } = await supabase.from('usuarios')
       .select('*')
       .or(`usuario.eq.${inputUser},email.eq.${inputUser}`)
@@ -146,30 +166,15 @@ async function executarLogin() {
         usuarioAutenticado = user;
         localStorage.setItem('usuario_bp_id', user.id);
         verificarSessao();
-        btn.innerText = "Entrar no Sistema";
-        return;
       } else {
-        btn.innerText = "Entrar no Sistema";
-        return alert("Acesso pendente de aprovação pelo Mestre.");
+        alert("Acesso pendente de aprovação pelo Mestre.");
       }
+    } else {
+      alert("Utilizador ou palavra-passe incorretos.");
     }
   } catch (err) {
-    console.warn("Supabase bloqueado ou vazio. Acionando Fallback Local...", err);
-  }
-
-  // 2. Fallback de Segurança (Busca no array local caso o Supabase falhe/vazio)
-  const userLocal = usuariosBD.find(u => (u.usuario === inputUser || u.email === inputUser) && u.senha === inputSenha);
-  
-  if (userLocal) {
-    if (userLocal.status === "Aprovado") {
-      usuarioAutenticado = userLocal;
-      localStorage.setItem('usuario_bp_id', userLocal.usuario); // Usamos o login como ID local
-      verificarSessao();
-    } else {
-      alert("Acesso pendente de aprovação pelo Mestre.");
-    }
-  } else {
-    alert("Usuário ou senha incorretos.");
+    alert("Erro ao validar utilizador. O banco de dados pode estar indisponível.");
+    console.error(err);
   }
 
   btn.innerText = "Entrar no Sistema";
@@ -198,7 +203,7 @@ async function sincronizarTodasPlanilhas() {
   if (!configGlobal.urlRealizado) return alert("Configure o Link do Realizado no Menu de Configurações.");
   
   const btn = document.getElementById('btn-sync');
-  if (btn) btn.innerText = "⏳ A Processar e Sincronizar BD...";
+  if (btn) btn.innerText = "⏳ A Sincronizar BD...";
 
   try {
     const dadosRealizado = await buscarCSV(configGlobal.urlRealizado);
@@ -252,11 +257,13 @@ async function sincronizarTodasPlanilhas() {
 
     await Promise.all(promessasPrevisto);
 
-    // Guardar no Supabase e em cache local
+    // Guardar no Supabase (se possível) e em cache local
     for (const key in obrasBD) {
       const o = obrasBD[key];
       const dadosJson = { previstoTotal: o.previstoTotal, realizadoTotal: o.realizadoTotal, categoriasPrevisto: o.categoriasPrevisto, categoriasRealizado: o.categoriasRealizado };
-      await supabase.from('obras').upsert({ id: o.id, nome: o.nome, cc: o.cc, responsavel: o.responsavel, status: o.status, url_previsto: o.urlPrevistoCSV, dados_json: dadosJson });
+      try {
+        await supabase.from('obras').upsert({ id: o.id, nome: o.nome, cc: o.cc, responsavel: o.responsavel, status: o.status, url_previsto: o.urlPrevistoCSV, dados_json: dadosJson });
+      } catch(e) {} // Ignora falha silenciosamente caso o banco esteja indisponível
     }
 
     localStorage.setItem('obras_bp', JSON.stringify(obrasBD));
@@ -264,7 +271,7 @@ async function sincronizarTodasPlanilhas() {
     atualizarDashboard();
 
   } catch (error) {
-    alert("Erro na leitura de ficheiros. Verifique os links de partilha e o formato da planilha. Detalhes: " + error);
+    alert("Erro na leitura de ficheiros. Verifique os links de partilha e o formato da planilha.");
   } finally {
     if (btn) btn.innerHTML = "🔄 Sincronizar Base de Dados";
   }
@@ -295,7 +302,7 @@ function atualizarDashboard() {
 
   document.getElementById('obra-titulo').innerText = obra.nome;
   document.getElementById('obra-cc').innerText = obra.cc;
-  document.getElementById('obra-resp').innerText = obra.responsavel;
+  document.getElementById('obra-resp').innerText = obra.responsavel || "Não Atribuído";
   
   const badge = document.getElementById('obra-badge-status');
   badge.innerText = obra.status;
@@ -422,7 +429,7 @@ async function atualizarCampoObra(id, campo, valor) {
   if (obrasBD[id]) {
     obrasBD[id][campo] = valor;
     localStorage.setItem('obras_bp', JSON.stringify(obrasBD));
-    await supabase.from('obras').update({ [campo === 'urlPrevistoCSV' ? 'url_previsto' : campo]: valor }).eq('id', id);
+    try { await supabase.from('obras').update({ [campo === 'urlPrevistoCSV' ? 'url_previsto' : campo]: valor }).eq('id', id); } catch(e){}
   }
 }
 
@@ -430,7 +437,7 @@ async function alternarStatusArquivado(id) {
   if (obrasBD[id]) {
     obrasBD[id].status = obrasBD[id].status === 'Ativa' ? 'Arquivada' : 'Ativa';
     localStorage.setItem('obras_bp', JSON.stringify(obrasBD));
-    await supabase.from('obras').update({ status: obrasBD[id].status }).eq('id', id);
+    try { await supabase.from('obras').update({ status: obrasBD[id].status }).eq('id', id); } catch(e){}
     popularSeletorObras(); renderizarTabelaGestaoObras(); atualizarDashboard();
   }
 }
@@ -459,7 +466,7 @@ async function salvarConfiguracoesGerais() {
   configGlobal.urlRealizado = document.getElementById('config-url-unificada').value.trim();
   localStorage.setItem('config_bp', JSON.stringify(configGlobal));
   
-  await supabase.from('configuracoes').upsert({ id: 1, titulo: configGlobal.titulo, url_realizado: configGlobal.urlRealizado });
+  try { await supabase.from('configuracoes').upsert({ id: 1, titulo: configGlobal.titulo, url_realizado: configGlobal.urlRealizado }); } catch(e) {}
   
   document.getElementById('header-app-title').innerText = configGlobal.titulo;
   fecharModalConfiguracoes();
@@ -467,7 +474,7 @@ async function salvarConfiguracoesGerais() {
 }
 
 // ==========================================
-// GESTÃO DE USUÁRIOS E PERMISSÕES (SUPABASE)
+// GESTÃO DE USUÁRIOS E PERMISSÕES
 // ==========================================
 function aplicarPermissoesPerfil() {
   document.getElementById('user-display-name').innerText = usuarioAutenticado.nome;
@@ -488,12 +495,15 @@ async function criarUsuarioDireto() {
 
   if (!nome || !email || !usuario || !senha) return alert("Preencha todos os campos.");
   
-  const { data, error } = await supabase.from('usuarios').insert([{ nome, email, usuario, senha, perfil, status: 'Aprovado' }]).select();
-  if (error) return alert("Erro: O utilizador ou email já existe.");
-  
-  usuariosBD.push(data[0]);
-  renderizarPainelUsuarios();
-  alert(`Usuário ${usuario} registado na base de dados!`);
+  try {
+    const { data, error } = await supabase.from('usuarios').insert([{ nome, email, usuario, senha, perfil, status: 'Aprovado' }]).select();
+    if (error) return alert("Erro: O utilizador ou email já existe no banco.");
+    usuariosBD.push(data[0]);
+    renderizarPainelUsuarios();
+    alert(`Usuário ${usuario} registado na base de dados!`);
+  } catch (err) {
+    alert("Erro na conexão com o banco.");
+  }
 }
 
 async function solicitarCadastro() {
@@ -503,16 +513,22 @@ async function solicitarCadastro() {
   const senha = document.getElementById('solic-senha').value.trim();
 
   if (!nome || !email || !usuario || !senha) return alert("Preencha os campos.");
-  const { error } = await supabase.from('usuarios').insert([{ nome, email, usuario, senha, perfil: "Engenheiro", status: "Pendente" }]);
-  if (error) return alert("Erro no registo, tente outro login/email.");
   
-  exibirFormLogin(); alert("Solicitação registada e enviada para o banco Supabase!");
+  try {
+    const { error } = await supabase.from('usuarios').insert([{ nome, email, usuario, senha, perfil: "Engenheiro", status: "Pendente" }]);
+    if (error) return alert("Erro no registo, tente outro login/email.");
+    exibirFormLogin(); alert("Solicitação registada!");
+  } catch (e) {
+    alert("Erro de conexão.");
+  }
 }
 
 async function aprovarSolicitacao(id) {
-  await supabase.from('usuarios').update({ status: 'Aprovado' }).eq('id', id);
-  await carregarDadosIniciaisBanco();
-  renderizarPainelUsuarios();
+  try {
+    await supabase.from('usuarios').update({ status: 'Aprovado' }).eq('id', id);
+    await carregarDadosIniciaisBanco();
+    renderizarPainelUsuarios();
+  } catch (e) {}
 }
 
 function renderizarPainelUsuarios() {
