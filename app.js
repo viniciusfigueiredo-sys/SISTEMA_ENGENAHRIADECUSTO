@@ -28,11 +28,66 @@ if (!Array.isArray(configGlobal.planilhasRealizado)) configGlobal.planilhasReali
 
 let dadosBasePlanilhas = [];
 let dadosBaseAtivo = null;
-try {
-  const salvos = localStorage.getItem('dados_base_bp');
-  if (salvos) dadosBasePlanilhas = JSON.parse(salvos);
-} catch (e) { dadosBasePlanilhas = []; }
-if (!Array.isArray(dadosBasePlanilhas)) dadosBasePlanilhas = [];
+const BASE_DB_NAME = 'sistema_bp_dados';
+const BASE_STORE_NAME = 'planilhas';
+
+function abrirBancoDadosBase() {
+  return new Promise((resolve, reject) => {
+    if (!window.indexedDB) return reject(new Error('Este navegador não oferece suporte ao IndexedDB.'));
+    const request = indexedDB.open(BASE_DB_NAME, 1);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(BASE_STORE_NAME)) db.createObjectStore(BASE_STORE_NAME, { keyPath: 'id' });
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error || new Error('Não foi possível abrir o banco local de dados.'));
+  });
+}
+
+async function carregarDadosBaseArmazenados() {
+  const db = await abrirBancoDadosBase();
+  const dados = await new Promise((resolve, reject) => {
+    const tx = db.transaction(BASE_STORE_NAME, 'readonly');
+    const request = tx.objectStore(BASE_STORE_NAME).getAll();
+    request.onsuccess = () => resolve(request.result || []);
+    request.onerror = () => reject(request.error || new Error('Não foi possível ler os dados importados.'));
+  });
+  db.close();
+  if (dados.length) {
+    dadosBasePlanilhas = dados;
+    localStorage.removeItem('dados_base_bp');
+    return;
+  }
+
+  // Migra uma eventual base salva por uma versão anterior em localStorage.
+  const legado = localStorage.getItem('dados_base_bp');
+  if (legado) {
+    try {
+      const importadas = JSON.parse(legado);
+      if (Array.isArray(importadas) && importadas.length) {
+        await salvarDadosBaseArmazenados(importadas);
+        dadosBasePlanilhas = importadas;
+      }
+      localStorage.removeItem('dados_base_bp');
+    } catch (erro) {
+      console.warn('Não foi possível migrar a base antiga do navegador.', erro);
+    }
+  }
+}
+
+async function salvarDadosBaseArmazenados(planilhas) {
+  const db = await abrirBancoDadosBase();
+  await new Promise((resolve, reject) => {
+    const tx = db.transaction(BASE_STORE_NAME, 'readwrite');
+    const store = tx.objectStore(BASE_STORE_NAME);
+    store.clear();
+    planilhas.forEach(planilha => store.put(planilha));
+    tx.oncomplete = resolve;
+    tx.onerror = () => reject(tx.error || new Error('Não foi possível salvar a base de dados no navegador.'));
+    tx.onabort = () => reject(tx.error || new Error('O navegador cancelou o salvamento da base de dados.'));
+  });
+  db.close();
+}
 
 let obrasBD = {};
 try { const obs = localStorage.getItem('obras_bp'); if (obs && obs !== "undefined") obrasBD = JSON.parse(obs); } catch(e){}
@@ -122,6 +177,8 @@ const buscarCSV = (url) => new Promise((resolve, reject) => {
 // INICIALIZAÇÃO
 // ==========================================
 window.onload = async function() {
+  try { await carregarDadosBaseArmazenados(); }
+  catch (e) { console.warn('Falha ao abrir Dados Base no IndexedDB.', e); }
   try {
     document.getElementById('header-app-title').innerText = configGlobal.titulo || "Brasil Pontes";
     document.getElementById('login-app-title').innerText = configGlobal.titulo || "Brasil Pontes";
@@ -382,7 +439,7 @@ async function sincronizarTodasPlanilhas() {
 
     await Promise.all(promessasPrevisto);
 
-    localStorage.setItem('dados_base_bp', JSON.stringify(novasBases));
+    await salvarDadosBaseArmazenados(novasBases);
     localStorage.setItem('obras_bp', JSON.stringify(obrasBD));
     dadosBasePlanilhas = novasBases;
     let errosSupabase = [];
