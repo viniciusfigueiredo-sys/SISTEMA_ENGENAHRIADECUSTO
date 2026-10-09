@@ -648,12 +648,55 @@ function classificarFarol(prev, real) {
   return uso > 100 || (prev === 0 && real > 0) ? 'red' : uso >= 85 ? 'amber' : 'green';
 }
 
+function renderizarInsightsDashboard(linhas, totalPrevisto, totalRealizado, saldo, idc) {
+  const root=document.getElementById('dashboard-insights-content'); if(!root) return; root.replaceChildren();
+  const moeda=v=>Number(v||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+  const uso=l=>l.previsto>0?l.realizado/l.previsto*100:(l.realizado>0?Infinity:0);
+  const pct=v=>Number.isFinite(v)?v.toFixed(1)+'%':'N/P';
+  const criarCard=(titulo)=>{const card=document.createElement('article');card.className='mini-report-card bg-slate-50 border border-slate-200 rounded-lg p-3 space-y-2';const h=document.createElement('h3');h.className='font-bold text-[#003399] text-sm';h.textContent=titulo;card.appendChild(h);root.appendChild(card);return card;};
+  const lista=(card,items,renderItem)=>{if(!items.length){const p=document.createElement('p');p.className='text-xs text-gray-500';p.textContent='Nenhum item para os filtros atuais.';card.appendChild(p);return;}const ul=document.createElement('ul');ul.className='space-y-1 text-xs text-gray-700 list-disc pl-4';items.forEach(item=>{const li=document.createElement('li');li.textContent=renderItem(item);ul.appendChild(li);});card.appendChild(ul);};
+  const resumo=criarCard('1. Resumo executivo');
+  const use=totalPrevisto>0?totalRealizado/totalPrevisto*100:null;
+  const texto=totalPrevisto>0?'Foram realizados '+moeda(totalRealizado)+' de '+moeda(totalPrevisto)+' ('+pct(use)+'). Saldo: '+moeda(saldo)+'; IDC: '+(totalRealizado>0?idc:'—')+'.':'O previsto total é '+moeda(totalPrevisto)+' e o realizado é '+moeda(totalRealizado)+'. Sem orçamento previsto, não é possível calcular o percentual de uso.';
+  const pResumo=document.createElement('p');pResumo.className='text-xs text-gray-700 leading-relaxed';pResumo.textContent=texto;resumo.appendChild(pResumo);
+
+  const alertas=linhas.filter(l=>l.farol==='red'||l.farol==='amber').sort((a,b)=>uso(b)-uso(a));
+  const pontos=criarCard('2. Pontos de atenção');
+  lista(pontos,alertas.slice(0,5),l=>{const status=l.farol==='amber'?'Atenção':(l.previsto===0&&l.realizado>0?'N/P — Não previsto':'Estourado');const excesso=l.previsto>0?' · excedente '+moeda(Math.max(0,l.realizado-l.previsto)):'';return l.cat+': '+status+' · uso '+pct(uso(l))+' · realizado '+moeda(l.realizado)+excesso;});
+
+  const custos=linhas.filter(l=>l.realizado>0).sort((a,b)=>b.realizado-a.realizado);
+  const maiores=criarCard('3. Maiores custos realizados');
+  lista(maiores,custos.slice(0,5),l=>l.cat+': '+moeda(l.realizado)+' ('+(totalRealizado>0?pct(l.realizado/totalRealizado*100):'—')+' do realizado total)');
+
+  const pressionadas=linhas.filter(l=>l.previsto>0).sort((a,b)=>uso(b)-uso(a));
+  const pressao=criarCard('4. Categorias mais pressionadas');
+  const alta=pressionadas.filter(l=>uso(l)>=85).slice(0,5);
+  if(alta.length) lista(pressao,alta,l=>l.cat+': '+pct(uso(l))+' do previsto usado · saldo '+moeda(l.previsto-l.realizado));
+  else {const pmsg=document.createElement('p');pmsg.className='text-xs text-emerald-800';pmsg.textContent=pressionadas.length?'Nenhuma categoria atingiu 85% do previsto. Mais próxima do limite: '+pressionadas[0].cat+' ('+pct(uso(pressionadas[0]))+').':'Não há valores previstos para calcular o comprometimento.';pressao.appendChild(pmsg);}
+
+  const cobertura=criarCard('5. Cobertura e qualidade da base');
+  const semPrevisto=linhas.filter(l=>l.previsto===0&&l.realizado>0), semRealizado=linhas.filter(l=>l.previsto>0&&l.realizado===0);
+  const fontes=(dadosBasePlanilhas||[]).map(x=>x.nome).filter(Boolean);
+  const coberturaTxt=semPrevisto.length+' categoria(s) com realizado sem previsto (N/P); '+semRealizado.length+' categoria(s) prevista(s) sem realizado importado nos filtros atuais. '+fontes.length+' planilha(s) em Dados Base.';
+  const pCob=document.createElement('p');pCob.className='text-xs text-gray-700 leading-relaxed';pCob.textContent=coberturaTxt;cobertura.appendChild(pCob);
+
+  const observacoes=[];
+  if(alertas.length)observacoes.push(alertas.length+' categoria(s) precisam de conferência por atenção ou estouro.');
+  else observacoes.push('Nenhuma categoria atingiu 85% do previsto nos filtros atuais.');
+  if(custos.length&&totalRealizado>0){const top3=custos.slice(0,3).reduce((acc,l)=>acc+l.realizado,0);observacoes.push('As três maiores categorias concentram '+pct(top3/totalRealizado*100)+' do realizado.');}
+  if(semPrevisto.length)observacoes.push('Confira as categorias N/P e complete o orçamento previsto, se aplicável.');
+  const leitura=document.createElement('div'); leitura.className='mt-2 border-t border-slate-200 pt-2';
+  const leituraTitulo=document.createElement('h4'); leituraTitulo.className='font-semibold text-[#003399] text-xs'; leituraTitulo.textContent='Leitura gerencial'; leitura.appendChild(leituraTitulo);
+  lista(leitura,observacoes,x=>x); resumo.appendChild(leitura);
+}
+
 function atualizarDashboard() {
   if (obraAtivaID && obrasBD[obraAtivaID]?.status === 'Arquivada' && usuarioAutenticado?.perfil !== 'Mestre') popularSeletorObras();
   if (!obraAtivaID || !obrasBD[obraAtivaID]) {
     ['obra-titulo','obra-cc','obra-resp'].forEach(id => { const el=document.getElementById(id); if(el) el.textContent='—'; });
     ['kpi-previsto','kpi-realizado','kpi-desvio'].forEach(id => { const el=document.getElementById(id); if(el) el.textContent='R$ 0,00'; });
     linhasDashboardVisiveis=[];
+    renderizarInsightsDashboard([],0,0,0,'—');
     const tbody=document.getElementById('tabela-dre-body'); if(tbody) tbody.replaceChildren();
     Object.values(graficosInstancias).forEach(chart=>chart?.destroy()); graficosInstancias={};
     const charts=document.getElementById('grid-graficos-dinamicos'); if(charts) charts.replaceChildren();
@@ -686,6 +729,7 @@ function atualizarDashboard() {
   document.getElementById('kpi-realizado').innerText = realVisivel.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
   document.getElementById('kpi-desvio').innerText = (dsv >= 0 ? "+ " : "") + dsv.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
   document.getElementById('kpi-idc').innerText = idc;
+  renderizarInsightsDashboard(linhasVisiveis,pAj,realVisivel,dsv,idc);
 
   const tbody = document.getElementById('tabela-dre-body');
   tbody.innerHTML = '';
@@ -1010,11 +1054,6 @@ async function gerarRelatorioImprimir() {
   const brand=el('div','report-brand');brand.append(el('strong','',configGlobal.titulo||'Brasil Pontes'),el('span','','Controladoria & Engenharia de Custos'));
   barra.append(wave,logo,brand);root.appendChild(barra);
 
-  const rodape=el('footer','report-letterhead-footer');
-  const ondaFooter=document.createElementNS('http://www.w3.org/2000/svg','svg');ondaFooter.setAttribute('viewBox','0 0 1200 100');ondaFooter.setAttribute('preserveAspectRatio','none');ondaFooter.setAttribute('aria-hidden','true');
-  const pathFooter=document.createElementNS('http://www.w3.org/2000/svg','path');pathFooter.setAttribute('d','M0 30 C300 0 680 72 930 42 C1050 28 1130 15 1200 0 V100 H0 Z');pathFooter.setAttribute('fill','#003399');ondaFooter.appendChild(pathFooter);
-  rodape.append(ondaFooter,el('div','report-footer-text','Rua Grécia, 59, Ibituruna – Montes Claros/MG · CEP: 39408-087 · Telefone: (31) 3658-9664'));root.appendChild(rodape);
-
   const capa=el('section','report-cover');
   capa.append(el('p','report-kicker','CONTROLADORIA · ENGENHARIA DE CUSTOS'),el('h1','report-title','Relatório Gerencial de Custos'),el('p','report-subtitle','Acompanhamento do custo previsto em relação ao realizado'));
   const gerado=el('p','report-generated','Emitido em '+new Date().toLocaleString('pt-BR')+' · Responsável: '+(usuarioAutenticado?.nome||usuarioAutenticado?.usuario||'Usuário'));capa.appendChild(gerado);
@@ -1041,10 +1080,9 @@ async function gerarRelatorioImprimir() {
     .forEach(([label,value],i)=>{const card=el('div','report-kpi report-kpi-'+i);card.append(el('span','',label),el('strong','',value));kpis.appendChild(card);});root.appendChild(kpis);
   const legend=el('div','report-farol-summary');[['green','🟢 Seguro'],['amber','🟡 Atenção'],['red','🔴 Estourado']].forEach(([key,label])=>legend.appendChild(el('span','',label+': '+(counts[key]||0))));root.appendChild(legend);
 
-  root.appendChild(heading('Pontos de atenção','Categorias ordenadas pelo percentual de uso do previsto. N/P indica realizado sem valor previsto.'));
-  const alertas=linhasDashboardVisiveis.filter(l=>l.farol==='red'||l.farol==='amber').sort((a,b)=>{const pct=x=>x.previsto>0?x.realizado/x.previsto:Infinity;return pct(b)-pct(a);});
-  if(alertas.length){const lista=el('ul','report-alert-list');alertas.slice(0,8).forEach(l=>{const pct=percentual(l.realizado,l.previsto),status=l.farol==='red'?(l.previsto===0&&l.realizado>0?'N/P — Não previsto':'Estourado'):'Atenção';lista.appendChild(el('li','',l.cat+' · '+status+' · '+pct+' utilizado · realizado '+moeda(l.realizado)));});root.appendChild(lista);}
-  else root.appendChild(el('p','report-no-alert','Nenhuma categoria em Atenção ou Estourado nos filtros aplicados.'));
+  const conteudoInsights=document.getElementById('dashboard-insights-content');
+  if(conteudoInsights?.children.length){root.appendChild(heading('Análise gerencial','Pontos de atenção, opiniões gerenciais e pequenos relatórios calculados com os filtros ativos.'));root.appendChild(conteudoInsights.cloneNode(true));}
+  const alertas=linhasDashboardVisiveis.filter(l=>l.farol==='red'||l.farol==='amber');
 
   root.appendChild(heading('Demonstrativo por categoria','Valores em reais. O saldo corresponde ao previsto menos o realizado.'));
   const tabela=el('table','report-table');const thead=el('thead'),trh=el('tr');['Categoria / Natureza','Previsto','Realizado','Uso do previsto','Saldo','Farol'].forEach(t=>trh.appendChild(el('th','',t)));thead.appendChild(trh);tabela.appendChild(thead);
@@ -1058,6 +1096,11 @@ async function gerarRelatorioImprimir() {
 
   const chartCards=Array.from(document.querySelectorAll('#grid-graficos-dinamicos > div')).map(card=>({title:card.querySelector('h3')?.textContent||'Gráfico',canvas:card.querySelector('canvas')})).filter(x=>x.canvas);
   if(chartCards.length){root.appendChild(heading('Gráficos da análise','Visualizações configuradas para o usuário atual.'));const grid=el('div','report-chart-grid');chartCards.forEach(item=>{try{const card=el('figure','report-chart-card');card.appendChild(el('figcaption','',item.title));const img=el('img','',null);img.src=item.canvas.toDataURL('image/png');img.alt=item.title;card.appendChild(img);grid.appendChild(card);}catch(e){console.warn('Não foi possível incluir um gráfico no relatório.',e);}});root.appendChild(grid);}
+
+  const rodape=el('footer','report-letterhead-footer');
+  const ondaFooter=document.createElementNS('http://www.w3.org/2000/svg','svg');ondaFooter.setAttribute('viewBox','0 0 1200 100');ondaFooter.setAttribute('preserveAspectRatio','none');ondaFooter.setAttribute('aria-hidden','true');
+  const pathFooter=document.createElementNS('http://www.w3.org/2000/svg','path');pathFooter.setAttribute('d','M0 30 C300 0 680 72 930 42 C1050 28 1130 15 1200 0 V100 H0 Z');pathFooter.setAttribute('fill','#003399');ondaFooter.appendChild(pathFooter);
+  rodape.append(ondaFooter,el('div','report-footer-text','Rua Grécia, 59, Ibituruna – Montes Claros/MG · CEP: 39408-087 · Telefone: (31) 3658-9664'));root.appendChild(rodape);
 
   await Promise.allSettled(Array.from(root.querySelectorAll("img")).map(img=>img.decode?img.decode():Promise.resolve()));
   window.print();

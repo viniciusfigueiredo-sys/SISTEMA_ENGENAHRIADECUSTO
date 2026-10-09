@@ -21,21 +21,21 @@
       #modal-configuracoes > div > div:nth-child(2) { overflow-x: auto; white-space: nowrap; }
       #modal-usuarios table { min-width: 34rem; }
     }
-    @page { size: A4 portrait; margin: 34mm 14mm 24mm; }
+    @page { size: A4 portrait; margin: 17mm 13mm 17mm; }
     @media print {
       body { display:block !important; background:#fff !important; color:#1f2937 !important; font:9pt Arial,sans-serif !important; }
       #screen-login, #app-container, #modal-configuracoes, #modal-meus-graficos, #modal-usuarios { display:none !important; }
       #relatorio-impressao { display:block !important; position:static !important; inset:auto !important; width:100%; padding:0 !important; color:#1f2937; font:9pt Arial,sans-serif; }
-      #relatorio-impressao .report-letterhead { position:fixed; z-index:10; top:-30mm; left:-14mm; right:-14mm; height:29mm; overflow:hidden; background:#fff; }
+      #relatorio-impressao .report-letterhead { position:relative; z-index:1; width:100%; height:28mm; margin:0 0 5mm; overflow:hidden; background:#fff; break-inside:avoid; }
       #relatorio-impressao .report-letterhead > svg { position:absolute; inset:0 0 auto; width:100%; height:21mm; }
-      #relatorio-impressao .report-logo { position:absolute; top:5mm; left:15mm; width:27mm; height:22mm; object-fit:contain; }
-      #relatorio-impressao .report-brand { position:absolute; right:15mm; top:9mm; display:flex; flex-direction:column; align-items:flex-end; color:#003399; }
+      #relatorio-impressao .report-logo { position:absolute; top:4mm; left:2mm; width:27mm; height:22mm; object-fit:contain; }
+      #relatorio-impressao .report-brand { position:absolute; right:2mm; top:8mm; display:flex; flex-direction:column; align-items:flex-end; color:#003399; }
       #relatorio-impressao .report-brand strong { font-size:12pt; letter-spacing:.04em; text-transform:uppercase; }
       #relatorio-impressao .report-brand span { font-size:8pt; color:#4b5563; }
-      #relatorio-impressao .report-letterhead-footer { position:fixed; z-index:10; left:-14mm; right:-14mm; bottom:-21mm; height:20mm; overflow:hidden; color:#fff; }
+      #relatorio-impressao .report-letterhead-footer { position:relative; width:100%; height:18mm; margin-top:8mm; overflow:hidden; color:#fff; break-inside:avoid; }
       #relatorio-impressao .report-letterhead-footer svg { position:absolute; inset:0; width:100%; height:100%; }
       #relatorio-impressao .report-footer-text { position:absolute; bottom:2mm; width:100%; text-align:center; color:#fff; font-size:7.5pt; }
-      #relatorio-impressao .report-cover { border-bottom:2px solid #00b8e4; padding:0 0 3mm; margin-bottom:4mm; }
+      #relatorio-impressao .report-cover { border-bottom:2px solid #00b8e4; padding:0 0 3mm; margin-bottom:4mm; break-inside:avoid; }
       #relatorio-impressao .report-kicker { color:#008fc7; font-weight:bold; font-size:7pt; letter-spacing:.15em; margin:0 0 1mm; }
       #relatorio-impressao .report-title { color:#003399; font-size:20pt; margin:0; line-height:1.15; }
       #relatorio-impressao .report-subtitle { color:#4b5563; font-size:10pt; margin:1mm 0 2mm; }
@@ -75,6 +75,11 @@
       #relatorio-impressao .report-chart-card { border:1px solid #dbe3ee; margin:0; padding:2mm; break-inside:avoid; }
       #relatorio-impressao .report-chart-card figcaption { color:#003399; font-weight:bold; font-size:8pt; margin-bottom:1mm; }
       #relatorio-impressao .report-chart-card img { width:100%; height:auto; }
+      #relatorio-impressao .mini-report-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:2mm; }
+      #relatorio-impressao .mini-report-card { border:1px solid #dbe3ee; padding:2mm; break-inside:avoid; }
+      #relatorio-impressao .mini-report-card h3 { color:#003399; font-size:8pt; margin:0 0 1mm; }
+      #relatorio-impressao .mini-report-card p, #relatorio-impressao .mini-report-card li { font-size:7.3pt; margin:0; }
+      #relatorio-impressao .mini-report-card ul { margin:0; padding-left:4mm; }
     }
     @media (max-width: 400px) {
       #header-app-title { font-size: 1rem; }
@@ -259,6 +264,14 @@
           <p class="text-xs font-bold text-gray-400 uppercase">Índice IDC</p>
           <p id="kpi-idc" class="text-2xl font-black text-amber-600 mt-1">0.00</p>
         </div>
+      </section>
+
+      <section id="dashboard-insights" class="bg-white p-5 rounded-xl shadow-sm border border-gray-200 space-y-4">
+        <div class="flex flex-col sm:flex-row sm:items-end justify-between gap-2">
+          <div><h3 class="text-lg font-black text-[#003399]">Resumo gerencial e pequenos relatórios</h3><p class="text-xs text-gray-500 mt-1">Leituras automáticas da obra e dos filtros ativos. Os indicadores são atualizados junto com o painel.</p></div>
+          <span class="text-[10px] text-gray-500">Até 5 leituras rápidas · sem substituir a análise detalhada</span>
+        </div>
+        <div id="dashboard-insights-content" class="mini-report-grid grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3"></div>
       </section>
 
       <section class="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
