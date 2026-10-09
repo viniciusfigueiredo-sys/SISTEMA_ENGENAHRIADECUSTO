@@ -22,8 +22,17 @@ let usuarioAutenticado = null;
 let obraAtivaID = null;
 let multiplicadorCenario = 1;
 
-let configGlobal = { titulo: "Brasil Pontes", urlRealizado: "" };
+let configGlobal = { titulo: "Brasil Pontes", urlRealizado: "", planilhasRealizado: [] };
 try { const cfg = localStorage.getItem('config_bp'); if (cfg && cfg !== "undefined") configGlobal = JSON.parse(cfg); } catch(e){}
+if (!Array.isArray(configGlobal.planilhasRealizado)) configGlobal.planilhasRealizado = [];
+
+let dadosBasePlanilhas = [];
+let dadosBaseAtivo = null;
+try {
+  const salvos = localStorage.getItem('dados_base_bp');
+  if (salvos) dadosBasePlanilhas = JSON.parse(salvos);
+} catch (e) { dadosBasePlanilhas = []; }
+if (!Array.isArray(dadosBasePlanilhas)) dadosBasePlanilhas = [];
 
 let obrasBD = {};
 try { const obs = localStorage.getItem('obras_bp'); if (obs && obs !== "undefined") obrasBD = JSON.parse(obs); } catch(e){}
@@ -37,15 +46,27 @@ function obterLinkCSV(url) {
   if (url.includes("/pub?output=csv")) return url;
   if (url.includes("/edit") || url.includes("usp=")) {
     const match = url.match(/\/d\/([a-zA-Z0-9-_]+)/);
-    if (match && match[1]) return `https://docs.google.com/spreadsheets/d/${match[1]}/export?format=csv`;
+    if (match && match[1]) {
+      const gid = url.match(/[?&#]gid=(\d+)/);
+      const sheet = url.match(/[?&#]sheet=([^&#]+)/);
+      const params = new URLSearchParams({ format: "csv" });
+      if (gid) params.set("gid", gid[1]);
+      if (sheet) params.set("sheet", decodeURIComponent(sheet[1]));
+      return `https://docs.google.com/spreadsheets/d/${match[1]}/export?${params.toString()}`;
+    }
   }
   return url;
+}
+
+function normalizarTexto(valor) {
+  return String(valor || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ").trim().toUpperCase();
 }
 
 // FORMATADOR UNIVERSAL DE DINHEIRO (Aceita US e BR)
 function parseMonetario(valorStr) {
   if (!valorStr) return 0;
-  let str = String(valorStr).replace(/[R$\s]/g, '').trim(); // Remove R$ e espaços
+  let str = String(valorStr).replace(/[R$\s]/g, '').trim();
+  str = str.replace(/[()]/g, '').replace(/[^\d,.-]/g, '');
   let lastComma = str.lastIndexOf(',');
   let lastDot = str.lastIndexOf('.');
   
@@ -54,7 +75,7 @@ function parseMonetario(valorStr) {
   } else {
       str = str.replace(/,/g, ''); // Formato US: 1,000.00 -> 1000.00
   }
-  return Math.abs(parseFloat(str) || 0); // Puxa valor absoluto para abater gastos
+  return Math.abs(parseFloat(str) || 0);
 }
 
 // BUSCA CSV COM "RADAR" DE CABEÇALHOS
@@ -66,22 +87,24 @@ const buscarCSV = (url) => new Promise((resolve, reject) => {
     skipEmptyLines: true,
     complete: (res) => {
       const data = res.data;
-      if (data.length === 0) return resolve([]);
-      if (data[0] && typeof data[0][0] === 'string' && data[0][0].toLowerCase().includes("<!doctype html>")) {
+      if (res.errors?.length) return reject(res.errors.map(err => err.message).join("; "));
+      if (data.length === 0) return resolve({ headers: [], rows: [] });
+      if (data[0] && typeof data[0][0] === 'string' && /<!doctype html|<html/i.test(data[0][0])) {
         return reject("O link não está público. Publique na Web como CSV.");
       }
 
       // Procura a linha que tem o cabeçalho real (ignora as linhas de título do ERP)
       let headerIndex = 0;
       for (let i = 0; i < Math.min(15, data.length); i++) {
-        const rowStr = data[i].join("").toUpperCase();
-        if (rowStr.includes("DEPARTAMENTO") || rowStr.includes("CATEGORIA") || rowStr.includes("VALOR")) {
+        const rowStr = normalizarTexto(data[i].join(" "));
+        if (rowStr.includes("DEPARTAMENTO") || rowStr.includes("CENTRO DE CUSTO") || rowStr.includes("CATEGORIA") || rowStr.includes("VALOR")) {
           headerIndex = i;
           break;
         }
       }
 
       const headers = data[headerIndex].map(h => (h || "").trim());
+      if (!headers.some(Boolean)) return reject("Não encontrei a linha de cabeçalhos na planilha.");
       const formatado = [];
 
       for (let i = headerIndex + 1; i < data.length; i++) {
@@ -89,7 +112,7 @@ const buscarCSV = (url) => new Promise((resolve, reject) => {
         data[i].forEach((cell, idx) => { if (headers[idx]) obj[headers[idx]] = cell; });
         formatado.push(obj);
       }
-      resolve(formatado);
+      resolve({ headers, rows: formatado });
     },
     error: (err) => reject(err.message || "Erro ao baixar arquivo.")
   });
@@ -132,6 +155,7 @@ window.onload = async function() {
     else usuarioAutenticado = usuariosBD.find(u => u.id === sessao || u.usuario === sessao);
   }
   verificarSessao();
+  renderizarDadosBase();
 };
 
 function verificarSessao() {
@@ -187,83 +211,200 @@ async function executarLogin(e) {
 }
 
 function executarLogout() { usuarioAutenticado = null; localStorage.removeItem('usuario_bp_id'); verificarSessao(); }
-function exibirFormSolicitacao() { document.getElementById('form-login').classList.add('hidden'); document.getElementById('form-solicitacao').classList.remove('hidden'); }
-function exibirFormLogin() { document.getElementById('form-solicitacao').classList.add('hidden'); document.getElementById('form-login').classList.remove('hidden'); }
+function exibirFormSolicitacao() { document.getElementById('box-login').classList.add('hidden'); document.getElementById('box-solicitacao').classList.remove('hidden'); }
+function exibirFormLogin() { document.getElementById('box-solicitacao').classList.add('hidden'); document.getElementById('box-login').classList.remove('hidden'); }
+
+function abrirAbaSistema(aba) {
+  const dashboard = aba === 'dashboard';
+  document.getElementById('view-dashboard').classList.toggle('hidden', !dashboard);
+  document.getElementById('view-dados-base').classList.toggle('hidden', dashboard);
+  document.getElementById('nav-dashboard').className = dashboard ? 'px-4 py-3 border-b-2 border-[#003399] text-[#003399] font-bold text-sm' : 'px-4 py-3 text-gray-500 font-bold text-sm hover:text-[#003399]';
+  document.getElementById('nav-dados-base').className = dashboard ? 'px-4 py-3 text-gray-500 font-bold text-sm hover:text-[#003399]' : 'px-4 py-3 border-b-2 border-[#003399] text-[#003399] font-bold text-sm';
+  if (!dashboard) renderizarDadosBase();
+}
+
+function renderizarDadosBase() {
+  const tabs = document.getElementById('dados-base-tabs');
+  const conteudo = document.getElementById('dados-base-conteudo');
+  const status = document.getElementById('dados-base-status');
+  if (!tabs || !conteudo || !status) return;
+  tabs.innerHTML = '';
+  if (!dadosBasePlanilhas.length) {
+    status.innerText = 'Nenhuma planilha importada ainda.';
+    conteudo.innerHTML = '<div class="p-8 text-center text-gray-500">Nenhuma planilha importada. Use “Sincronizar Base de Dados” para começar.</div>';
+    return;
+  }
+  if (!dadosBasePlanilhas.some(p => p.id === dadosBaseAtivo)) dadosBaseAtivo = dadosBasePlanilhas[0].id;
+  dadosBasePlanilhas.forEach(planilha => {
+    const botao = document.createElement('button');
+    botao.type = 'button';
+    botao.role = 'tab';
+    botao.setAttribute('aria-selected', String(planilha.id === dadosBaseAtivo));
+    botao.className = planilha.id === dadosBaseAtivo ? 'px-4 py-2 rounded-lg bg-[#003399] text-white font-bold text-sm' : 'px-4 py-2 rounded-lg bg-white border text-gray-700 font-bold text-sm hover:border-[#003399]';
+    botao.textContent = planilha.nome;
+    botao.onclick = () => { dadosBaseAtivo = planilha.id; renderizarDadosBase(); };
+    tabs.appendChild(botao);
+  });
+  const ativa = dadosBasePlanilhas.find(p => p.id === dadosBaseAtivo);
+  status.innerText = `${dadosBasePlanilhas.length} planilha(s) • Última importação: ${ativa?.atualizadoEm ? new Date(ativa.atualizadoEm).toLocaleString('pt-BR') : '—'} • ${ativa?.rows?.length || 0} linha(s) na fonte selecionada.`;
+  if (!ativa || !ativa.headers?.length) {
+    conteudo.innerHTML = '<div class="p-8 text-center text-gray-500">Esta fonte não possui linhas para exibir.</div>';
+    return;
+  }
+  const tabela = document.createElement('div');
+  tabela.className = 'overflow-auto max-h-[70vh]';
+  const table = document.createElement('table');
+  table.className = 'min-w-full text-xs text-left';
+  const thead = document.createElement('thead');
+  thead.className = 'sticky top-0 bg-[#003399] text-white uppercase';
+  const trHead = document.createElement('tr');
+  ativa.headers.forEach(header => { const th = document.createElement('th'); th.className = 'p-3 whitespace-nowrap'; th.textContent = header; trHead.appendChild(th); });
+  thead.appendChild(trHead);
+  const tbody = document.createElement('tbody');
+  tbody.className = 'divide-y divide-gray-200';
+  ativa.rows.forEach(row => {
+    const tr = document.createElement('tr');
+    ativa.headers.forEach(header => { const td = document.createElement('td'); td.className = 'p-3 whitespace-nowrap'; td.textContent = row[header] ?? ''; tr.appendChild(td); });
+    tbody.appendChild(tr);
+  });
+  table.append(thead, tbody);
+  tabela.appendChild(table);
+  conteudo.replaceChildren(tabela);
+}
+
+function renderizarFontesRealizado() {
+  const container = document.getElementById('fontes-realizado-config');
+  if (!container) return;
+  container.replaceChildren();
+  configGlobal.planilhasRealizado.forEach((fonte, indice) => {
+    const linha = document.createElement('div');
+    linha.className = 'grid grid-cols-1 md:grid-cols-[1fr_2fr_auto] gap-2 items-center bg-white p-2 border rounded-lg';
+    const nome = document.createElement('input');
+    nome.type = 'text'; nome.value = fonte.nome || ''; nome.placeholder = 'Nome para a aba Dados Base';
+    nome.className = 'border p-2 rounded-lg'; nome.setAttribute('aria-label', `Nome da planilha ${indice + 1}`);
+    nome.oninput = () => { fonte.nome = nome.value; };
+    const url = document.createElement('input');
+    url.type = 'url'; url.value = fonte.url || ''; url.placeholder = 'Link de compartilhamento do Google Sheets';
+    url.className = 'border p-2 rounded-lg'; url.setAttribute('aria-label', `Link da planilha ${indice + 1}`);
+    url.oninput = () => { fonte.url = url.value; };
+    const remover = document.createElement('button');
+    remover.type = 'button'; remover.textContent = 'Remover'; remover.className = 'text-red-600 font-bold px-2 py-1';
+    remover.onclick = () => { configGlobal.planilhasRealizado.splice(indice, 1); renderizarFontesRealizado(); };
+    linha.append(nome, url, remover); container.appendChild(linha);
+  });
+  if (!configGlobal.planilhasRealizado.length) {
+    const vazio = document.createElement('p'); vazio.className = 'text-gray-500'; vazio.textContent = 'Nenhuma planilha cadastrada.'; container.appendChild(vazio);
+  }
+}
+
+function adicionarFonteRealizado() {
+  configGlobal.planilhasRealizado.push({ id: `realizado-${Date.now()}`, nome: `Realizado ${configGlobal.planilhasRealizado.length + 1}`, url: '' });
+  renderizarFontesRealizado();
+}
 
 // ==========================================
 // MOTOR DE SINCRONIZAÇÃO MATEMÁTICA
 // ==========================================
 async function sincronizarTodasPlanilhas() {
-  if (!configGlobal.urlRealizado) return alert("Menu Configurações: Adicione o Link do Realizado.");
+  const fontesRealizado = (configGlobal.planilhasRealizado || []).filter(f => f.url && f.url.trim());
+  if (!fontesRealizado.length && configGlobal.urlRealizado) {
+    fontesRealizado.push({ id: "realizado-principal", nome: "Realizado", url: configGlobal.urlRealizado });
+  }
+  if (!fontesRealizado.length) return alert("Configurações: adicione ao menos uma planilha de Realizado.");
   const btn = document.getElementById('btn-sync');
   if (btn) btn.innerText = "⏳ A Extrair Dados...";
 
   try {
-    const dadosRealizado = await buscarCSV(configGlobal.urlRealizado);
+    const novasBases = [];
+    const linhasRealizado = [];
+    for (const fonte of fontesRealizado) {
+      const extraido = await buscarCSV(fonte.url);
+      if (!extraido.rows.length) throw new Error(`A planilha "${fonte.nome}" não contém linhas de dados.`);
+      const base = { id: fonte.id || `realizado-${Date.now()}`, nome: fonte.nome || "Realizado", tipo: "Realizado", url: fonte.url, headers: extraido.headers, rows: extraido.rows, atualizadoEm: new Date().toISOString() };
+      novasBases.push(base);
+      linhasRealizado.push({ fonte: base, rows: extraido.rows });
+    }
     
     Object.keys(obrasBD).forEach(k => {
       obrasBD[k].realizadoTotal = 0; obrasBD[k].categoriasRealizado = {};
       obrasBD[k].previstoTotal = 0; obrasBD[k].categoriasPrevisto = {};
     });
 
-    dadosRealizado.forEach(linha => {
-      const chvDepto = Object.keys(linha).find(k => k.toUpperCase().includes("DEPARTAMENTO") || k.toUpperCase().includes("CENTRO DE CUSTO"));
+    linhasRealizado.forEach(({ fonte, rows }) => rows.forEach(linha => {
+      const chaves = Object.keys(linha);
+      const chvDepto = chaves.find(k => { const n = normalizarTexto(k); return n.includes("DEPARTAMENTO") || n.includes("CENTRO DE CUSTO") || n === "OBRA"; });
       const deptoOriginal = chvDepto ? (linha[chvDepto] || "").trim() : "";
       
       if (!deptoOriginal || deptoOriginal === "N/D" || deptoOriginal === "0.0") return;
-      const deptoID = deptoOriginal.toUpperCase();
+      const deptoID = normalizarTexto(deptoOriginal);
 
-      if (!obrasBD[deptoID]) {
-        obrasBD[deptoID] = { id: deptoID, nome: deptoOriginal, cc: deptoOriginal, responsavel: "Não Atribuído", status: "Ativa", urlPrevistoCSV: "", previstoTotal: 0, realizadoTotal: 0, categoriasPrevisto: {}, categoriasRealizado: {} };
+      let chaveObra = Object.keys(obrasBD).find(k => normalizarTexto(obrasBD[k].cc) === deptoID || normalizarTexto(obrasBD[k].nome) === deptoID);
+      if (!chaveObra) {
+        chaveObra = deptoID;
+        obrasBD[chaveObra] = { id: deptoID, nome: deptoOriginal, cc: deptoOriginal, responsavel: "Não Atribuído", status: "Ativa", urlPrevistoCSV: "", previstoTotal: 0, realizadoTotal: 0, categoriasPrevisto: {}, categoriasRealizado: {} };
       }
 
-      // Procura a coluna de Valor e aplica o Parse Monetário Inteligente
-      const chvVal = Object.keys(linha).find(k => k.toUpperCase().includes("VALOR LÍQUIDO") || k.toUpperCase().includes("VALOR DA CONTA"));
-      let valor = parseMonetario(linha[chvVal]);
+      const chvVal = chaves.find(k => { const n = normalizarTexto(k); return n.includes("VALOR LIQUIDO") || n.includes("VALOR DA CONTA") || n.includes("VALOR TOTAL") || n.includes("VALOR PAGO") || n.includes("CUSTO TOTAL") || n === "VALOR"; })
+        || chaves.find(k => normalizarTexto(k).includes("VALOR"));
+      if (!chvVal) throw new Error(`Não encontrei uma coluna de valor na planilha "${fonte.nome}".`);
+      const valor = parseMonetario(linha[chvVal]);
 
-      const chvCat = Object.keys(linha).find(k => k.toUpperCase() === "CATEGORIA");
+      const chvCat = chaves.find(k => normalizarTexto(k).includes("CATEGORIA"));
       const categoria = chvCat ? (linha[chvCat] || "Outros").trim() : "Outros";
 
-      if (obrasBD[deptoID].status !== "Arquivada") {
-        obrasBD[deptoID].realizadoTotal += valor;
-        obrasBD[deptoID].categoriasRealizado[categoria] = (obrasBD[deptoID].categoriasRealizado[categoria] || 0) + valor;
+      if (obrasBD[chaveObra].status !== "Arquivada") {
+        obrasBD[chaveObra].realizadoTotal += valor;
+        obrasBD[chaveObra].categoriasRealizado[categoria] = (obrasBD[chaveObra].categoriasRealizado[categoria] || 0) + valor;
       }
-    });
+    }));
 
     const promessasPrevisto = Object.keys(obrasBD).map(async (key) => {
       const obra = obrasBD[key];
       if (obra.urlPrevistoCSV && obra.urlPrevistoCSV.trim() !== "") {
         try {
-          const dP = await buscarCSV(obra.urlPrevistoCSV);
-          dP.forEach(linha => {
-            const chvCat = Object.keys(linha).find(k => k.toUpperCase().includes("CATEGORIA"));
+          const basePrevisto = await buscarCSV(obra.urlPrevistoCSV);
+          const idBase = `previsto-${key}`;
+          novasBases.push({ id: idBase, nome: obra.nome || `Previsto - ${key}`, tipo: "Previsto", url: obra.urlPrevistoCSV, headers: basePrevisto.headers, rows: basePrevisto.rows, atualizadoEm: new Date().toISOString() });
+          basePrevisto.rows.forEach(linha => {
+            const chvCat = Object.keys(linha).find(k => normalizarTexto(k).includes("CATEGORIA"));
             const catBP = chvCat ? (linha[chvCat] || "Outros").trim() : "Outros";
             
-            const chvCst = Object.keys(linha).find(k => k.toUpperCase().includes("CUSTO TOTAL") || k.toUpperCase().includes("VALOR"));
+            const chvCst = Object.keys(linha).find(k => { const n = normalizarTexto(k); return n.includes("CUSTO TOTAL") || n.includes("VALOR TOTAL") || n === "VALOR"; }) || Object.keys(linha).find(k => normalizarTexto(k).includes("CUSTO") || normalizarTexto(k).includes("VALOR"));
+            if (!chvCst) throw new Error("Não encontrei a coluna de custo/valor.");
             let custo = parseMonetario(linha[chvCst]);
             
             obra.categoriasPrevisto[catBP] = (obra.categoriasPrevisto[catBP] || 0) + custo;
           });
           obra.previstoTotal = Object.values(obra.categoriasPrevisto).reduce((a, b) => a + b, 0);
-        } catch(err) { console.warn(`Aviso Previsto - ${obra.nome}`); }
+        } catch(err) { throw new Error(`Falha na planilha Previsto de ${obra.nome}: ${err.message || err}`); }
       }
     });
 
     await Promise.all(promessasPrevisto);
 
+    localStorage.setItem('dados_base_bp', JSON.stringify(novasBases));
+    localStorage.setItem('obras_bp', JSON.stringify(obrasBD));
+    dadosBasePlanilhas = novasBases;
+    let errosSupabase = [];
     if (supabaseClient) {
       for (const key in obrasBD) {
         const o = obrasBD[key];
         const dadosJson = { previstoTotal: o.previstoTotal, realizadoTotal: o.realizadoTotal, categoriasPrevisto: o.categoriasPrevisto, categoriasRealizado: o.categoriasRealizado };
-        try { await supabaseClient.from('obras').upsert({ id: o.id, nome: o.nome, cc: o.cc, responsavel: o.responsavel, status: o.status, url_previsto: o.urlPrevistoCSV, dados_json: dadosJson }); } catch(e){}
+        try {
+          const { error } = await supabaseClient.from('obras').upsert({ id: o.id, nome: o.nome, cc: o.cc, responsavel: o.responsavel, status: o.status, url_previsto: o.urlPrevistoCSV, dados_json: dadosJson });
+          if (error) errosSupabase.push(`${o.nome}: ${error.message}`);
+        } catch (error) { errosSupabase.push(`${o.nome}: ${error.message || error}`); }
       }
     }
 
-    localStorage.setItem('obras_bp', JSON.stringify(obrasBD));
     popularSeletorObras();
     atualizarDashboard();
+    renderizarDadosBase();
+    if (errosSupabase.length) alert(`Dados importados e análises atualizadas neste navegador, mas o Supabase recusou parte das gravações:\n${errosSupabase.slice(0, 5).join('\n')}`);
+    else if (supabaseClient) alert(`Importação concluída: ${dadosBasePlanilhas.length} planilha(s) e ${linhasRealizado.reduce((n, item) => n + item.rows.length, 0)} linha(s) de Realizado. Resumos sincronizados com o Supabase.`);
+    else alert(`Importação concluída: ${dadosBasePlanilhas.length} planilha(s). Os dados e análises foram salvos neste navegador; Supabase indisponível.`);
   } catch (error) {
-    alert("Falha na sincronização dos dados.\nMotivo: " + error);
+    alert("Falha na sincronização dos dados.\nMotivo: " + (error.message || error));
   } finally {
     if (btn) btn.innerHTML = "🔄 Sincronizar Base de Dados";
   }
@@ -374,7 +515,10 @@ function renderizarGridGraficosDinamicos(obra) {
 // ==========================================
 function abrirModalConfiguracoes() {
   document.getElementById('config-app-title').value = configGlobal.titulo || "";
-  document.getElementById('config-url-unificada').value = configGlobal.urlRealizado || "";
+  if (!configGlobal.planilhasRealizado.length && configGlobal.urlRealizado) {
+    configGlobal.planilhasRealizado = [{ id: 'realizado-principal', nome: 'Realizado', url: configGlobal.urlRealizado }];
+  }
+  renderizarFontesRealizado();
   renderizarTabelaGestaoObras();
   document.getElementById('modal-configuracoes').classList.remove('hidden');
 }
@@ -443,12 +587,20 @@ function renderizarListaGraficosConfig() {
 
 async function salvarConfiguracoesGerais() {
   configGlobal.titulo = document.getElementById('config-app-title').value.trim();
-  configGlobal.urlRealizado = document.getElementById('config-url-unificada').value.trim();
+  configGlobal.planilhasRealizado = configGlobal.planilhasRealizado.filter(f => f.nome?.trim() && f.url?.trim()).map(f => ({ ...f, nome: f.nome.trim(), url: f.url.trim() }));
+  configGlobal.urlRealizado = configGlobal.planilhasRealizado[0]?.url || '';
   localStorage.setItem('config_bp', JSON.stringify(configGlobal));
-  if(supabaseClient) { try { await supabaseClient.from('configuracoes').upsert({ id: 1, titulo: configGlobal.titulo, url_realizado: configGlobal.urlRealizado }); } catch(e) {} }
+  let erroSupabase = null;
+  if(supabaseClient) {
+    try {
+      const { error } = await supabaseClient.from('configuracoes').upsert({ id: 1, titulo: configGlobal.titulo, url_realizado: configGlobal.urlRealizado });
+      erroSupabase = error;
+    } catch (error) { erroSupabase = error; }
+  }
   document.getElementById('header-app-title').innerText = configGlobal.titulo;
   fecharModalConfiguracoes();
-  if (confirm("Salvo. Sincronizar dados agora?")) sincronizarTodasPlanilhas();
+  if (erroSupabase) alert(`Configurações salvas neste navegador, mas o Supabase retornou: ${erroSupabase.message}`);
+  if (confirm("Configurações salvas. Sincronizar dados agora?")) sincronizarTodasPlanilhas();
 }
 
 // ==========================================
