@@ -28,6 +28,8 @@ if (!Array.isArray(configGlobal.planilhasRealizado)) configGlobal.planilhasReali
 
 let dadosBasePlanilhas = [];
 let dadosBaseAtivo = null;
+let dadosBasePaginaAtual = 0;
+const DADOS_BASE_PAGINA_TAMANHO = 100;
 const BASE_DB_NAME = 'sistema_bp_dados';
 const BASE_STORE_NAME = 'planilhas';
 
@@ -138,6 +140,7 @@ const buscarCSV = (url) => new Promise((resolve, reject) => {
   if (typeof Papa === 'undefined') return reject("Biblioteca PapaParse não carregada.");
   Papa.parse(obterLinkCSV(url), {
     download: true, 
+    worker: true,
     header: false, // Lemos em matriz para varrer o lixo do topo
     skipEmptyLines: true,
     complete: (res) => {
@@ -281,6 +284,8 @@ function abrirAbaSistema(aba) {
 }
 
 function renderizarDadosBase() {
+  const view = document.getElementById('view-dados-base');
+  if (view?.classList.contains('hidden')) return;
   const tabs = document.getElementById('dados-base-tabs');
   const conteudo = document.getElementById('dados-base-conteudo');
   const status = document.getElementById('dados-base-status');
@@ -289,6 +294,7 @@ function renderizarDadosBase() {
   if (!dadosBasePlanilhas.length) {
     status.innerText = 'Nenhuma planilha importada ainda.';
     conteudo.innerHTML = '<div class="p-8 text-center text-gray-500">Nenhuma planilha importada. Use “Sincronizar Base de Dados” para começar.</div>';
+    document.getElementById('dados-base-paginacao').replaceChildren();
     return;
   }
   if (!dadosBasePlanilhas.some(p => p.id === dadosBaseAtivo)) dadosBaseAtivo = dadosBasePlanilhas[0].id;
@@ -299,11 +305,16 @@ function renderizarDadosBase() {
     botao.setAttribute('aria-selected', String(planilha.id === dadosBaseAtivo));
     botao.className = planilha.id === dadosBaseAtivo ? 'px-4 py-2 rounded-lg bg-[#003399] text-white font-bold text-sm' : 'px-4 py-2 rounded-lg bg-white border text-gray-700 font-bold text-sm hover:border-[#003399]';
     botao.textContent = planilha.nome;
-    botao.onclick = () => { dadosBaseAtivo = planilha.id; renderizarDadosBase(); };
+    botao.onclick = () => { dadosBaseAtivo = planilha.id; dadosBasePaginaAtual = 0; renderizarDadosBase(); };
     tabs.appendChild(botao);
   });
   const ativa = dadosBasePlanilhas.find(p => p.id === dadosBaseAtivo);
-  status.innerText = `${dadosBasePlanilhas.length} planilha(s) • Última importação: ${ativa?.atualizadoEm ? new Date(ativa.atualizadoEm).toLocaleString('pt-BR') : '—'} • ${ativa?.rows?.length || 0} linha(s) na fonte selecionada.`;
+  const totalLinhas = ativa?.rows?.length || 0;
+  const totalPaginas = Math.max(1, Math.ceil(totalLinhas / DADOS_BASE_PAGINA_TAMANHO));
+  dadosBasePaginaAtual = Math.min(dadosBasePaginaAtual, totalPaginas - 1);
+  const inicio = dadosBasePaginaAtual * DADOS_BASE_PAGINA_TAMANHO;
+  const fim = Math.min(inicio + DADOS_BASE_PAGINA_TAMANHO, totalLinhas);
+  status.innerText = `${dadosBasePlanilhas.length} planilha(s) • Última importação: ${ativa?.atualizadoEm ? new Date(ativa.atualizadoEm).toLocaleString('pt-BR') : '—'} • Mostrando ${totalLinhas ? inicio + 1 : 0}–${fim} de ${totalLinhas} linha(s).`;
   if (!ativa || !ativa.headers?.length) {
     conteudo.innerHTML = '<div class="p-8 text-center text-gray-500">Esta fonte não possui linhas para exibir.</div>';
     return;
@@ -319,7 +330,7 @@ function renderizarDadosBase() {
   thead.appendChild(trHead);
   const tbody = document.createElement('tbody');
   tbody.className = 'divide-y divide-gray-200';
-  ativa.rows.forEach(row => {
+  ativa.rows.slice(inicio, fim).forEach(row => {
     const tr = document.createElement('tr');
     ativa.headers.forEach(header => { const td = document.createElement('td'); td.className = 'p-3 whitespace-nowrap'; td.textContent = row[header] ?? ''; tr.appendChild(td); });
     tbody.appendChild(tr);
@@ -327,6 +338,19 @@ function renderizarDadosBase() {
   table.append(thead, tbody);
   tabela.appendChild(table);
   conteudo.replaceChildren(tabela);
+  const controles = document.getElementById('dados-base-paginacao');
+  controles.replaceChildren();
+  const anterior = document.createElement('button');
+  anterior.type = 'button'; anterior.textContent = '← Anterior'; anterior.disabled = dadosBasePaginaAtual === 0;
+  anterior.className = 'px-3 py-2 border rounded-lg text-sm font-bold disabled:opacity-40';
+  anterior.onclick = () => { dadosBasePaginaAtual--; renderizarDadosBase(); };
+  const pagina = document.createElement('span');
+  pagina.className = 'text-sm text-gray-600'; pagina.textContent = `Página ${dadosBasePaginaAtual + 1} de ${totalPaginas}`;
+  const proxima = document.createElement('button');
+  proxima.type = 'button'; proxima.textContent = 'Próxima →'; proxima.disabled = dadosBasePaginaAtual >= totalPaginas - 1;
+  proxima.className = 'px-3 py-2 border rounded-lg text-sm font-bold disabled:opacity-40';
+  proxima.onclick = () => { dadosBasePaginaAtual++; renderizarDadosBase(); };
+  controles.append(anterior, pagina, proxima);
 }
 
 function renderizarFontesRealizado() {
@@ -387,6 +411,11 @@ async function sincronizarTodasPlanilhas() {
       obrasBD[k].previstoTotal = 0; obrasBD[k].categoriasPrevisto = {};
     });
 
+    const chaveObraPorDepartamento = new Map();
+    Object.entries(obrasBD).forEach(([key, obra]) => {
+      if (obra.cc) chaveObraPorDepartamento.set(normalizarTexto(obra.cc), key);
+      if (obra.nome) chaveObraPorDepartamento.set(normalizarTexto(obra.nome), key);
+    });
     linhasRealizado.forEach(({ fonte, rows }) => rows.forEach(linha => {
       const chaves = Object.keys(linha);
       const chvDepto = chaves.find(k => { const n = normalizarTexto(k); return n.includes("DEPARTAMENTO") || n.includes("CENTRO DE CUSTO") || n === "OBRA"; });
@@ -395,10 +424,11 @@ async function sincronizarTodasPlanilhas() {
       if (!deptoOriginal || deptoOriginal === "N/D" || deptoOriginal === "0.0") return;
       const deptoID = normalizarTexto(deptoOriginal);
 
-      let chaveObra = Object.keys(obrasBD).find(k => normalizarTexto(obrasBD[k].cc) === deptoID || normalizarTexto(obrasBD[k].nome) === deptoID);
+      let chaveObra = chaveObraPorDepartamento.get(deptoID);
       if (!chaveObra) {
         chaveObra = deptoID;
         obrasBD[chaveObra] = { id: deptoID, nome: deptoOriginal, cc: deptoOriginal, responsavel: "Não Atribuído", status: "Ativa", urlPrevistoCSV: "", previstoTotal: 0, realizadoTotal: 0, categoriasPrevisto: {}, categoriasRealizado: {} };
+        chaveObraPorDepartamento.set(deptoID, chaveObra);
       }
 
       const chvVal = chaves.find(k => { const n = normalizarTexto(k); return n.includes("VALOR LIQUIDO") || n.includes("VALOR DA CONTA") || n.includes("VALOR TOTAL") || n.includes("VALOR PAGO") || n.includes("CUSTO TOTAL") || n === "VALOR"; })
@@ -442,6 +472,7 @@ async function sincronizarTodasPlanilhas() {
     await salvarDadosBaseArmazenados(novasBases);
     localStorage.setItem('obras_bp', JSON.stringify(obrasBD));
     dadosBasePlanilhas = novasBases;
+    dadosBasePaginaAtual = 0;
     let errosSupabase = [];
     if (supabaseClient) {
       for (const key in obrasBD) {
