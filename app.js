@@ -680,7 +680,9 @@ function atualizarDashboard() {
     const cells = [cat, prev.toLocaleString('pt-BR', { style:'currency', currency:'BRL' }), real.toLocaleString('pt-BR', { style:'currency', currency:'BRL' }), percUso === 999 ? '∞' : `${percUso.toFixed(1)}%`, saldo.toLocaleString('pt-BR', { style:'currency', currency:'BRL' })];
     cells.forEach((value,index)=>{ const td=document.createElement('td'); td.className=['p-3 font-bold','p-3 text-right','p-3 text-right',`p-3 text-center font-bold ${cor}`,`p-3 text-right font-black ${cor}`][index]; td.textContent=value; row.appendChild(td); });
     const statusCell=document.createElement('td'); statusCell.className='p-3 text-center';
-    const statusBadge=document.createElement('span'); statusBadge.className=`px-2 py-1 rounded text-[10px] font-black uppercase ${cls}`; statusBadge.textContent=`${icn} ${txt}`; statusCell.appendChild(statusBadge); row.appendChild(statusCell);
+    const statusBadge=document.createElement('span'); statusBadge.className=`px-2 py-1 rounded text-[10px] font-black uppercase ${cls}`; statusBadge.textContent=`${icn} ${txt}`;
+    statusBadge.title=prev===0 && real>0 ? 'N/P = Não previsto. Existe valor realizado, mas o previsto é R$ 0,00; não é possível calcular o percentual de uso.' : `${txt}: ${percUso===999?'sem valor previsto':`${percUso.toFixed(1)}% do previsto utilizado`}`;
+    statusCell.appendChild(statusBadge); row.appendChild(statusCell);
     tbody.appendChild(row);
   });
 

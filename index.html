@@ -204,6 +204,12 @@
           <button type="button" onclick="limparFiltrosDashboard()" class="text-xs font-bold text-[#003399] underline">Limpar filtros</button>
           <span id="dashboard-filtro-resumo" class="text-xs text-gray-500"></span>
         </div>
+        <div class="mb-3 flex flex-wrap gap-x-5 gap-y-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-700" role="note" aria-label="Legenda dos faróis">
+          <span><strong class="text-emerald-700">🟢 Seguro:</strong> realizado abaixo de 85% do previsto.</span>
+          <span><strong class="text-amber-700">🟡 Atenção:</strong> realizado entre 85% e 100% do previsto.</span>
+          <span><strong class="text-red-700">🔴 Estourado:</strong> realizado acima do previsto.</span>
+          <span><strong class="text-red-700">N/P = Não previsto:</strong> há realizado, mas o previsto é R$ 0,00; não é possível calcular o percentual. Entra no grupo vermelho.</span>
+        </div>
         <div class="overflow-auto max-h-[28rem]">
           <table class="w-full text-left text-xs">
             <thead class="sticky top-0 z-10 bg-[#003399] text-white uppercase">
