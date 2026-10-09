@@ -37,6 +37,7 @@ let usuarioAutenticado = null;
 let obraAtivaID = null;
 let multiplicadorCenario = 1;
 let filtrosDashboard = { categoria: '', farol: '', base: null };
+let linhasDashboardVisiveis = [];
 let filtrosDadosBase = { busca: '', obra: '', categoria: '' };
 function normalizarTextoUI(valor) { return String(valor || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase(); }
 
@@ -652,6 +653,7 @@ function atualizarDashboard() {
   if (!obraAtivaID || !obrasBD[obraAtivaID]) {
     ['obra-titulo','obra-cc','obra-resp'].forEach(id => { const el=document.getElementById(id); if(el) el.textContent='—'; });
     ['kpi-previsto','kpi-realizado','kpi-desvio'].forEach(id => { const el=document.getElementById(id); if(el) el.textContent='R$ 0,00'; });
+    linhasDashboardVisiveis=[];
     const tbody=document.getElementById('tabela-dre-body'); if(tbody) tbody.replaceChildren();
     Object.values(graficosInstancias).forEach(chart=>chart?.destroy()); graficosInstancias={};
     const charts=document.getElementById('grid-graficos-dinamicos'); if(charts) charts.replaceChildren();
@@ -674,6 +676,7 @@ function atualizarDashboard() {
     return { cat, previsto, realizado, farol: classificarFarol(previsto, realizado) };
   });
   const linhasVisiveis = linhas.filter(l => (!filtrosDashboard.categoria || l.cat === filtrosDashboard.categoria) && (!filtrosDashboard.farol || l.farol === filtrosDashboard.farol));
+  linhasDashboardVisiveis = linhasVisiveis;
   const pAj = linhasVisiveis.reduce((s, l) => s + l.previsto, 0);
   const realVisivel = linhasVisiveis.reduce((s, l) => s + l.realizado, 0);
   const dsv = pAj - realVisivel;
@@ -993,17 +996,70 @@ function aplicarPermissoesPerfil() {
   else if (!permissoes.dashboard && !permissoes.dadosBase) executarLogout();
 }
 
-function gerarRelatorioImprimir() {
+async function gerarRelatorioImprimir() {
   if (!obterPermissoesUsuario().relatorios) return alert('Seu perfil não pode gerar relatórios.');
+  if (!obraAtivaID || !obrasBD[obraAtivaID]) return alert('Selecione uma obra para gerar o relatório.');
   const root=document.getElementById('relatorio-impressao'); root.replaceChildren();
-  const h=document.createElement('h1'); h.textContent=configGlobal.titulo||'Brasil Pontes'; root.appendChild(h);
-  const subtitulo=document.createElement('h2'); subtitulo.textContent='Relatório de custo previsto x realizado'; root.appendChild(subtitulo);
-  const meta=document.createElement('p'); meta.textContent='Obra: '+(obrasBD[obraAtivaID]?.nome||'—')+' | Departamento: '+(obrasBD[obraAtivaID]?.cc||'—')+' | Gestor: '+(obrasBD[obraAtivaID]?.responsavel||'—'); root.appendChild(meta);
-  const data=document.createElement('p'); data.textContent='Emitido em '+new Date().toLocaleString('pt-BR')+' | Previsto: '+document.getElementById('kpi-previsto').textContent+' | Realizado: '+document.getElementById('kpi-realizado').textContent+' | Saldo: '+document.getElementById('kpi-desvio').textContent+' | IDC: '+document.getElementById('kpi-idc').textContent; root.appendChild(data);
-  const tabela=document.createElement('table'); tabela.className='report-table';
-  const head=document.createElement('thead'); const headerRow=document.createElement('tr');
-  ['Categoria / Natureza','Previsto (R$)','Realizado (R$)','% Uso','Desvio / Saldo','Farol / Status'].forEach(txt=>{const th=document.createElement('th');th.textContent=txt;headerRow.appendChild(th);}); head.appendChild(headerRow); tabela.appendChild(head);
-  const body=document.createElement('tbody'); document.querySelectorAll('#tabela-dre-body tr').forEach(row=>{const tr=document.createElement('tr');Array.from(row.children).forEach(td=>{const cell=document.createElement('td');cell.textContent=td.textContent.trim();tr.appendChild(cell);});body.appendChild(tr);}); tabela.appendChild(body); root.appendChild(tabela);
+  const el=(tag,cls,text)=>{const n=document.createElement(tag);if(cls)n.className=cls;if(text!==undefined&&text!==null)n.textContent=String(text);return n;};
+  const obra=obrasBD[obraAtivaID], moeda=n=>Number(n||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+  const percentual=(real,prev)=>prev>0?((real/prev)*100).toFixed(1)+'%':(real>0?'N/P':'0,0%');
+  const barra=el('header','report-letterhead');
+  const wave=document.createElementNS('http://www.w3.org/2000/svg','svg');wave.setAttribute('viewBox','0 0 1200 150');wave.setAttribute('preserveAspectRatio','none');wave.setAttribute('aria-hidden','true');
+  const path=document.createElementNS('http://www.w3.org/2000/svg','path');path.setAttribute('d','M0 0 H1200 V92 C900 125 640 40 340 70 C190 85 80 115 0 138 Z');path.setAttribute('fill','#4472c4');wave.appendChild(path);
+  const logo=el('img','report-logo');logo.src='assets/logo-brasil-pontes.png';logo.alt='Logo Brasil Pontes';
+  const brand=el('div','report-brand');brand.append(el('strong','',configGlobal.titulo||'Brasil Pontes'),el('span','','Controladoria & Engenharia de Custos'));
+  barra.append(wave,logo,brand);root.appendChild(barra);
+
+  const rodape=el('footer','report-letterhead-footer');
+  const ondaFooter=document.createElementNS('http://www.w3.org/2000/svg','svg');ondaFooter.setAttribute('viewBox','0 0 1200 100');ondaFooter.setAttribute('preserveAspectRatio','none');ondaFooter.setAttribute('aria-hidden','true');
+  const pathFooter=document.createElementNS('http://www.w3.org/2000/svg','path');pathFooter.setAttribute('d','M0 30 C300 0 680 72 930 42 C1050 28 1130 15 1200 0 V100 H0 Z');pathFooter.setAttribute('fill','#003399');ondaFooter.appendChild(pathFooter);
+  rodape.append(ondaFooter,el('div','report-footer-text','Rua Grécia, 59, Ibituruna – Montes Claros/MG · CEP: 39408-087 · Telefone: (31) 3658-9664'));root.appendChild(rodape);
+
+  const capa=el('section','report-cover');
+  capa.append(el('p','report-kicker','CONTROLADORIA · ENGENHARIA DE CUSTOS'),el('h1','report-title','Relatório Gerencial de Custos'),el('p','report-subtitle','Acompanhamento do custo previsto em relação ao realizado'));
+  const gerado=el('p','report-generated','Emitido em '+new Date().toLocaleString('pt-BR')+' · Responsável: '+(usuarioAutenticado?.nome||usuarioAutenticado?.usuario||'Usuário'));capa.appendChild(gerado);
+  root.appendChild(capa);
+
+  const heading=(title,sub)=>{const box=el('div','report-section-heading');box.append(el('h2','',title));if(sub)box.appendChild(el('p','',sub));return box;};
+  root.appendChild(heading('Identificação da obra','Dados da obra selecionada para esta análise.'));
+  const info=el('div','report-info-grid');
+  [['Obra',obra.nome||'—'],['Centro de custo / departamento',obra.cc||'—'],['Gestor responsável',obra.responsavel||'Não informado'],['Status',obra.status||'—'],['Cenário aplicado',document.getElementById('seletor-cenario')?.selectedOptions[0]?.textContent||'Base'],['Registros analisados',linhasDashboardVisiveis.length]]
+  .forEach(([k,v])=>{const item=el('div','report-info-item');item.append(el('span','report-label',k),el('strong','',v));info.appendChild(item);});root.appendChild(info);
+
+  const filtros=[];
+  if(filtrosDashboard.categoria)filtros.push('Categoria: '+filtrosDashboard.categoria);
+  if(filtrosDashboard.farol)filtros.push('Farol: '+({green:'Seguro',amber:'Atenção',red:'Estourado'}[filtrosDashboard.farol]||filtrosDashboard.farol));
+  if(filtrosDashboard.base)filtros.push('Dados Base — '+filtrosDashboard.base.planilhaNome+' / '+filtrosDashboard.base.header+': '+filtrosDashboard.base.value);
+  root.appendChild(heading('Escopo e filtros','Os valores e a tabela refletem os filtros selecionados no painel.'));
+  root.appendChild(el('p','report-filter-summary',filtros.length?filtros.join(' · '):'Nenhum filtro adicional aplicado; todas as categorias da obra estão incluídas.'));
+
+  const previsto=linhasDashboardVisiveis.reduce((a,l)=>a+l.previsto,0),realizado=linhasDashboardVisiveis.reduce((a,l)=>a+l.realizado,0),saldo=previsto-realizado;
+  const counts={green:0,amber:0,red:0};linhasDashboardVisiveis.forEach(l=>counts[l.farol]=(counts[l.farol]||0)+1);
+  root.appendChild(heading('Resumo executivo','Indicadores calculados para as categorias visíveis após a aplicação dos filtros.'));
+  const kpis=el('div','report-kpi-grid');
+  [['Custo previsto',moeda(previsto)],['Custo realizado',moeda(realizado)],['Saldo orçamentário',moeda(saldo)],['Percentual de uso',percentual(realizado,previsto)],['IDC',previsto>0&&realizado>0?(previsto/realizado).toFixed(2):'—']]
+    .forEach(([label,value],i)=>{const card=el('div','report-kpi report-kpi-'+i);card.append(el('span','',label),el('strong','',value));kpis.appendChild(card);});root.appendChild(kpis);
+  const legend=el('div','report-farol-summary');[['green','🟢 Seguro'],['amber','🟡 Atenção'],['red','🔴 Estourado']].forEach(([key,label])=>legend.appendChild(el('span','',label+': '+(counts[key]||0))));root.appendChild(legend);
+
+  root.appendChild(heading('Pontos de atenção','Categorias ordenadas pelo percentual de uso do previsto. N/P indica realizado sem valor previsto.'));
+  const alertas=linhasDashboardVisiveis.filter(l=>l.farol==='red'||l.farol==='amber').sort((a,b)=>{const pct=x=>x.previsto>0?x.realizado/x.previsto:Infinity;return pct(b)-pct(a);});
+  if(alertas.length){const lista=el('ul','report-alert-list');alertas.slice(0,8).forEach(l=>{const pct=percentual(l.realizado,l.previsto),status=l.farol==='red'?(l.previsto===0&&l.realizado>0?'N/P — Não previsto':'Estourado'):'Atenção';lista.appendChild(el('li','',l.cat+' · '+status+' · '+pct+' utilizado · realizado '+moeda(l.realizado)));});root.appendChild(lista);}
+  else root.appendChild(el('p','report-no-alert','Nenhuma categoria em Atenção ou Estourado nos filtros aplicados.'));
+
+  root.appendChild(heading('Demonstrativo por categoria','Valores em reais. O saldo corresponde ao previsto menos o realizado.'));
+  const tabela=el('table','report-table');const thead=el('thead'),trh=el('tr');['Categoria / Natureza','Previsto','Realizado','Uso do previsto','Saldo','Farol'].forEach(t=>trh.appendChild(el('th','',t)));thead.appendChild(trh);tabela.appendChild(thead);
+  const tbody=el('tbody');linhasDashboardVisiveis.forEach(l=>{const row=el('tr');const values=[l.cat,moeda(l.previsto),moeda(l.realizado),percentual(l.realizado,l.previsto),moeda(l.previsto-l.realizado),l.farol==='red'?(l.previsto===0&&l.realizado>0?'N/P — Não previsto':'Estourado'):l.farol==='amber'?'Atenção':'Seguro'];values.forEach((v,i)=>row.appendChild(el(i===0?'th':'td',i===5?'report-status-'+l.farol:'',v)));tbody.appendChild(row);});
+  const total=el('tr','report-total-row');['TOTAL',moeda(previsto),moeda(realizado),percentual(realizado,previsto),moeda(saldo),alertas.length+' alertas'].forEach(v=>total.appendChild(el('td','',v)));tbody.appendChild(total);tabela.appendChild(tbody);root.appendChild(tabela);
+  const nota=el('p','report-methodology','Critérios do farol: Seguro abaixo de 85% do previsto; Atenção entre 85% e 100%; Estourado acima de 100%. N/P = Não previsto: há realizado, mas o previsto é R$ 0,00, portanto não é possível calcular o percentual.');root.appendChild(nota);
+
+  const fontes=(dadosBasePlanilhas||[]).map(p=>p.nome).filter(Boolean);
+  root.appendChild(heading('Fontes de dados','Planilhas carregadas na base utilizada pelo sistema.'));
+  root.appendChild(el('p','report-sources',fontes.length?fontes.join(' · '):'Nenhuma planilha de Dados Base importada.'));
+
+  const chartCards=Array.from(document.querySelectorAll('#grid-graficos-dinamicos > div')).map(card=>({title:card.querySelector('h3')?.textContent||'Gráfico',canvas:card.querySelector('canvas')})).filter(x=>x.canvas);
+  if(chartCards.length){root.appendChild(heading('Gráficos da análise','Visualizações configuradas para o usuário atual.'));const grid=el('div','report-chart-grid');chartCards.forEach(item=>{try{const card=el('figure','report-chart-card');card.appendChild(el('figcaption','',item.title));const img=el('img','',null);img.src=item.canvas.toDataURL('image/png');img.alt=item.title;card.appendChild(img);grid.appendChild(card);}catch(e){console.warn('Não foi possível incluir um gráfico no relatório.',e);}});root.appendChild(grid);}
+
+  await Promise.allSettled(Array.from(root.querySelectorAll("img")).map(img=>img.decode?img.decode():Promise.resolve()));
   window.print();
 }
 function obterPermissoesUsuario(usuario = usuarioAutenticado) {

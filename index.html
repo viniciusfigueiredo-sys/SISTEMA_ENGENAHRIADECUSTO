@@ -21,16 +21,60 @@
       #modal-configuracoes > div > div:nth-child(2) { overflow-x: auto; white-space: nowrap; }
       #modal-usuarios table { min-width: 34rem; }
     }
+    @page { size: A4 portrait; margin: 34mm 14mm 24mm; }
     @media print {
-      body { display:block !important; background:#fff !important; color:#111 !important; }
+      body { display:block !important; background:#fff !important; color:#1f2937 !important; font:9pt Arial,sans-serif !important; }
       #screen-login, #app-container, #modal-configuracoes, #modal-meus-graficos, #modal-usuarios { display:none !important; }
-      #relatorio-impressao { display:block !important; position:absolute; inset:0; padding:12mm; font:11pt Arial,sans-serif; }
-      #relatorio-impressao h1 { color:#003399; font-size:20pt; margin:0 0 4mm; }
-      #relatorio-impressao h2 { font-size:15pt; margin:0 0 5mm; }
-      #relatorio-impressao p { margin:2mm 0; }
-      #relatorio-impressao table { border-collapse:collapse; width:100%; margin-top:8mm; }
-      #relatorio-impressao th, #relatorio-impressao td { border:1px solid #999; padding:2mm; text-align:left; }
-      #relatorio-impressao th { background:#e8eef7 !important; }
+      #relatorio-impressao { display:block !important; position:static !important; inset:auto !important; width:100%; padding:0 !important; color:#1f2937; font:9pt Arial,sans-serif; }
+      #relatorio-impressao .report-letterhead { position:fixed; z-index:10; top:-30mm; left:-14mm; right:-14mm; height:29mm; overflow:hidden; background:#fff; }
+      #relatorio-impressao .report-letterhead > svg { position:absolute; inset:0 0 auto; width:100%; height:21mm; }
+      #relatorio-impressao .report-logo { position:absolute; top:5mm; left:15mm; width:27mm; height:22mm; object-fit:contain; }
+      #relatorio-impressao .report-brand { position:absolute; right:15mm; top:9mm; display:flex; flex-direction:column; align-items:flex-end; color:#003399; }
+      #relatorio-impressao .report-brand strong { font-size:12pt; letter-spacing:.04em; text-transform:uppercase; }
+      #relatorio-impressao .report-brand span { font-size:8pt; color:#4b5563; }
+      #relatorio-impressao .report-letterhead-footer { position:fixed; z-index:10; left:-14mm; right:-14mm; bottom:-21mm; height:20mm; overflow:hidden; color:#fff; }
+      #relatorio-impressao .report-letterhead-footer svg { position:absolute; inset:0; width:100%; height:100%; }
+      #relatorio-impressao .report-footer-text { position:absolute; bottom:2mm; width:100%; text-align:center; color:#fff; font-size:7.5pt; }
+      #relatorio-impressao .report-cover { border-bottom:2px solid #00b8e4; padding:0 0 3mm; margin-bottom:4mm; }
+      #relatorio-impressao .report-kicker { color:#008fc7; font-weight:bold; font-size:7pt; letter-spacing:.15em; margin:0 0 1mm; }
+      #relatorio-impressao .report-title { color:#003399; font-size:20pt; margin:0; line-height:1.15; }
+      #relatorio-impressao .report-subtitle { color:#4b5563; font-size:10pt; margin:1mm 0 2mm; }
+      #relatorio-impressao .report-generated { color:#6b7280; font-size:7.5pt; margin:0; }
+      #relatorio-impressao .report-section-heading { margin:5mm 0 2mm; border-bottom:1px solid #cbd5e1; padding-bottom:1mm; break-after:avoid; }
+      #relatorio-impressao .report-section-heading h2 { color:#003399; font-size:11pt; margin:0; }
+      #relatorio-impressao .report-section-heading p { color:#6b7280; font-size:7.5pt; margin:1mm 0 0; }
+      #relatorio-impressao .report-info-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:2mm; }
+      #relatorio-impressao .report-info-item { border:1px solid #dbe3ee; border-left:2px solid #00b8e4; padding:2mm; break-inside:avoid; }
+      #relatorio-impressao .report-label { display:block; color:#6b7280; font-size:7pt; margin-bottom:1mm; }
+      #relatorio-impressao .report-info-item strong { color:#1f2937; font-size:8.5pt; }
+      #relatorio-impressao .report-filter-summary, #relatorio-impressao .report-sources { margin:1mm 0; font-size:8pt; }
+      #relatorio-impressao .report-kpi-grid { display:grid; grid-template-columns:repeat(5,1fr); gap:2mm; }
+      #relatorio-impressao .report-kpi { border:1px solid #dbe3ee; border-top:2px solid #003399; padding:2.5mm 2mm; break-inside:avoid; }
+      #relatorio-impressao .report-kpi-1 { border-top-color:#00b8e4; }
+      #relatorio-impressao .report-kpi-2 { border-top-color:#10b981; }
+      #relatorio-impressao .report-kpi-3 { border-top-color:#f59e0b; }
+      #relatorio-impressao .report-kpi span { display:block; color:#6b7280; font-size:7pt; margin-bottom:1mm; }
+      #relatorio-impressao .report-kpi strong { color:#003399; font-size:10pt; }
+      #relatorio-impressao .report-farol-summary { display:flex; gap:6mm; margin-top:2mm; font-size:8pt; font-weight:bold; }
+      #relatorio-impressao .report-alert-list { margin:1mm 0 0; padding-left:5mm; font-size:8pt; }
+      #relatorio-impressao .report-alert-list li { padding:.5mm 0; }
+      #relatorio-impressao .report-no-alert { color:#047857; font-size:8pt; margin:1mm 0; }
+      #relatorio-impressao .report-table { border-collapse:collapse; width:100%; margin-top:2mm; font-size:7.5pt; }
+      #relatorio-impressao .report-table thead { display:table-header-group; }
+      #relatorio-impressao .report-table tr { break-inside:avoid; }
+      #relatorio-impressao .report-table th, #relatorio-impressao .report-table td { border:1px solid #cbd5e1; padding:1.5mm 1mm; text-align:left; }
+      #relatorio-impressao .report-table thead th { background:#003399 !important; color:white !important; font-weight:bold; }
+      #relatorio-impressao .report-table tbody th { font-weight:600; }
+      #relatorio-impressao .report-table td:nth-child(n+2) { text-align:right; white-space:nowrap; }
+      #relatorio-impressao .report-table .report-status-green { color:#047857; font-weight:bold; }
+      #relatorio-impressao .report-table .report-status-amber { color:#b45309; font-weight:bold; }
+      #relatorio-impressao .report-table .report-status-red { color:#b91c1c; font-weight:bold; }
+      #relatorio-impressao .report-table .report-total-row { background:#eff6ff !important; font-weight:bold; }
+      #relatorio-impressao .report-methodology { color:#4b5563; font-size:7pt; margin:2mm 0; }
+      #relatorio-impressao .report-chart-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:4mm; break-inside:auto; }
+      #relatorio-impressao .report-chart-card { border:1px solid #dbe3ee; margin:0; padding:2mm; break-inside:avoid; }
+      #relatorio-impressao .report-chart-card figcaption { color:#003399; font-weight:bold; font-size:8pt; margin-bottom:1mm; }
+      #relatorio-impressao .report-chart-card img { width:100%; height:auto; }
     }
     @media (max-width: 400px) {
       #header-app-title { font-size: 1rem; }
