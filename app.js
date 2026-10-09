@@ -817,18 +817,12 @@ function renderizarGridGraficosDinamicos(obra, cats) {
 // ==========================================
 // MODAIS E CONFIGURAÇÕES
 // ==========================================
-let modoMeusGraficos=false;
 function abrirModalMeusGraficos() {
   if (!obterPermissoesUsuario().graficos) return alert('Seu perfil não pode criar gráficos.');
-  modoMeusGraficos=true;
-  const modal=document.getElementById('modal-configuracoes');
-  document.getElementById('titulo-modal-configuracoes').textContent='📊 Meus gráficos';
-  modal.querySelector('.config-tabs').classList.add('hidden');
-  ['geral','obras'].forEach(a=>document.getElementById('cfg-aba-'+a).classList.add('hidden'));
-  document.getElementById('cfg-aba-graficos').classList.remove('hidden');
-  document.getElementById('btn-salvar-configuracoes').classList.add('hidden');
-  atualizarSeletoresNovoGrafico(); renderizarListaGraficosConfig(); modal.classList.remove('hidden');
+  atualizarSeletoresNovoGrafico(); renderizarListaGraficosConfig();
+  document.getElementById('modal-meus-graficos').classList.remove('hidden');
 }
+function fecharModalMeusGraficos() { document.getElementById('modal-meus-graficos').classList.add('hidden'); }
 function abrirModalConfiguracoes() {
   if (!obterPermissoesUsuario().configuracoes) return alert('Seu perfil não tem permissão para alterar as configurações.');
   document.getElementById('config-app-title').value = configGlobal.titulo || "";
@@ -837,22 +831,19 @@ function abrirModalConfiguracoes() {
   }
   renderizarFontesRealizado();
   renderizarTabelaGestaoObras();
-  atualizarSeletoresNovoGrafico();
-  renderizarListaGraficosConfig();
   document.getElementById('modal-configuracoes').classList.remove('hidden');
 }
 
-function fecharModalConfiguracoes() { const modal=document.getElementById('modal-configuracoes'); modal.classList.add('hidden'); if(modoMeusGraficos){ modoMeusGraficos=false; modal.querySelector('.config-tabs').classList.remove('hidden'); document.getElementById('titulo-modal-configuracoes').textContent='⚙️ Painel de Configurações do Sistema'; document.getElementById('btn-salvar-configuracoes').classList.remove('hidden'); trocarAbaConfig('geral'); } }
+function fecharModalConfiguracoes() { document.getElementById('modal-configuracoes').classList.add('hidden'); }
 
 function trocarAbaConfig(aba) {
-  ['geral', 'obras', 'graficos'].forEach(a => {
+  ['geral', 'obras'].forEach(a => {
     document.getElementById(`cfg-aba-${a}`).classList.add('hidden');
     document.getElementById(`tab-btn-${a}`).className = "pb-2 text-gray-500 hover:text-[#003399]";
   });
   document.getElementById(`cfg-aba-${aba}`).classList.remove('hidden');
   document.getElementById(`tab-btn-${aba}`).className = "pb-2 border-b-2 border-[#003399] text-[#003399] font-bold";
   if (aba === 'obras') renderizarTabelaGestaoObras();
-  if (aba === 'graficos') renderizarListaGraficosConfig();
 }
 
 function renderizarTabelaGestaoObras() {
@@ -962,7 +953,6 @@ function renderizarListaGraficosConfig() {
 }
 
 async function salvarConfiguracoesGerais() {
-  if (modoMeusGraficos) return alert('Use a opção Meus gráficos para salvar suas personalizações.');
   if (!obterPermissoesUsuario().configuracoes) return alert('Seu perfil não pode alterar as configurações do sistema.');
   configGlobal.titulo = document.getElementById('config-app-title').value.trim();
   configGlobal.planilhasRealizado = configGlobal.planilhasRealizado.filter(f => f.nome?.trim() && f.url?.trim()).map(f => ({ ...f, nome: f.nome.trim(), url: f.url.trim() }));
@@ -1017,8 +1007,9 @@ function gerarRelatorioImprimir() {
   window.print();
 }
 function obterPermissoesUsuario(usuario = usuarioAutenticado) {
-  if (!usuario || usuario.perfil === 'Mestre') return { ...PERMISSOES_PADRAO.Mestre };
-  return { ...PERMISSOES_PADRAO[usuario.perfil] || PERMISSOES_PADRAO.Engenheiro, ...permissoesPerfis[usuario.perfil] };
+  if (usuario?.perfil === 'Mestre') return { ...PERMISSOES_PADRAO.Mestre };
+  if (!usuario) return { ...PERMISSOES_PADRAO.Engenheiro, configuracoes:false, graficos:false, relatorios:false };
+  return { ...PERMISSOES_PADRAO[usuario.perfil] || PERMISSOES_PADRAO.Engenheiro, ...permissoesPerfis[usuario.perfil], configuracoes:false };
 }
 
 async function abrirModalUsuarios() {
@@ -1042,7 +1033,8 @@ function fecharModalUsuarios() { document.getElementById('modal-usuarios').class
 function renderizarEditorPermissoesPerfil() {
   const perfil=document.getElementById('permissoes-perfil-select')?.value || 'Engenheiro';
   const regras=perfil==='Mestre'?PERMISSOES_PADRAO.Mestre:(permissoesPerfis[perfil] || PERMISSOES_PADRAO.Engenheiro);
-  const nomes={dashboard:'perm-dashboard',dadosBase:'perm-dados-base',sincronizar:'perm-sincronizar',configuracoes:'perm-configuracoes',usuarios:'perm-usuarios',permissoes:'perm-permissoes',graficos:'perm-graficos',relatorios:'perm-relatorios'};
+  const nomes={dashboard:'perm-dashboard',dadosBase:'perm-dados-base',sincronizar:'perm-sincronizar',usuarios:'perm-usuarios',permissoes:'perm-permissoes',graficos:'perm-graficos',relatorios:'perm-relatorios'};
+  const configCampo=document.getElementById('perm-configuracoes'); if(configCampo){configCampo.checked=perfil==='Mestre';configCampo.disabled=true;}
   const bloqueado=perfil==='Mestre';
   Object.entries(nomes).forEach(([chave,id])=>{const campo=document.getElementById(id); if(campo){campo.checked=!!regras[chave];campo.disabled=bloqueado;}});
   document.getElementById('btn-salvar-permissoes').disabled=bloqueado;
@@ -1059,7 +1051,7 @@ function salvarPermissoesPerfil() {
     dashboard:document.getElementById('perm-dashboard').checked,
     dadosBase:document.getElementById('perm-dados-base').checked,
     sincronizar:document.getElementById('perm-sincronizar').checked,
-    configuracoes:document.getElementById('perm-configuracoes').checked,
+    configuracoes:false,
     usuarios:document.getElementById('perm-usuarios').checked,
     permissoes:document.getElementById('perm-permissoes').checked,
     graficos:document.getElementById('perm-graficos').checked,

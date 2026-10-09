@@ -23,7 +23,7 @@
     }
     @media print {
       body { display:block !important; background:#fff !important; color:#111 !important; }
-      #screen-login, #app-container, #modal-configuracoes, #modal-usuarios { display:none !important; }
+      #screen-login, #app-container, #modal-configuracoes, #modal-meus-graficos, #modal-usuarios { display:none !important; }
       #relatorio-impressao { display:block !important; position:absolute; inset:0; padding:12mm; font:11pt Arial,sans-serif; }
       #relatorio-impressao h1 { color:#003399; font-size:20pt; margin:0 0 4mm; }
       #relatorio-impressao h2 { font-size:15pt; margin:0 0 5mm; }
@@ -296,7 +296,6 @@
       <div class="config-tabs flex border-b text-xs font-bold gap-4">
         <button onclick="trocarAbaConfig('geral')" id="tab-btn-geral" class="pb-2 border-b-2 border-[#003399] text-[#003399]">Geral & Link Principal</button>
         <button onclick="trocarAbaConfig('obras')" id="tab-btn-obras" class="pb-2 text-gray-500 hover:text-[#003399]">🏢 Gerir Obras</button>
-        <button onclick="trocarAbaConfig('graficos')" id="tab-btn-graficos" class="pb-2 text-gray-500 hover:text-[#003399]">📊 Gráficos</button>
       </div>
 
       <div id="cfg-aba-geral" class="space-y-4 text-xs">
@@ -342,7 +341,16 @@
         </div>
       </div>
 
-      <div id="cfg-aba-graficos" class="space-y-4 text-xs hidden">
+      <div class="flex justify-end border-t pt-3">
+        <button type="button" onclick="salvarConfiguracoesGerais()" id="btn-salvar-configuracoes" class="bg-emerald-600 text-white font-bold px-6 py-2 rounded-lg shadow-md">Salvar Alterações</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="modal-meus-graficos" class="fixed inset-0 bg-black/60 backdrop-blur-sm hidden z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-5xl w-full p-4 sm:p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+      <div class="flex justify-between items-center border-b pb-3"><h3 class="text-lg font-bold text-[#003399]">📊 Meus gráficos</h3><button onclick="fecharModalMeusGraficos()" class="text-gray-400 hover:text-gray-600 font-bold">✕</button></div>
+      <div id="painel-meus-graficos" class="space-y-4 text-xs">
         <div class="bg-[#F4F6F9] p-4 rounded-xl border space-y-3">
           <p class="font-bold text-[#003399] uppercase">Adicionar Gráfico</p>
           <p class="text-gray-600">Os eixos incluem as categorias/obras e os títulos de coluna importados em Dados Base (por exemplo, Fornecedor, CNPJ e Valor). Ao usar uma coluna da base no eixo X, escolha no eixo Y a contagem de registros ou a soma de uma coluna numérica. Clique em um ponto para filtrar os gráficos da mesma planilha e a tabela Dados Base.</p>
@@ -358,9 +366,7 @@
         <div id="lista-graficos-config" class="space-y-2"></div>
       </div>
 
-      <div class="flex justify-end border-t pt-3">
-        <button type="button" onclick="salvarConfiguracoesGerais()" id="btn-salvar-configuracoes" class="bg-emerald-600 text-white font-bold px-6 py-2 rounded-lg shadow-md">Salvar Alterações</button>
-      </div>
+      <div class="flex justify-end border-t pt-3"><button type="button" onclick="fecharModalMeusGraficos()" class="bg-[#003399] text-white font-bold px-6 py-2 rounded-lg">Concluir</button></div>
     </div>
   </div>
 
