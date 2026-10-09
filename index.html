@@ -186,21 +186,27 @@
           <h3 class="text-base font-bold text-[#003399]">Demonstrativo e Farol por Categoria</h3>
           
           <div class="flex flex-wrap gap-2">
-            <div class="flex items-center gap-1.5 text-xs font-bold text-emerald-800 bg-emerald-100 px-3 py-1.5 rounded-lg border border-emerald-200">
+            <button id="farol-green-btn" type="button" aria-pressed="false" onclick="alternarFiltroFarol('green')" class="flex items-center gap-1.5 text-xs font-bold text-emerald-800 bg-emerald-100 px-3 py-1.5 rounded-lg border border-emerald-200 hover:ring-2 hover:ring-emerald-400 aria-pressed:ring-2">
               <span>🟢 Seguras:</span> <span id="farol-verde-count" class="text-sm">0</span>
-            </div>
-            <div class="flex items-center gap-1.5 text-xs font-bold text-amber-800 bg-amber-100 px-3 py-1.5 rounded-lg border border-amber-200">
+            </button>
+            <button id="farol-amber-btn" type="button" aria-pressed="false" onclick="alternarFiltroFarol('amber')" class="flex items-center gap-1.5 text-xs font-bold text-amber-800 bg-amber-100 px-3 py-1.5 rounded-lg border border-amber-200 hover:ring-2 hover:ring-amber-400 aria-pressed:ring-2">
               <span>🟡 Atenção (85%+):</span> <span id="farol-amarelo-count" class="text-sm">0</span>
-            </div>
-            <div class="flex items-center gap-1.5 text-xs font-bold text-red-800 bg-red-100 px-3 py-1.5 rounded-lg border border-red-200">
+            </button>
+            <button id="farol-red-btn" type="button" aria-pressed="false" onclick="alternarFiltroFarol('red')" class="flex items-center gap-1.5 text-xs font-bold text-red-800 bg-red-100 px-3 py-1.5 rounded-lg border border-red-200 hover:ring-2 hover:ring-red-400 aria-pressed:ring-2">
               <span>🔴 Estouradas:</span> <span id="farol-vermelho-count" class="text-sm">0</span>
-            </div>
+            </button>
           </div>
         </div>
 
-        <div class="overflow-x-auto">
+        <div class="flex flex-wrap items-center gap-2 mb-3">
+          <label for="filtro-categoria-dashboard" class="text-xs font-bold text-gray-600">Categoria:</label>
+          <select id="filtro-categoria-dashboard" onchange="filtrarCategoriaDashboard(this.value)" class="border p-2 rounded-lg text-sm"><option value="">Todas as categorias</option></select>
+          <button type="button" onclick="limparFiltrosDashboard()" class="text-xs font-bold text-[#003399] underline">Limpar filtros</button>
+          <span id="dashboard-filtro-resumo" class="text-xs text-gray-500"></span>
+        </div>
+        <div class="overflow-auto max-h-[28rem]">
           <table class="w-full text-left text-xs">
-            <thead class="bg-[#003399] text-white uppercase">
+            <thead class="sticky top-0 z-10 bg-[#003399] text-white uppercase">
               <tr>
                 <th class="p-3">Categoria / Natureza</th>
                 <th class="p-3 text-right">Previsto (R$)</th>
@@ -225,6 +231,7 @@
           <p class="text-sm text-gray-600 mt-1">Planilhas importadas que alimentam as análises e os KPI’s. Cada fonte aparece em uma aba identificada pelo nome da planilha.</p>
           <p id="dados-base-status" class="text-xs text-gray-500 mt-2">Sincronize as planilhas para carregar a base.</p>
         </div>
+        <div id="dados-base-filtros" class="bg-white p-4 rounded-xl shadow-sm border border-gray-200 flex flex-wrap gap-3 items-center"></div>
         <div id="dados-base-tabs" class="flex flex-wrap gap-2" role="tablist" aria-label="Planilhas importadas"></div>
         <div id="dados-base-conteudo" class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
           <div class="p-8 text-center text-gray-500">Nenhuma planilha importada. Use “Sincronizar Base de Dados” para começar.</div>
@@ -293,10 +300,12 @@
       <div id="cfg-aba-graficos" class="space-y-4 text-xs hidden">
         <div class="bg-[#F4F6F9] p-4 rounded-xl border space-y-3">
           <p class="font-bold text-[#003399] uppercase">Adicionar Gráfico</p>
-          <div class="grid grid-cols-3 gap-3">
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
             <div><label class="font-bold">Título:</label><input type="text" id="novo-chart-titulo" class="w-full border p-2 rounded-lg mt-1"></div>
-            <div><label class="font-bold">Tipo:</label><select id="novo-chart-tipo" class="w-full border p-2 rounded-lg mt-1 font-bold"><option value="bar">Barra</option><option value="line">Linha</option><option value="doughnut">Rosca</option></select></div>
-            <div><label class="font-bold">Métrica:</label><select id="novo-chart-metrica" class="w-full border p-2 rounded-lg mt-1 font-bold"><option value="categoria">Por Categoria</option><option value="curvaS">Curva S</option></select></div>
+            <div><label class="font-bold">Tipo de gráfico:</label><select id="novo-chart-tipo" class="w-full border p-2 rounded-lg mt-1 font-bold"><option value="bar">Barras verticais</option><option value="line">Linha</option><option value="doughnut">Rosca</option><option value="pie">Pizza</option><option value="polarArea">Área polar</option><option value="radar">Radar</option></select></div>
+            <div><label class="font-bold">Eixo X:</label><select id="novo-chart-x" class="w-full border p-2 rounded-lg mt-1 font-bold"><option value="categoria">Categoria</option><option value="obra">Obra</option></select></div>
+            <div><label class="font-bold">Eixo Y:</label><select id="novo-chart-y" class="w-full border p-2 rounded-lg mt-1 font-bold"><option value="comparativo">Previsto x Realizado</option><option value="previsto">Previsto</option><option value="realizado">Realizado</option><option value="saldo">Saldo</option><option value="percentual">% de uso</option><option value="idc">IDC</option></select></div>
+            <label class="flex items-center gap-2 font-bold mt-5"><input id="novo-chart-horizontal" type="checkbox"> Barras horizontais</label>
           </div>
           <button type="button" onclick="adicionarNovoGrafico()" class="bg-[#003399] text-white font-bold px-4 py-2 rounded-lg">➕ Adicionar Gráfico</button>
         </div>

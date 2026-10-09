@@ -14,13 +14,25 @@ const MASTER_USER = { id: "local_master", nome: "Vinícius Souza (Mestre)", usua
 let usuariosBD = [MASTER_USER];
 let solicitacoesPendentesBD = [];
 let graficosConfig = [
-  { id: "chart_cat", titulo: "Previsto x Realizado", tipo: "bar", metrica: "categoria" },
-  { id: "chart_curv", titulo: "Evolução do Desempenho", tipo: "line", metrica: "curvaS" }
+  { id: "chart_cat", titulo: "Previsto x Realizado", tipo: "bar", xField: "categoria", yField: "comparativo" },
+  { id: "chart_curv", titulo: "Evolução do Desempenho", tipo: "line", xField: "categoria", yField: "percentual" }
 ];
+try {
+  const savedCharts = JSON.parse(localStorage.getItem('graficos_bp') || 'null');
+  if (Array.isArray(savedCharts) && savedCharts.length) graficosConfig = savedCharts.map((g, i) => ({
+    id: String(g.id || `chart_${i}`), titulo: String(g.titulo || `Gráfico ${i + 1}`),
+    tipo: ['bar','line','doughnut','pie','polarArea','radar'].includes(g.tipo) ? g.tipo : 'bar',
+    xField: g.xField || (g.metrica === 'curvaS' ? 'categoria' : 'categoria'),
+    yField: g.yField || (g.metrica === 'curvaS' ? 'percentual' : 'comparativo')
+  }));
+} catch (e) { console.warn('Configuração de gráficos inválida; usando padrão.', e); }
 let graficosInstancias = {};
 let usuarioAutenticado = null;
 let obraAtivaID = null;
 let multiplicadorCenario = 1;
+let filtrosDashboard = { categoria: '', farol: '' };
+let filtrosDadosBase = { busca: '', obra: '', categoria: '' };
+function normalizarTextoUI(valor) { return String(valor || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase(); }
 
 let configGlobal = { titulo: "Brasil Pontes", urlRealizado: "", planilhasRealizado: [] };
 try { const cfg = localStorage.getItem('config_bp'); if (cfg && cfg !== "undefined") configGlobal = JSON.parse(cfg); } catch(e){}
@@ -309,7 +321,20 @@ function renderizarDadosBase() {
     tabs.appendChild(botao);
   });
   const ativa = dadosBasePlanilhas.find(p => p.id === dadosBaseAtivo);
-  const totalLinhas = ativa?.rows?.length || 0;
+  const rowsOriginais = ativa?.rows || [];
+  const norm = normalizarTextoUI;
+  const headersNorm = (ativa?.headers || []).map(h => [h, norm(h)]);
+  const obraHeader = headersNorm.find(([, h]) => /obra|departamento|centro de custo|codigo/.test(h))?.[0];
+  const categoriaHeader = headersNorm.find(([, h]) => /categoria|natureza|descricao|servico|item/.test(h))?.[0];
+  const busca = norm(filtrosDadosBase.busca);
+  const rowsFiltradas = rowsOriginais.filter(row => {
+    const texto = !busca || ativa.headers.some(h => norm(row[h]).includes(busca));
+    const obraOk = !filtrosDadosBase.obra || !obraHeader || norm(row[obraHeader]) === norm(filtrosDadosBase.obra);
+    const catOk = !filtrosDadosBase.categoria || !categoriaHeader || norm(row[categoriaHeader]) === norm(filtrosDadosBase.categoria);
+    return texto && obraOk && catOk;
+  });
+  renderizarControlesFiltroDadosBase(ativa, obraHeader, categoriaHeader);
+  const totalLinhas = rowsFiltradas.length;
   const totalPaginas = Math.max(1, Math.ceil(totalLinhas / DADOS_BASE_PAGINA_TAMANHO));
   dadosBasePaginaAtual = Math.min(dadosBasePaginaAtual, totalPaginas - 1);
   const inicio = dadosBasePaginaAtual * DADOS_BASE_PAGINA_TAMANHO;
@@ -330,7 +355,7 @@ function renderizarDadosBase() {
   thead.appendChild(trHead);
   const tbody = document.createElement('tbody');
   tbody.className = 'divide-y divide-gray-200';
-  ativa.rows.slice(inicio, fim).forEach(row => {
+  rowsFiltradas.slice(inicio, fim).forEach(row => {
     const tr = document.createElement('tr');
     ativa.headers.forEach(header => { const td = document.createElement('td'); td.className = 'p-3 whitespace-nowrap'; td.textContent = row[header] ?? ''; tr.appendChild(td); });
     tbody.appendChild(tr);
@@ -351,6 +376,42 @@ function renderizarDadosBase() {
   proxima.className = 'px-3 py-2 border rounded-lg text-sm font-bold disabled:opacity-40';
   proxima.onclick = () => { dadosBasePaginaAtual++; renderizarDadosBase(); };
   controles.append(anterior, pagina, proxima);
+}
+
+function renderizarControlesFiltroDadosBase(planilha, obraHeader, categoriaHeader) {
+  const host = document.getElementById('dados-base-filtros');
+  if (!host) return;
+  host.replaceChildren();
+  const input = document.createElement('input');
+  input.type = 'search'; input.placeholder = 'Buscar em todas as colunas…'; input.value = filtrosDadosBase.busca;
+  input.className = 'border p-2 rounded-lg text-sm min-w-56'; input.setAttribute('aria-label', 'Buscar nos dados base');
+  input.oninput = () => {
+    filtrosDadosBase.busca = input.value; dadosBasePaginaAtual = 0;
+    const cursor = input.selectionStart;
+    renderizarDadosBase();
+    const replacement = host.querySelector('input[type="search"]');
+    replacement?.focus();
+    if (cursor !== null) replacement?.setSelectionRange(cursor, cursor);
+  };
+  host.appendChild(input);
+  [[obraHeader, 'obra', 'Filtrar por obra/departamento'], [categoriaHeader, 'categoria', 'Filtrar por categoria']].forEach(([header, key, label]) => {
+    if (!header) return;
+    const select = document.createElement('select'); select.className = 'border p-2 rounded-lg text-sm'; select.setAttribute('aria-label', label);
+    const first = document.createElement('option'); first.value = ''; first.textContent = label; select.appendChild(first);
+    [...new Set((planilha?.rows || []).map(r => String(r[header] ?? '').trim()).filter(Boolean))].sort((a,b) => a.localeCompare(b, 'pt-BR')).forEach(value => {
+      const option = document.createElement('option'); option.value = value; option.textContent = value; select.appendChild(option);
+    });
+    select.value = filtrosDadosBase[key]; select.onchange = () => {
+      filtrosDadosBase[key] = select.value; dadosBasePaginaAtual = 0;
+      if (key === 'categoria') { filtrosDashboard.categoria = select.value; atualizarDashboard(); }
+      if (key === 'obra') {
+        const match = Object.entries(obrasBD || {}).find(([id, o]) => [id, o.nome, o.cc].some(v => norm(v) === norm(select.value)));
+        if (match) { obraAtivaID = match[0]; const picker = document.getElementById('seletor-obra'); if (picker) picker.value = obraAtivaID; atualizarDashboard(); }
+      }
+      renderizarDadosBase();
+    };
+    host.appendChild(select);
+  });
 }
 
 function renderizarFontesRealizado() {
@@ -514,6 +575,15 @@ function popularSeletorObras() {
 function alterarObraAtiva(id) { obraAtivaID = id; atualizarDashboard(); }
 function aplicarCenario(fator) { multiplicadorCenario = parseFloat(fator); atualizarDashboard(); }
 
+function filtrarCategoriaDashboard(valor) { filtrosDashboard.categoria = valor || ''; atualizarDashboard(); }
+function alternarFiltroFarol(valor) { filtrosDashboard.farol = filtrosDashboard.farol === valor ? '' : valor; atualizarDashboard(); }
+function limparFiltrosDashboard() { filtrosDashboard = { categoria: '', farol: '' }; atualizarDashboard(); }
+
+function classificarFarol(prev, real) {
+  const uso = prev > 0 ? (real / prev) * 100 : (real > 0 ? 999 : 0);
+  return uso > 100 || (prev === 0 && real > 0) ? 'red' : uso >= 85 ? 'amber' : 'green';
+}
+
 function atualizarDashboard() {
   if (!obraAtivaID || !obrasBD[obraAtivaID]) return;
   const obra = obrasBD[obraAtivaID];
@@ -526,50 +596,83 @@ function atualizarDashboard() {
   badge.innerText = obra.status;
   badge.className = obra.status === "Ativa" ? "bg-emerald-100 text-emerald-800 text-xs font-bold px-2.5 py-0.5 rounded-full" : "bg-amber-100 text-amber-800 text-xs font-bold px-2.5 py-0.5 rounded-full";
 
-  const pAj = obra.previstoTotal * multiplicadorCenario;
-  const dsv = pAj - obra.realizadoTotal;
-  const idc = obra.realizadoTotal > 0 ? (pAj / obra.realizadoTotal).toFixed(2) : "0.00";
+  const cats = Array.from(new Set([...Object.keys(obra.categoriasPrevisto || {}), ...Object.keys(obra.categoriasRealizado || {})]));
+  const linhas = cats.map(cat => {
+    const previsto = ((obra.categoriasPrevisto && obra.categoriasPrevisto[cat]) || 0) * multiplicadorCenario;
+    const realizado = (obra.categoriasRealizado && obra.categoriasRealizado[cat]) || 0;
+    return { cat, previsto, realizado, farol: classificarFarol(previsto, realizado) };
+  });
+  const linhasVisiveis = linhas.filter(l => (!filtrosDashboard.categoria || l.cat === filtrosDashboard.categoria) && (!filtrosDashboard.farol || l.farol === filtrosDashboard.farol));
+  const pAj = linhasVisiveis.reduce((s, l) => s + l.previsto, 0);
+  const realVisivel = linhasVisiveis.reduce((s, l) => s + l.realizado, 0);
+  const dsv = pAj - realVisivel;
+  const idc = realVisivel > 0 ? (pAj / realVisivel).toFixed(2) : "0.00";
 
   document.getElementById('kpi-previsto').innerText = pAj.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-  document.getElementById('kpi-realizado').innerText = obra.realizadoTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  document.getElementById('kpi-realizado').innerText = realVisivel.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
   document.getElementById('kpi-desvio').innerText = (dsv >= 0 ? "+ " : "") + dsv.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
   document.getElementById('kpi-idc').innerText = idc;
 
   const tbody = document.getElementById('tabela-dre-body');
   tbody.innerHTML = '';
-  const cats = Array.from(new Set([...Object.keys(obra.categoriasPrevisto || {}), ...Object.keys(obra.categoriasRealizado || {})]));
-  let cV = 0, cA = 0, cR = 0;
-
-  cats.forEach(cat => {
-    const prev = ((obra.categoriasPrevisto && obra.categoriasPrevisto[cat]) || 0) * multiplicadorCenario;
-    const real = (obra.categoriasRealizado && obra.categoriasRealizado[cat]) || 0;
+  const cV = linhas.filter(l => l.farol === 'green').length;
+  const cA = linhas.filter(l => l.farol === 'amber').length;
+  const cR = linhas.filter(l => l.farol === 'red').length;
+  linhasVisiveis.forEach(({ cat, previsto: prev, realizado: real }) => {
     const saldo = prev - real;
     const percUso = prev > 0 ? (real / prev) * 100 : (real > 0 ? 999 : 0);
 
     let cls = ''; let txt = ''; let icn = ''; let cor = '';
-    if (percUso > 100 || (prev === 0 && real > 0)) { cls = 'bg-red-100 text-red-800 border border-red-200'; txt = prev === 0 ? 'N/P' : 'ESTOURADO'; icn = '🔴'; cor = 'text-red-600'; cR++; }
-    else if (percUso >= 85) { cls = 'bg-amber-100 text-amber-800 border border-amber-200'; txt = 'ATENÇÃO'; icn = '🟡'; cor = 'text-amber-600'; cA++; }
-    else { cls = 'bg-emerald-100 text-emerald-800 border border-emerald-200'; txt = 'SEGURO'; icn = '🟢'; cor = 'text-emerald-600'; cV++; }
+    if (percUso > 100 || (prev === 0 && real > 0)) { cls = 'bg-red-100 text-red-800 border border-red-200'; txt = prev === 0 ? 'N/P' : 'ESTOURADO'; icn = '🔴'; cor = 'text-red-600'; }
+    else if (percUso >= 85) { cls = 'bg-amber-100 text-amber-800 border border-amber-200'; txt = 'ATENÇÃO'; icn = '🟡'; cor = 'text-amber-600'; }
+    else { cls = 'bg-emerald-100 text-emerald-800 border border-emerald-200'; txt = 'SEGURO'; icn = '🟢'; cor = 'text-emerald-600'; }
 
-    tbody.innerHTML += `
-      <tr class="hover:bg-gray-50 border-b">
-        <td class="p-3 font-bold">${cat}</td>
-        <td class="p-3 text-right">${prev.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
-        <td class="p-3 text-right">${real.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
-        <td class="p-3 text-center font-bold ${cor}">${percUso === 999 ? "∞" : percUso.toFixed(1) + "%"}</td>
-        <td class="p-3 text-right font-black ${cor}">${saldo.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
-        <td class="p-3 text-center"><span class="px-2 py-1 rounded text-[10px] font-black uppercase ${cls}">${icn} ${txt}</span></td>
-      </tr>
-    `;
+    const row = document.createElement('tr'); row.className = 'hover:bg-gray-50 border-b';
+    const cells = [cat, prev.toLocaleString('pt-BR', { style:'currency', currency:'BRL' }), real.toLocaleString('pt-BR', { style:'currency', currency:'BRL' }), percUso === 999 ? '∞' : `${percUso.toFixed(1)}%`, saldo.toLocaleString('pt-BR', { style:'currency', currency:'BRL' })];
+    cells.forEach((value,index)=>{ const td=document.createElement('td'); td.className=['p-3 font-bold','p-3 text-right','p-3 text-right',`p-3 text-center font-bold ${cor}`,`p-3 text-right font-black ${cor}`][index]; td.textContent=value; row.appendChild(td); });
+    const statusCell=document.createElement('td'); statusCell.className='p-3 text-center';
+    const statusBadge=document.createElement('span'); statusBadge.className=`px-2 py-1 rounded text-[10px] font-black uppercase ${cls}`; statusBadge.textContent=`${icn} ${txt}`; statusCell.appendChild(statusBadge); row.appendChild(statusCell);
+    tbody.appendChild(row);
   });
 
   document.getElementById('farol-verde-count').innerText = cV;
   document.getElementById('farol-amarelo-count').innerText = cA;
   document.getElementById('farol-vermelho-count').innerText = cR;
-  renderizarGridGraficosDinamicos(obra);
+  ['green','amber','red'].forEach((key, i) => {
+    const btn = document.getElementById(`farol-${key}-btn`);
+    if (btn) btn.setAttribute('aria-pressed', String(filtrosDashboard.farol === key));
+  });
+  const seletorCategoria = document.getElementById('filtro-categoria-dashboard');
+  if (seletorCategoria) {
+    const atual = filtrosDashboard.categoria;
+    seletorCategoria.replaceChildren(new Option('Todas as categorias', ''));
+    cats.forEach(c => seletorCategoria.add(new Option(c, c)));
+    seletorCategoria.value = atual;
+    if (atual && !cats.includes(atual)) { filtrosDashboard.categoria = ''; seletorCategoria.value = ''; }
+  }
+  const resumo = document.getElementById('dashboard-filtro-resumo');
+  if (resumo) resumo.textContent = filtrosDashboard.categoria || filtrosDashboard.farol ? 'Filtros ativos — KPIs, demonstrativo e gráficos estão sincronizados.' : 'Selecione uma categoria, um farol ou um ponto de gráfico para filtrar a análise.';
+  renderizarGridGraficosDinamicos(obra, cats);
 }
 
-function renderizarGridGraficosDinamicos(obra) {
+function obterLinhasGrafico(cfg, obra, cats) {
+  if (cfg.xField === 'obra') {
+    return Object.entries(obrasBD || {}).filter(([, o]) => o.status === 'Ativa').map(([id, o]) => {
+      const categorias = [...new Set([...Object.keys(o.categoriasPrevisto || {}), ...Object.keys(o.categoriasRealizado || {})])];
+      const selecionadas = categorias.filter(c => (!filtrosDashboard.categoria || c === filtrosDashboard.categoria) && (!filtrosDashboard.farol || classificarFarol(((o.categoriasPrevisto || {})[c] || 0) * multiplicadorCenario, (o.categoriasRealizado || {})[c] || 0) === filtrosDashboard.farol));
+      const p = selecionadas.reduce((s,c) => s + ((o.categoriasPrevisto || {})[c] || 0) * multiplicadorCenario, 0);
+      const r = selecionadas.reduce((s,c) => s + ((o.categoriasRealizado || {})[c] || 0), 0);
+      return { key:id, label:o.nome || id, previsto:p, realizado:r, saldo:p-r, percentual:p ? r/p*100 : 0, idc:r ? p/r : 0 };
+    });
+  }
+  return cats.filter(c => (!filtrosDashboard.categoria || c === filtrosDashboard.categoria)).map(c => {
+    const previsto = ((obra.categoriasPrevisto || {})[c] || 0) * multiplicadorCenario;
+    const realizado = (obra.categoriasRealizado || {})[c] || 0;
+    return { key:c, label:c, previsto, realizado, saldo:previsto-realizado, percentual:previsto ? realizado/previsto*100 : 0, idc:realizado ? previsto/realizado : 0, farol:classificarFarol(previsto,realizado) };
+  }).filter(r => !filtrosDashboard.farol || r.farol === filtrosDashboard.farol);
+}
+
+function renderizarGridGraficosDinamicos(obra, cats) {
   const container = document.getElementById('grid-graficos-dinamicos');
   container.innerHTML = '';
   Object.keys(graficosInstancias).forEach(id => { if (graficosInstancias[id]) graficosInstancias[id].destroy(); });
@@ -577,22 +680,34 @@ function renderizarGridGraficosDinamicos(obra) {
 
   if (typeof Chart === 'undefined') return;
 
-  graficosConfig.forEach(cfg => {
-    container.innerHTML += `<div class="bg-white p-6 rounded-xl shadow-sm border border-gray-200"><h3 class="font-bold text-[#003399] mb-4">${cfg.titulo}</h3><div class="relative h-72"><canvas id="${cfg.id}"></canvas></div></div>`;
+  graficosConfig.forEach((cfg, i) => {
+    const card=document.createElement('div'); card.className='bg-white p-6 rounded-xl shadow-sm border border-gray-200';
+    const title=document.createElement('h3'); title.className='font-bold text-[#003399] mb-4'; title.textContent=cfg.titulo || `Gráfico ${i+1}`;
+    const canvas=document.createElement('canvas'); canvas.id=cfg.id;
+    const box=document.createElement('div'); box.className='relative h-72'; box.appendChild(canvas); card.append(title,box); container.appendChild(card);
   });
 
   setTimeout(() => {
     graficosConfig.forEach(cfg => {
       const ctx = document.getElementById(cfg.id)?.getContext('2d');
       if (!ctx) return;
-      const cats = Array.from(new Set([...Object.keys(obra.categoriasPrevisto || {}), ...Object.keys(obra.categoriasRealizado || {})]));
-      const prevVals = cats.map(c => ((obra.categoriasPrevisto && obra.categoriasPrevisto[c]) || 0) * multiplicadorCenario);
-      const realVals = cats.map(c => (obra.categoriasRealizado && obra.categoriasRealizado[c]) || 0);
-
+      const rows = obterLinhasGrafico(cfg, obra, cats);
+      const labels = rows.length ? rows.map(r=>r.label) : ['Sem dados'];
+      const yMap = { previsto:'previsto', realizado:'realizado', saldo:'saldo', percentual:'percentual', idc:'idc' };
+      const colors = ['#003399','#00CFFF'];
+      const datasets = cfg.yField === 'comparativo'
+        ? ['previsto','realizado'].map((field,i)=>({label:field==='previsto'?'Previsto':'Realizado',data:rows.map(r=>r[field]),backgroundColor:colors[i],borderColor:colors[i],borderWidth:2}))
+        : [{label:({previsto:'Previsto',realizado:'Realizado',saldo:'Saldo',percentual:'% Uso',idc:'IDC'})[cfg.yField] || 'Valor',data:rows.map(r=>r[yMap[cfg.yField] || 'previsto']),backgroundColor:colors[0],borderColor:colors[0],borderWidth:2}];
       graficosInstancias[cfg.id] = new Chart(ctx, {
         type: cfg.tipo,
-        data: { labels: cats.length ? cats : ['-'], datasets: [{ label: 'Previsto', data: prevVals.length ? prevVals : [0], backgroundColor: '#003399' }, { label: 'Realizado', data: realVals.length ? realVals : [0], backgroundColor: '#00CFFF' }] },
-        options: { responsive: true, maintainAspectRatio: false }
+        data: { labels, datasets },
+        options: { responsive: true, maintainAspectRatio: false, indexAxis: cfg.tipo === 'bar' && cfg.horizontal ? 'y' : 'x', onClick: (event, elements) => {
+          if (!elements?.length || !rows.length) return;
+          const index=elements[0].index, selected=rows[index]; if (!selected) return;
+          if (cfg.xField === 'obra') { obraAtivaID=selected.key; const picker=document.getElementById('seletor-obra'); if(picker) picker.value=obraAtivaID; }
+          else { filtrosDashboard.categoria = filtrosDashboard.categoria === selected.key ? '' : selected.key; }
+          atualizarDashboard();
+        } }
       });
     });
   }, 100);
@@ -608,6 +723,7 @@ function abrirModalConfiguracoes() {
   }
   renderizarFontesRealizado();
   renderizarTabelaGestaoObras();
+  renderizarListaGraficosConfig();
   document.getElementById('modal-configuracoes').classList.remove('hidden');
 }
 
@@ -621,6 +737,7 @@ function trocarAbaConfig(aba) {
   document.getElementById(`cfg-aba-${aba}`).classList.remove('hidden');
   document.getElementById(`tab-btn-${aba}`).className = "pb-2 border-b-2 border-[#003399] text-[#003399] font-bold";
   if (aba === 'obras') renderizarTabelaGestaoObras();
+  if (aba === 'graficos') renderizarListaGraficosConfig();
 }
 
 function renderizarTabelaGestaoObras() {
@@ -661,16 +778,36 @@ async function alternarStatusArquivado(id) {
 function adicionarNovoGrafico() {
   const titulo = document.getElementById('novo-chart-titulo').value.trim();
   const tipo = document.getElementById('novo-chart-tipo').value;
-  const metrica = document.getElementById('novo-chart-metrica').value;
+  const xField = document.getElementById('novo-chart-x').value;
+  const yField = document.getElementById('novo-chart-y').value;
   if (!titulo) return alert("Digite o título.");
-  graficosConfig.push({ id: `chart_custom_${Date.now()}`, titulo, tipo, metrica });
+  graficosConfig.push({ id: `chart_custom_${Date.now()}`, titulo, tipo, xField, yField, horizontal: tipo === 'bar' && document.getElementById('novo-chart-horizontal').checked });
   document.getElementById('novo-chart-titulo').value = '';
-  renderizarListaGraficosConfig();
+  persistirGraficosConfig(); renderizarListaGraficosConfig(); atualizarDashboard();
 }
-function removerGrafico(id) { graficosConfig = graficosConfig.filter(g => g.id !== id); renderizarListaGraficosConfig(); }
+function persistirGraficosConfig() { try { localStorage.setItem('graficos_bp', JSON.stringify(graficosConfig)); } catch(e) { alert('Não foi possível salvar os gráficos neste navegador.'); } }
+function removerGrafico(id) { graficosConfig = graficosConfig.filter(g => g.id !== id); persistirGraficosConfig(); renderizarListaGraficosConfig(); atualizarDashboard(); }
 function renderizarListaGraficosConfig() {
-  const div = document.getElementById('lista-graficos-config'); div.innerHTML = '';
-  graficosConfig.forEach(g => { div.innerHTML += `<div class="flex justify-between items-center bg-white p-2 border rounded text-xs"><div><strong>${g.titulo}</strong></div><button type="button" onclick="removerGrafico('${g.id}')" class="text-red-600 font-bold">Remover</button></div>`; });
+  const div = document.getElementById('lista-graficos-config'); if (!div) return; div.replaceChildren();
+  const select = (label, value, options, onChange) => {
+    const wrap=document.createElement('label'); wrap.className='text-xs font-bold text-gray-600'; wrap.textContent=label;
+    const el=document.createElement('select'); el.className='w-full border p-2 rounded mt-1';
+    options.forEach(([v,t])=>el.add(new Option(t,v))); el.value=value; el.onchange=onChange; wrap.appendChild(el); return wrap;
+  };
+  graficosConfig.forEach(g => {
+    const row=document.createElement('div'); row.className='grid grid-cols-1 md:grid-cols-5 gap-3 items-end bg-white p-3 border rounded-lg';
+    const title=document.createElement('label'); title.className='text-xs font-bold text-gray-600'; title.textContent='Título';
+    const input=document.createElement('input'); input.className='w-full border p-2 rounded mt-1'; input.value=g.titulo; input.maxLength=80; input.onchange=()=>{g.titulo=input.value.trim()||'Gráfico'; persistirGraficosConfig(); atualizarDashboard();}; title.appendChild(input);
+    const onEdit=()=>{persistirGraficosConfig(); atualizarDashboard();};
+    const type=select('Tipo',g.tipo,[['bar','Barras'],['line','Linha'],['doughnut','Rosca'],['pie','Pizza'],['polarArea','Área polar'],['radar','Radar']],e=>{g.tipo=e.target.value;onEdit();});
+    const x=select('Eixo X',g.xField||'categoria',[['categoria','Categoria'],['obra','Obra']],e=>{g.xField=e.target.value;onEdit();});
+    const y=select('Eixo Y',g.yField||'comparativo',[['comparativo','Previsto x Realizado'],['previsto','Previsto'],['realizado','Realizado'],['saldo','Saldo'],['percentual','% de uso'],['idc','IDC']],e=>{g.yField=e.target.value;onEdit();});
+    const action=document.createElement('div'); action.className='flex items-center gap-2';
+    const horizontal=document.createElement('label'); horizontal.className='flex items-center gap-1 text-xs';
+    const check=document.createElement('input'); check.type='checkbox'; check.checked=!!g.horizontal; check.disabled=g.tipo!=='bar'; check.onchange=()=>{g.horizontal=check.checked;onEdit();}; horizontal.append(check,document.createTextNode('Horizontal'));
+    const remove=document.createElement('button'); remove.type='button'; remove.textContent='Remover'; remove.className='text-red-700 font-bold'; remove.onclick=()=>removerGrafico(g.id);
+    action.append(horizontal,remove); row.append(title,type,x,y,action); div.appendChild(row);
+  });
 }
 
 async function salvarConfiguracoesGerais() {
