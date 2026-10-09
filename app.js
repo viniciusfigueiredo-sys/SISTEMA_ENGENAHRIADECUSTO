@@ -30,9 +30,54 @@ let graficosInstancias = {};
 let usuarioAutenticado = null;
 let obraAtivaID = null;
 let multiplicadorCenario = 1;
-let filtrosDashboard = { categoria: '', farol: '' };
+let filtrosDashboard = { categoria: '', farol: '', base: null };
 let filtrosDadosBase = { busca: '', obra: '', categoria: '' };
 function normalizarTextoUI(valor) { return String(valor || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase(); }
+
+function campoBaseId(planilhaId, header) { return `base:${encodeURIComponent(planilhaId)}:${encodeURIComponent(header)}`; }
+function campoBaseContagemId(planilhaId) { return `contagem:${encodeURIComponent(planilhaId)}`; }
+function lerCampoBaseId(campo) {
+  if (typeof campo !== 'string') return null;
+  const partes = campo.split(':');
+  if (partes[0] === 'base' && partes.length === 3) return { tipo:'coluna', planilhaId:decodeURIComponent(partes[1]), header:decodeURIComponent(partes[2]) };
+  if (partes[0] === 'contagem' && partes.length === 2) return { tipo:'contagem', planilhaId:decodeURIComponent(partes[1]) };
+  return null;
+}
+
+function colunaBaseNumerica(planilha, header) {
+  if (/cnpj|cpf|documento|telefone|celular|cep|matricula|c[oó]digo|(^|\s)id($|\s)/i.test(header)) return false;
+  const valores = (planilha?.rows || []).map(r => String(r[header] ?? '').trim()).filter(Boolean).slice(0, 100);
+  if (!valores.length) return false;
+  const numericos = valores.filter(v => /^\(?\s*-?\s*R?\$?\s*\d[\d.,\s]*\)?\s*%?\s*$/.test(v));
+  return numericos.length / valores.length >= 0.7;
+}
+
+function opcoesCamposGraficos(eixo, xField = '') {
+  if (eixo === 'x') {
+    const opcoes = [['categoria','Categoria'],['obra','Obra']];
+    dadosBasePlanilhas.forEach(p => (p.headers || []).forEach(h => opcoes.push([campoBaseId(p.id,h), `${p.nome} • ${h}`])));
+    return opcoes;
+  }
+  const campoX = lerCampoBaseId(xField);
+  if (campoX) {
+    const planilha = dadosBasePlanilhas.find(p => p.id === campoX.planilhaId);
+    if (!planilha) return [[campoBaseContagemId(campoX.planilhaId),'Contagem de registros']];
+    return [[campoBaseContagemId(planilha.id),`${planilha.nome} • Contagem de registros`], ...(planilha.headers || []).filter(h => colunaBaseNumerica(planilha,h)).map(h => [campoBaseId(planilha.id,h),`${planilha.nome} • Soma de ${h}`])];
+  }
+  return [['comparativo','Previsto x Realizado'],['previsto','Previsto'],['realizado','Realizado'],['saldo','Saldo'],['percentual','% de uso'],['idc','IDC']];
+}
+
+function atualizarSeletoresNovoGrafico() {
+  const x = document.getElementById('novo-chart-x'), y = document.getElementById('novo-chart-y');
+  if (!x || !y) return;
+  const oldX=x.value, oldY=y.value;
+  x.replaceChildren(...opcoesCamposGraficos('x').map(([v,t])=>new Option(t,v)));
+  if (opcoesCamposGraficos('x').some(([v])=>v===oldX)) x.value=oldX;
+  const yOpts=opcoesCamposGraficos('y',x.value);
+  y.replaceChildren(...yOpts.map(([v,t])=>new Option(t,v)));
+  y.value=yOpts.some(([v])=>v===oldY)?oldY:(yOpts[0]?.[0] || 'previsto');
+  x.onchange=()=>{ atualizarSeletoresNovoGrafico(); };
+}
 
 let configGlobal = { titulo: "Brasil Pontes", urlRealizado: "", planilhasRealizado: [] };
 try { const cfg = localStorage.getItem('config_bp'); if (cfg && cfg !== "undefined") configGlobal = JSON.parse(cfg); } catch(e){}
@@ -331,7 +376,9 @@ function renderizarDadosBase() {
     const texto = !busca || ativa.headers.some(h => norm(row[h]).includes(busca));
     const obraOk = !filtrosDadosBase.obra || !obraHeader || norm(row[obraHeader]) === norm(filtrosDadosBase.obra);
     const catOk = !filtrosDadosBase.categoria || !categoriaHeader || norm(row[categoriaHeader]) === norm(filtrosDadosBase.categoria);
-    return texto && obraOk && catOk;
+    const filtroBase=filtrosDashboard.base;
+    const baseOk=!filtroBase || filtroBase.planilhaId!==ativa?.id || norm(row[filtroBase.header])===norm(filtroBase.value);
+    return texto && obraOk && catOk && baseOk;
   });
   renderizarControlesFiltroDadosBase(ativa, obraHeader, categoriaHeader);
   const totalLinhas = rowsFiltradas.length;
@@ -533,6 +580,8 @@ async function sincronizarTodasPlanilhas() {
     await salvarDadosBaseArmazenados(novasBases);
     localStorage.setItem('obras_bp', JSON.stringify(obrasBD));
     dadosBasePlanilhas = novasBases;
+    atualizarSeletoresNovoGrafico();
+    renderizarListaGraficosConfig();
     dadosBasePaginaAtual = 0;
     let errosSupabase = [];
     if (supabaseClient) {
@@ -577,7 +626,7 @@ function aplicarCenario(fator) { multiplicadorCenario = parseFloat(fator); atual
 
 function filtrarCategoriaDashboard(valor) { filtrosDashboard.categoria = valor || ''; atualizarDashboard(); }
 function alternarFiltroFarol(valor) { filtrosDashboard.farol = filtrosDashboard.farol === valor ? '' : valor; atualizarDashboard(); }
-function limparFiltrosDashboard() { filtrosDashboard = { categoria: '', farol: '' }; atualizarDashboard(); }
+function limparFiltrosDashboard() { filtrosDashboard = { categoria: '', farol: '', base: null }; atualizarDashboard(); if (!document.getElementById('view-dados-base')?.classList.contains('hidden')) renderizarDadosBase(); }
 
 function classificarFarol(prev, real) {
   const uso = prev > 0 ? (real / prev) * 100 : (real > 0 ? 999 : 0);
@@ -651,11 +700,30 @@ function atualizarDashboard() {
     if (atual && !cats.includes(atual)) { filtrosDashboard.categoria = ''; seletorCategoria.value = ''; }
   }
   const resumo = document.getElementById('dashboard-filtro-resumo');
-  if (resumo) resumo.textContent = filtrosDashboard.categoria || filtrosDashboard.farol ? 'Filtros ativos — KPIs, demonstrativo e gráficos estão sincronizados.' : 'Selecione uma categoria, um farol ou um ponto de gráfico para filtrar a análise.';
+  if (resumo) resumo.textContent = filtrosDashboard.base ? `Filtro da base ativo: ${filtrosDashboard.base.planilhaNome} • ${filtrosDashboard.base.header} = ${filtrosDashboard.base.value}. Gráficos da planilha e Dados Base estão conectados.` : (filtrosDashboard.categoria || filtrosDashboard.farol ? 'Filtros ativos — KPIs, demonstrativo e gráficos estão sincronizados.' : 'Selecione uma categoria, um farol ou um ponto de gráfico para filtrar a análise.');
   renderizarGridGraficosDinamicos(obra, cats);
+  if (!document.getElementById('view-dados-base')?.classList.contains('hidden')) renderizarDadosBase();
 }
 
 function obterLinhasGrafico(cfg, obra, cats) {
+  const campoX=lerCampoBaseId(cfg.xField);
+  if (campoX?.tipo === 'coluna') {
+    const planilha=dadosBasePlanilhas.find(p=>p.id===campoX.planilhaId);
+    if (!planilha) return [];
+    let rows=planilha.rows || [];
+    const filtro=filtrosDashboard.base;
+    if (filtro?.planilhaId===planilha.id) rows=rows.filter(r=>normalizarTextoUI(r[filtro.header])===normalizarTextoUI(filtro.value));
+    const grupos=new Map();
+    rows.forEach(r=>{
+      const bruto=String(r[campoX.header] ?? '').trim(); const label=bruto || '(vazio)';
+      if (!grupos.has(label)) grupos.set(label,{key:label,label,valor:0,contagem:0});
+      const grupo=grupos.get(label); grupo.contagem++;
+      const campoY=lerCampoBaseId(cfg.yField);
+      if (campoY?.tipo==='coluna' && campoY.planilhaId===planilha.id) grupo.valor+=parseMonetario(r[campoY.header]);
+    });
+    const campoY=lerCampoBaseId(cfg.yField);
+    return [...grupos.values()].map(g=>({...g,valor:campoY?.tipo==='contagem'?g.contagem:g.valor})).sort((a,b)=>b.valor-a.valor).slice(0,100);
+  }
   if (cfg.xField === 'obra') {
     return Object.entries(obrasBD || {}).filter(([, o]) => o.status === 'Ativa').map(([id, o]) => {
       const categorias = [...new Set([...Object.keys(o.categoriasPrevisto || {}), ...Object.keys(o.categoriasRealizado || {})])];
@@ -695,7 +763,11 @@ function renderizarGridGraficosDinamicos(obra, cats) {
       const labels = rows.length ? rows.map(r=>r.label) : ['Sem dados'];
       const yMap = { previsto:'previsto', realizado:'realizado', saldo:'saldo', percentual:'percentual', idc:'idc' };
       const colors = ['#003399','#00CFFF'];
-      const datasets = cfg.yField === 'comparativo'
+      const xBase=lerCampoBaseId(cfg.xField), yBase=lerCampoBaseId(cfg.yField);
+      const nomeBase=dadosBasePlanilhas.find(p=>p.id===xBase?.planilhaId)?.nome || 'Dados Base';
+      const datasets = xBase?.tipo==='coluna'
+        ? [{label:yBase?.tipo==='contagem'?'Contagem de registros':`Soma de ${yBase?.header || 'valor'} (${nomeBase})`,data:rows.map(r=>r.valor),backgroundColor:colors[0],borderColor:colors[0],borderWidth:2}]
+        : cfg.yField === 'comparativo'
         ? ['previsto','realizado'].map((field,i)=>({label:field==='previsto'?'Previsto':'Realizado',data:rows.map(r=>r[field]),backgroundColor:colors[i],borderColor:colors[i],borderWidth:2}))
         : [{label:({previsto:'Previsto',realizado:'Realizado',saldo:'Saldo',percentual:'% Uso',idc:'IDC'})[cfg.yField] || 'Valor',data:rows.map(r=>r[yMap[cfg.yField] || 'previsto']),backgroundColor:colors[0],borderColor:colors[0],borderWidth:2}];
       graficosInstancias[cfg.id] = new Chart(ctx, {
@@ -704,7 +776,12 @@ function renderizarGridGraficosDinamicos(obra, cats) {
         options: { responsive: true, maintainAspectRatio: false, indexAxis: cfg.tipo === 'bar' && cfg.horizontal ? 'y' : 'x', onClick: (event, elements) => {
           if (!elements?.length || !rows.length) return;
           const index=elements[0].index, selected=rows[index]; if (!selected) return;
-          if (cfg.xField === 'obra') { obraAtivaID=selected.key; const picker=document.getElementById('seletor-obra'); if(picker) picker.value=obraAtivaID; }
+          const campoX=lerCampoBaseId(cfg.xField);
+          if (campoX?.tipo==='coluna') {
+            const planilha=dadosBasePlanilhas.find(p=>p.id===campoX.planilhaId);
+            const mesmoFiltro=filtrosDashboard.base?.planilhaId===campoX.planilhaId && filtrosDashboard.base?.header===campoX.header && filtrosDashboard.base?.value===selected.key;
+            filtrosDashboard.base=mesmoFiltro?null:{planilhaId:campoX.planilhaId,planilhaNome:planilha?.nome||'Dados Base',header:campoX.header,value:selected.key};
+          } else if (cfg.xField === 'obra') { obraAtivaID=selected.key; const picker=document.getElementById('seletor-obra'); if(picker) picker.value=obraAtivaID; }
           else { filtrosDashboard.categoria = filtrosDashboard.categoria === selected.key ? '' : selected.key; }
           atualizarDashboard();
         } }
@@ -723,6 +800,7 @@ function abrirModalConfiguracoes() {
   }
   renderizarFontesRealizado();
   renderizarTabelaGestaoObras();
+  atualizarSeletoresNovoGrafico();
   renderizarListaGraficosConfig();
   document.getElementById('modal-configuracoes').classList.remove('hidden');
 }
@@ -800,8 +878,13 @@ function renderizarListaGraficosConfig() {
     const input=document.createElement('input'); input.className='w-full border p-2 rounded mt-1'; input.value=g.titulo; input.maxLength=80; input.onchange=()=>{g.titulo=input.value.trim()||'Gráfico'; persistirGraficosConfig(); atualizarDashboard();}; title.appendChild(input);
     const onEdit=()=>{persistirGraficosConfig(); atualizarDashboard();};
     const type=select('Tipo',g.tipo,[['bar','Barras'],['line','Linha'],['doughnut','Rosca'],['pie','Pizza'],['polarArea','Área polar'],['radar','Radar']],e=>{g.tipo=e.target.value;onEdit();});
-    const x=select('Eixo X',g.xField||'categoria',[['categoria','Categoria'],['obra','Obra']],e=>{g.xField=e.target.value;onEdit();});
-    const y=select('Eixo Y',g.yField||'comparativo',[['comparativo','Previsto x Realizado'],['previsto','Previsto'],['realizado','Realizado'],['saldo','Saldo'],['percentual','% de uso'],['idc','IDC']],e=>{g.yField=e.target.value;onEdit();});
+    const x=select('Eixo X',g.xField||'categoria',opcoesCamposGraficos('x'),e=>{
+      g.xField=e.target.value;
+      const yOpts=opcoesCamposGraficos('y',g.xField);
+      if(!yOpts.some(([v])=>v===g.yField)) g.yField=yOpts[0]?.[0] || 'previsto';
+      persistirGraficosConfig(); renderizarListaGraficosConfig(); atualizarDashboard();
+    });
+    const y=select('Eixo Y',g.yField||'comparativo',opcoesCamposGraficos('y',g.xField),e=>{g.yField=e.target.value;onEdit();});
     const action=document.createElement('div'); action.className='flex items-center gap-2';
     const horizontal=document.createElement('label'); horizontal.className='flex items-center gap-1 text-xs';
     const check=document.createElement('input'); check.type='checkbox'; check.checked=!!g.horizontal; check.disabled=g.tipo!=='bar'; check.onchange=()=>{g.horizontal=check.checked;onEdit();}; horizontal.append(check,document.createTextNode('Horizontal'));
