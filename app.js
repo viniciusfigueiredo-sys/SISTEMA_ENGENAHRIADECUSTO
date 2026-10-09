@@ -10,6 +10,20 @@ try {
 } catch (e) { console.warn("Supabase indisponível.", e); }
 
 const MASTER_USER = { id: "local_master", nome: "Vinícius Souza (Mestre)", usuario: "vinicius_souzaf", email: "mestre@brasilpontes.com.br", senha: "741852963", perfil: "Mestre", status: "Aprovado" };
+const PERMISSOES_PADRAO = {
+  Mestre: { dashboard:true, dadosBase:true, sincronizar:true, configuracoes:true, usuarios:true, permissoes:true },
+  Engenheiro: { dashboard:true, dadosBase:true, sincronizar:false, configuracoes:false, usuarios:false, permissoes:false },
+  Orçamentista: { dashboard:true, dadosBase:true, sincronizar:true, configuracoes:false, usuarios:false, permissoes:false },
+  Dono: { dashboard:true, dadosBase:true, sincronizar:false, configuracoes:false, usuarios:false, permissoes:false }
+};
+let permissoesPerfis = Object.fromEntries(Object.entries(PERMISSOES_PADRAO).map(([perfil, regras]) => [perfil, { ...regras }]));
+try {
+  const salvas=JSON.parse(localStorage.getItem('permissoes_bp') || 'null');
+  if (salvas && typeof salvas === 'object') Object.keys(PERMISSOES_PADRAO).forEach(perfil => {
+    if (salvas[perfil] && typeof salvas[perfil] === 'object') permissoesPerfis[perfil] = { ...PERMISSOES_PADRAO[perfil], ...salvas[perfil] };
+  });
+} catch(e) { console.warn('Permissões locais inválidas; usando os padrões.', e); }
+permissoesPerfis.Mestre = { ...PERMISSOES_PADRAO.Mestre };
 
 let usuariosBD = [MASTER_USER];
 let solicitacoesPendentesBD = [];
@@ -333,6 +347,9 @@ function exibirFormLogin() { document.getElementById('box-solicitacao').classLis
 
 function abrirAbaSistema(aba) {
   const dashboard = aba === 'dashboard';
+  const permissoes=obterPermissoesUsuario();
+  if (dashboard && !permissoes.dashboard) return alert('Seu perfil não tem acesso às Análises.');
+  if (!dashboard && !permissoes.dadosBase) return alert('Seu perfil não tem acesso aos Dados Base.');
   document.getElementById('view-dashboard').classList.toggle('hidden', !dashboard);
   document.getElementById('view-dados-base').classList.toggle('hidden', dashboard);
   document.getElementById('nav-dashboard').className = dashboard ? 'px-4 py-3 border-b-2 border-[#003399] text-[#003399] font-bold text-sm' : 'px-4 py-3 text-gray-500 font-bold text-sm hover:text-[#003399]';
@@ -495,6 +512,7 @@ function adicionarFonteRealizado() {
 // MOTOR DE SINCRONIZAÇÃO MATEMÁTICA
 // ==========================================
 async function sincronizarTodasPlanilhas() {
+  if (!obterPermissoesUsuario().sincronizar) return alert('Seu perfil não tem permissão para sincronizar planilhas.');
   const fontesRealizado = (configGlobal.planilhasRealizado || []).filter(f => f.url && f.url.trim());
   if (!fontesRealizado.length && configGlobal.urlRealizado) {
     fontesRealizado.push({ id: "realizado-principal", nome: "Realizado", url: configGlobal.urlRealizado });
@@ -796,6 +814,7 @@ function renderizarGridGraficosDinamicos(obra, cats) {
 // MODAIS E CONFIGURAÇÕES
 // ==========================================
 function abrirModalConfiguracoes() {
+  if (!obterPermissoesUsuario().configuracoes) return alert('Seu perfil não tem permissão para alterar as configurações.');
   document.getElementById('config-app-title').value = configGlobal.titulo || "";
   if (!configGlobal.planilhasRealizado.length && configGlobal.urlRealizado) {
     configGlobal.planilhasRealizado = [{ id: 'realizado-principal', nome: 'Realizado', url: configGlobal.urlRealizado }];
@@ -856,6 +875,7 @@ async function alternarStatusArquivado(id) {
 }
 
 function adicionarNovoGrafico() {
+  if (!obterPermissoesUsuario().configuracoes) return alert('Seu perfil não pode configurar gráficos.');
   const titulo = document.getElementById('novo-chart-titulo').value.trim();
   const tipo = document.getElementById('novo-chart-tipo').value;
   const xField = document.getElementById('novo-chart-x').value;
@@ -896,6 +916,7 @@ function renderizarListaGraficosConfig() {
 }
 
 async function salvarConfiguracoesGerais() {
+  if (!obterPermissoesUsuario().configuracoes) return alert('Seu perfil não pode alterar as configurações do sistema.');
   configGlobal.titulo = document.getElementById('config-app-title').value.trim();
   configGlobal.planilhasRealizado = configGlobal.planilhasRealizado.filter(f => f.nome?.trim() && f.url?.trim()).map(f => ({ ...f, nome: f.nome.trim(), url: f.url.trim() }));
   configGlobal.urlRealizado = configGlobal.planilhasRealizado[0]?.url || '';
@@ -917,29 +938,107 @@ async function salvarConfiguracoesGerais() {
 // USUÁRIOS E PERMISSÕES
 // ==========================================
 function aplicarPermissoesPerfil() {
+  if (!usuarioAutenticado) return;
+  const permissoes=obterPermissoesUsuario();
   document.getElementById('user-display-name').innerText = usuarioAutenticado.nome;
   document.getElementById('user-display-role').innerText = usuarioAutenticado.perfil;
-  document.getElementById('btn-gestao-usuarios').style.display = usuarioAutenticado.perfil === "Mestre" ? "block" : "none";
-  document.getElementById('btn-configuracoes').style.display = usuarioAutenticado.perfil === "Mestre" ? "block" : "none";
+  document.getElementById('btn-gestao-usuarios').style.display = permissoes.usuarios ? 'inline-flex' : 'none';
+  document.getElementById('btn-configuracoes').style.display = permissoes.configuracoes ? 'inline-flex' : 'none';
+  document.getElementById('btn-sync').style.display = permissoes.sincronizar ? 'inline-flex' : 'none';
+  const opcaoMestre=document.querySelector('#novo-usr-perfil option[value="Mestre"]');
+  if (opcaoMestre) opcaoMestre.disabled=!permissoes.permissoes;
+  document.getElementById('nav-dashboard').classList.toggle('hidden', !permissoes.dashboard);
+  document.getElementById('nav-dados-base').classList.toggle('hidden', !permissoes.dadosBase);
+  if (!permissoes.dashboard && permissoes.dadosBase) abrirAbaSistema('dados-base');
+  else if (!permissoes.dashboard && !permissoes.dadosBase) executarLogout();
 }
 
-function abrirModalUsuarios() { renderizarPainelUsuarios(); document.getElementById('modal-usuarios').classList.remove('hidden'); }
+function obterPermissoesUsuario(usuario = usuarioAutenticado) {
+  if (!usuario || usuario.perfil === 'Mestre') return { ...PERMISSOES_PADRAO.Mestre };
+  return { ...PERMISSOES_PADRAO[usuario.perfil] || PERMISSOES_PADRAO.Engenheiro, ...permissoesPerfis[usuario.perfil] };
+}
+
+async function abrirModalUsuarios() {
+  if (!obterPermissoesUsuario().usuarios) return alert('Seu perfil não tem permissão para gerenciar usuários.');
+  if (supabaseClient) {
+    try {
+      const { data, error } = await supabaseClient.from('usuarios').select('*');
+      if (!error && Array.isArray(data)) {
+        usuariosBD=[MASTER_USER,...data.filter(u=>u.status==='Aprovado' && u.usuario!==MASTER_USER.usuario)];
+        solicitacoesPendentesBD=data.filter(u=>u.status==='Pendente');
+      }
+    } catch(e) { console.warn('Não foi possível atualizar a lista de usuários.',e); }
+  }
+  renderizarPainelUsuarios();
+  const editor=document.getElementById('editor-permissoes-perfis');
+  if (editor) editor.classList.toggle('hidden', !obterPermissoesUsuario().permissoes);
+  document.getElementById('modal-usuarios').classList.remove('hidden');
+}
 function fecharModalUsuarios() { document.getElementById('modal-usuarios').classList.add('hidden'); }
 
+function renderizarEditorPermissoesPerfil() {
+  const perfil=document.getElementById('permissoes-perfil-select')?.value || 'Engenheiro';
+  const regras=perfil==='Mestre'?PERMISSOES_PADRAO.Mestre:(permissoesPerfis[perfil] || PERMISSOES_PADRAO.Engenheiro);
+  const nomes={dashboard:'perm-dashboard',dadosBase:'perm-dados-base',sincronizar:'perm-sincronizar',configuracoes:'perm-configuracoes',usuarios:'perm-usuarios',permissoes:'perm-permissoes'};
+  const bloqueado=perfil==='Mestre';
+  Object.entries(nomes).forEach(([chave,id])=>{const campo=document.getElementById(id); if(campo){campo.checked=!!regras[chave];campo.disabled=bloqueado;}});
+  document.getElementById('btn-salvar-permissoes').disabled=bloqueado;
+  document.getElementById('btn-salvar-permissoes').classList.toggle('opacity-50',bloqueado);
+  document.getElementById('permissoes-mestre-info').classList.toggle('hidden',!bloqueado);
+  document.getElementById('permissoes-status').textContent='';
+}
+
+function salvarPermissoesPerfil() {
+  if (!obterPermissoesUsuario().permissoes) return alert('Seu perfil não pode configurar permissões.');
+  const perfil=document.getElementById('permissoes-perfil-select').value;
+  if (perfil==='Mestre') return;
+  permissoesPerfis[perfil]={
+    dashboard:document.getElementById('perm-dashboard').checked,
+    dadosBase:document.getElementById('perm-dados-base').checked,
+    sincronizar:document.getElementById('perm-sincronizar').checked,
+    configuracoes:document.getElementById('perm-configuracoes').checked,
+    usuarios:document.getElementById('perm-usuarios').checked,
+    permissoes:document.getElementById('perm-permissoes').checked
+  };
+  try { localStorage.setItem('permissoes_bp',JSON.stringify(permissoesPerfis)); }
+  catch(e) { return alert('Não foi possível salvar permissões neste navegador.'); }
+  document.getElementById('permissoes-status').textContent=`Permissões de ${perfil} salvas neste navegador.`;
+  if (usuarioAutenticado?.perfil===perfil) aplicarPermissoesPerfil();
+}
+
+async function alterarPerfilUsuario(id, novoPerfil) {
+  if (!obterPermissoesUsuario().usuarios) return alert('Seu perfil não pode alterar usuários.');
+  if (novoPerfil==='Mestre' && !obterPermissoesUsuario().permissoes) return alert('Somente um perfil autorizado a configurar permissões pode promover alguém a Mestre.');
+  const usuario=usuariosBD.find(u=>String(u.id)===String(id));
+  if (!usuario || String(usuario.id)==='local_master') return;
+  const anterior=usuario.perfil; usuario.perfil=novoPerfil;
+  if (supabaseClient) {
+    try {
+      const { error }=await supabaseClient.from('usuarios').update({perfil:novoPerfil}).eq('id',id);
+      if (error) { usuario.perfil=anterior; alert(`Não foi possível salvar o perfil no Supabase: ${error.message}`); }
+    } catch(error) { usuario.perfil=anterior; alert(`Erro ao salvar o perfil: ${error.message || error}`); }
+  }
+  renderizarPainelUsuarios();
+  if (String(usuarioAutenticado?.id)===String(id)) aplicarPermissoesPerfil();
+}
+
 async function criarUsuarioDireto() {
+  if (!obterPermissoesUsuario().usuarios) return alert('Seu perfil não pode cadastrar usuários.');
   const nome = document.getElementById('novo-usr-nome').value.trim();
   const email = document.getElementById('novo-usr-email').value.trim();
   const usuario = document.getElementById('novo-usr-login').value.trim();
   const senha = document.getElementById('novo-usr-senha').value.trim();
   const perfil = document.getElementById('novo-usr-perfil').value;
+  if (perfil==='Mestre' && !obterPermissoesUsuario().permissoes) return alert('Seu perfil não pode criar usuários Mestre.');
 
   if (!nome || !email || !usuario || !senha) return alert("Preencha todos os campos.");
   
   if (supabaseClient) {
     try {
       const { data, error } = await supabaseClient.from('usuarios').insert([{ nome, email, usuario, senha, perfil, status: 'Aprovado' }]).select();
-      if (!error && data) usuariosBD.push(data[0]);
-    } catch(e) {}
+      if (error) return alert(`Não foi possível cadastrar o usuário: ${error.message}`);
+      if (data?.[0]) usuariosBD.push(data[0]);
+    } catch(e) { return alert(`Erro ao cadastrar o usuário: ${e.message || e}`); }
   } else {
     usuariosBD.push({ id: Date.now().toString(), nome, email, usuario, senha, perfil, status: "Aprovado" });
   }
@@ -961,8 +1060,15 @@ async function solicitarCadastro(e) {
 }
 
 async function aprovarSolicitacao(id) {
-  if (supabaseClient) { try { await supabaseClient.from('usuarios').update({ status: 'Aprovado' }).eq('id', id); await carregarDadosIniciaisBanco(); } catch(e) {} }
-  else {
+  if (!obterPermissoesUsuario().usuarios) return alert('Seu perfil não pode aprovar solicitações.');
+  if (supabaseClient) {
+    try {
+      const { data, error } = await supabaseClient.from('usuarios').update({ status: 'Aprovado' }).eq('id', id).select('*');
+      if (error) return alert(`Não foi possível aprovar: ${error.message}`);
+      solicitacoesPendentesBD=solicitacoesPendentesBD.filter(s=>String(s.id)!==String(id));
+      (data || []).forEach(u=>{ if(!usuariosBD.some(atual=>String(atual.id)===String(u.id))) usuariosBD.push(u); });
+    } catch(e) { return alert(`Erro ao aprovar usuário: ${e.message || e}`); }
+  } else {
     const i = solicitacoesPendentesBD.findIndex(s=>s.id === id);
     if(i>-1) { solicitacoesPendentesBD[i].status = "Aprovado"; usuariosBD.push(solicitacoesPendentesBD[i]); solicitacoesPendentesBD.splice(i,1); }
   }
@@ -972,14 +1078,27 @@ async function aprovarSolicitacao(id) {
 function renderizarPainelUsuarios() {
   const tbodyPend = document.getElementById('tabela-pendentes-body');
   document.getElementById('count-pendentes').innerText = solicitacoesPendentesBD.length;
-  tbodyPend.innerHTML = solicitacoesPendentesBD.length === 0 ? `<tr><td colspan="4" class="p-3 text-center text-gray-400">Nenhuma solicitação pendente.</td></tr>` : '';
+  tbodyPend.replaceChildren();
+  if (!solicitacoesPendentesBD.length) { const tr=document.createElement('tr'),td=document.createElement('td'); td.colSpan=4;td.className='p-3 text-center text-gray-400';td.textContent='Nenhuma solicitação pendente.';tr.appendChild(td);tbodyPend.appendChild(tr); }
   solicitacoesPendentesBD.forEach(s => {
-    tbodyPend.innerHTML += `<tr><td class="p-2 font-bold">${s.nome}</td><td class="p-2">${s.usuario}</td><td class="p-2"><button onclick="aprovarSolicitacao('${s.id}')" class="bg-emerald-600 text-white px-2 py-1 rounded text-[10px]">Aprovar</button></td></tr>`;
+    const tr=document.createElement('tr');
+    [s.nome,s.usuario,s.perfil || 'Engenheiro'].forEach((v,i)=>{const td=document.createElement('td');td.className=`p-2 ${i===0?'font-bold':''}`;td.textContent=v;tr.appendChild(td);});
+    const acao=document.createElement('td');acao.className='p-2 text-center';
+    const botao=document.createElement('button');botao.type='button';botao.textContent='Aprovar';botao.className='bg-emerald-600 text-white px-2 py-1 rounded text-[10px]';botao.onclick=()=>aprovarSolicitacao(s.id);acao.appendChild(botao);tr.appendChild(acao);tbodyPend.appendChild(tr);
   });
 
   const tbodyAtivos = document.getElementById('tabela-usuarios-body');
-  tbodyAtivos.innerHTML = '';
+  tbodyAtivos.replaceChildren();
   usuariosBD.forEach(u => {
-    tbodyAtivos.innerHTML += `<tr><td class="p-2 font-bold">${u.nome}</td><td class="p-2 text-gray-500">${u.usuario}</td><td class="p-2 text-[10px] font-bold">${u.perfil}</td><td class="p-2 text-emerald-600 font-bold">● Ativo</td></tr>`;
+    const tr=document.createElement('tr');
+    const nome=document.createElement('td');nome.className='p-2 font-bold';nome.textContent=u.nome || '';tr.appendChild(nome);
+    const login=document.createElement('td');login.className='p-2 text-gray-500';login.textContent=u.usuario || '';tr.appendChild(login);
+    const perfilTd=document.createElement('td');perfilTd.className='p-2';
+    const perfil=document.createElement('select');perfil.className='border rounded p-1 text-xs';
+    [['Engenheiro','Engenheiro'],['Orçamentista','Orçamentista'],['Dono','Dono / Diretoria'],['Mestre','Mestre']].forEach(([v,t])=>{const option=new Option(t,v);if(v==='Mestre'&&!obterPermissoesUsuario().permissoes)option.disabled=true;perfil.add(option);});
+    perfil.value=u.perfil || 'Engenheiro';perfil.disabled=String(u.id)==='local_master';perfil.setAttribute('aria-label',`Perfil de ${u.nome || u.usuario}`);perfil.onchange=()=>alterarPerfilUsuario(u.id,perfil.value);perfilTd.appendChild(perfil);tr.appendChild(perfilTd);
+    const status=document.createElement('td');status.className='p-2 text-center text-emerald-600 font-bold';status.textContent='● Ativo';tr.appendChild(status);
+    tbodyAtivos.appendChild(tr);
   });
+  renderizarEditorPermissoesPerfil();
 }

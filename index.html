@@ -4,6 +4,28 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Brasil Pontes - Controladoria & Engenharia de Custos</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    @media (max-width: 640px) {
+      #app-container > header > div { height: auto !important; min-height: 0; padding-top: .75rem; padding-bottom: .75rem; align-items: stretch; gap: .75rem; }
+      #app-container > header > div > div:first-child { min-width: 0; gap: .6rem; }
+      #app-container > header > div > div:last-child { flex-wrap: wrap; justify-content: space-between; gap: .5rem; }
+      #app-container #seletor-obra { max-width: 68vw; }
+      #app-container main { padding: 1rem .75rem; }
+      #app-container main nav { overflow-x: auto; flex-wrap: nowrap; }
+      #app-container main nav button { flex: 0 0 auto; white-space: nowrap; }
+      #grid-graficos-dinamicos, #grid-graficos-dinamicos > div { min-width: 0; }
+      #grid-graficos-dinamicos > div { padding: 1rem; }
+      #grid-graficos-dinamicos canvas { max-width: 100%; }
+      #modal-configuracoes > div, #modal-usuarios > div { width: 100%; max-height: calc(100dvh - 1rem); padding: 1rem; border-radius: 1rem; }
+      #modal-configuracoes > div > div:nth-child(2) { overflow-x: auto; white-space: nowrap; }
+      #modal-usuarios table { min-width: 34rem; }
+    }
+    @media (max-width: 400px) {
+      #header-app-title { font-size: 1rem; }
+      #app-container main h2 { overflow-wrap: anywhere; }
+    }
+  </style>
 </head>
 <body class="bg-[#F4F6F9] font-sans text-gray-800 antialiased min-h-screen flex flex-col">
 
@@ -82,8 +104,8 @@
   <!-- ========================================== -->
   <div id="app-container" class="hidden min-h-screen flex flex-col">
     <header class="bg-[#003399] text-white shadow-lg sticky top-0 z-40">
-      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
-        <div class="flex items-center space-x-4">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 min-h-20 h-auto py-3 flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
+        <div class="flex items-center space-x-4 min-w-0">
           <div class="bg-white p-2 rounded-lg shadow-sm flex items-center justify-center">
             <span class="text-[#003399] font-black text-2xl tracking-tighter flex items-center">
               <span class="text-[#00CFFF] mr-0.5">✦</span>BP
@@ -95,7 +117,7 @@
           </div>
         </div>
 
-        <div class="flex items-center space-x-4">
+        <div class="flex flex-wrap items-center justify-between gap-2 lg:space-x-4">
           <div class="flex flex-col">
             <label for="seletor-obra" class="text-xs text-gray-200 font-medium">Obra em Análise:</label>
             <select id="seletor-obra" onchange="alterarObraAtiva(this.value)" class="bg-[#002266] text-white text-sm font-semibold rounded-lg px-3 py-1.5 border border-[#00CFFF]/40 focus:outline-none">
@@ -249,7 +271,7 @@
 
   <!-- MODAIS (Configurações e Usuários) -->
   <div id="modal-configuracoes" class="fixed inset-0 bg-black/60 backdrop-blur-sm hidden z-50 flex items-center justify-center p-4">
-    <div class="bg-white rounded-2xl max-w-5xl w-full p-6 shadow-2xl border border-gray-100 space-y-6 max-h-[90vh] overflow-y-auto">
+    <div class="bg-white rounded-2xl max-w-5xl w-full p-4 sm:p-6 shadow-2xl border border-gray-100 space-y-6 max-h-[90vh] overflow-y-auto">
       <div class="flex justify-between items-center border-b pb-3">
         <h3 class="text-lg font-bold text-[#003399]">⚙️ Painel de Configurações do Sistema</h3>
         <button onclick="fecharModalConfiguracoes()" class="text-gray-400 hover:text-gray-600 font-bold">✕</button>
@@ -325,8 +347,8 @@
     </div>
   </div>
 
-  <div id="modal-usuarios" class="fixed inset-0 bg-black/60 backdrop-blur-sm hidden z-50 flex items-center justify-center p-4">
-    <div class="bg-white rounded-2xl max-w-3xl w-full p-6 shadow-2xl border border-gray-100 space-y-4 max-h-[90vh] overflow-y-auto">
+  <div id="modal-usuarios" class="fixed inset-0 bg-black/60 backdrop-blur-sm hidden z-50 flex items-center justify-center p-2 sm:p-4">
+    <div class="bg-white rounded-2xl max-w-4xl w-full p-4 sm:p-6 shadow-2xl border border-gray-100 space-y-4 max-h-[90vh] overflow-y-auto">
       <div class="flex justify-between items-center border-b pb-3">
         <h3 class="text-lg font-bold text-[#003399]">Gestão de Usuários e Controle Mestre</h3>
         <button onclick="fecharModalUsuarios()" class="text-gray-400 hover:text-gray-600 font-bold">✕</button>
@@ -334,11 +356,11 @@
 
       <div class="bg-[#F4F6F9] p-4 rounded-xl space-y-3 text-xs border border-gray-200">
         <p class="font-bold text-[#003399] uppercase">➕ Criar Novo Usuário</p>
-        <div class="grid grid-cols-2 gap-3">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <input type="text" id="novo-usr-nome" placeholder="Nome Completo" class="border p-2 rounded-lg">
           <input type="email" id="novo-usr-email" placeholder="E-mail" class="border p-2 rounded-lg">
         </div>
-        <div class="grid grid-cols-3 gap-3">
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <input type="text" id="novo-usr-login" placeholder="Login" class="border p-2 rounded-lg">
           <input type="password" id="novo-usr-senha" placeholder="Senha" class="border p-2 rounded-lg">
           <select id="novo-usr-perfil" class="border p-2 rounded-lg font-bold">
@@ -351,12 +373,46 @@
         <button type="button" onclick="criarUsuarioDireto()" class="w-full bg-[#003399] text-white font-bold py-2 rounded-lg">Cadastrar Usuário</button>
       </div>
 
+      <section id="editor-permissoes-perfis" class="bg-[#F4F6F9] p-4 rounded-xl space-y-3 text-xs border border-gray-200">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div><p class="font-bold text-[#003399] uppercase">Permissões por perfil</p><p class="text-gray-500 mt-1">Configure o que cada perfil pode visualizar ou executar neste navegador.</p></div>
+          <label class="font-bold">Perfil
+            <select id="permissoes-perfil-select" onchange="renderizarEditorPermissoesPerfil()" class="border p-2 rounded-lg ml-1">
+              <option value="Engenheiro">Engenheiro</option><option value="Orçamentista">Orçamentista</option><option value="Dono">Dono / Diretoria</option><option value="Mestre">Mestre</option>
+            </select>
+          </label>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+          <label class="flex items-center gap-2 bg-white p-2 rounded border"><input id="perm-dashboard" type="checkbox"> Acessar Análises</label>
+          <label class="flex items-center gap-2 bg-white p-2 rounded border"><input id="perm-dados-base" type="checkbox"> Acessar Dados Base</label>
+          <label class="flex items-center gap-2 bg-white p-2 rounded border"><input id="perm-sincronizar" type="checkbox"> Sincronizar planilhas</label>
+          <label class="flex items-center gap-2 bg-white p-2 rounded border"><input id="perm-configuracoes" type="checkbox"> Alterar configurações</label>
+          <label class="flex items-center gap-2 bg-white p-2 rounded border"><input id="perm-usuarios" type="checkbox"> Gerenciar usuários</label>
+          <label class="flex items-center gap-2 bg-white p-2 rounded border"><input id="perm-permissoes" type="checkbox"> Configurar permissões</label>
+        </div>
+        <div class="flex flex-wrap items-center gap-3">
+          <button type="button" id="btn-salvar-permissoes" onclick="salvarPermissoesPerfil()" class="bg-[#003399] text-white font-bold px-4 py-2 rounded-lg">Salvar permissões</button>
+          <span id="permissoes-status" class="text-gray-500" aria-live="polite"></span>
+          <span id="permissoes-mestre-info" class="hidden text-amber-700 font-bold">O perfil Mestre mantém todas as permissões.</span>
+        </div>
+      </section>
+
+      <section class="space-y-2 text-xs">
+        <p class="font-bold text-[#003399] uppercase">Solicitações pendentes <span id="count-pendentes" class="text-amber-700">0</span></p>
+        <div class="overflow-auto max-h-48 border rounded-lg">
+          <table class="w-full text-left min-w-max">
+            <thead class="bg-gray-100 text-gray-600 font-bold uppercase text-[10px]"><tr><th class="p-2">Nome</th><th class="p-2">Usuário</th><th class="p-2">Perfil</th><th class="p-2 text-center">Ação</th></tr></thead>
+            <tbody id="tabela-pendentes-body" class="divide-y"></tbody>
+          </table>
+        </div>
+      </section>
+
       <div class="space-y-2 text-xs">
-        <p class="font-bold text-[#003399] uppercase">Usuários Cadastrados / Pendentes</p>
-        <div class="overflow-y-auto max-h-48 border rounded-lg">
-          <table class="w-full text-left">
+        <p class="font-bold text-[#003399] uppercase">Usuários cadastrados / alterar perfil</p>
+        <div class="overflow-auto max-h-64 border rounded-lg">
+          <table class="w-full text-left min-w-max">
             <thead class="bg-gray-100 text-gray-600 font-bold uppercase text-[10px]">
-              <tr><th class="p-2">Nome</th><th class="p-2">Usuário</th><th class="p-2">Perfil</th><th class="p-2 text-center">Ação/Status</th></tr>
+              <tr><th class="p-2">Nome</th><th class="p-2">Usuário</th><th class="p-2">Perfil / Alterar</th><th class="p-2 text-center">Status</th></tr>
             </thead>
             <tbody id="tabela-usuarios-body" class="divide-y"></tbody>
           </table>
