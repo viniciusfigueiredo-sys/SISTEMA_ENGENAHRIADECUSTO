@@ -21,6 +21,17 @@
       #modal-configuracoes > div > div:nth-child(2) { overflow-x: auto; white-space: nowrap; }
       #modal-usuarios table { min-width: 34rem; }
     }
+    @media print {
+      body { display:block !important; background:#fff !important; color:#111 !important; }
+      #screen-login, #app-container, #modal-configuracoes, #modal-usuarios { display:none !important; }
+      #relatorio-impressao { display:block !important; position:absolute; inset:0; padding:12mm; font:11pt Arial,sans-serif; }
+      #relatorio-impressao h1 { color:#003399; font-size:20pt; margin:0 0 4mm; }
+      #relatorio-impressao h2 { font-size:15pt; margin:0 0 5mm; }
+      #relatorio-impressao p { margin:2mm 0; }
+      #relatorio-impressao table { border-collapse:collapse; width:100%; margin-top:8mm; }
+      #relatorio-impressao th, #relatorio-impressao td { border:1px solid #999; padding:2mm; text-align:left; }
+      #relatorio-impressao th { background:#e8eef7 !important; }
+    }
     @media (max-width: 400px) {
       #header-app-title { font-size: 1rem; }
       #app-container main h2 { overflow-wrap: anywhere; }
@@ -130,6 +141,8 @@
               <p id="user-display-role" class="text-xs text-[#00CFFF] font-bold uppercase">---</p>
             </div>
             
+            <button onclick="abrirModalMeusGraficos()" id="btn-meus-graficos" class="bg-[#002266] hover:bg-[#003399] text-[#00CFFF] border border-[#00CFFF]/50 text-xs font-bold px-3 py-2 rounded-lg transition-all">📊 Meus gráficos</button>
+            <button onclick="gerarRelatorioImprimir()" id="btn-relatorio" class="bg-[#002266] hover:bg-[#003399] text-[#00CFFF] border border-[#00CFFF]/50 text-xs font-bold px-3 py-2 rounded-lg transition-all">🖨️ Relatório</button>
             <button onclick="abrirModalConfiguracoes()" id="btn-configuracoes" class="bg-[#002266] hover:bg-[#003399] text-[#00CFFF] border border-[#00CFFF]/50 text-xs font-bold px-3 py-2 rounded-lg transition-all">
               ⚙️ Configurações
             </button>
@@ -175,6 +188,7 @@
             </select>
           </div>
 
+          <button onclick="gerarRelatorioImprimir()" id="btn-relatorio-dashboard" class="bg-white border border-[#003399] text-[#003399] text-xs font-bold px-3 py-2 rounded-lg">🖨️ Relatório / Imprimir</button>
           <button onclick="sincronizarTodasPlanilhas()" id="btn-sync" class="bg-[#003399] hover:bg-[#002266] text-white text-xs font-bold px-4 py-2 rounded-lg transition-all flex items-center gap-1 shadow">
             🔄 Sincronizar Base de Dados
           </button>
@@ -269,15 +283,17 @@
     </main>
   </div>
 
+  <section id="relatorio-impressao" class="hidden" aria-label="Relatório para impressão"></section>
+
   <!-- MODAIS (Configurações e Usuários) -->
   <div id="modal-configuracoes" class="fixed inset-0 bg-black/60 backdrop-blur-sm hidden z-50 flex items-center justify-center p-4">
     <div class="bg-white rounded-2xl max-w-5xl w-full p-4 sm:p-6 shadow-2xl border border-gray-100 space-y-6 max-h-[90vh] overflow-y-auto">
       <div class="flex justify-between items-center border-b pb-3">
-        <h3 class="text-lg font-bold text-[#003399]">⚙️ Painel de Configurações do Sistema</h3>
+        <h3 id="titulo-modal-configuracoes" class="text-lg font-bold text-[#003399]">⚙️ Painel de Configurações do Sistema</h3>
         <button onclick="fecharModalConfiguracoes()" class="text-gray-400 hover:text-gray-600 font-bold">✕</button>
       </div>
 
-      <div class="flex border-b text-xs font-bold gap-4">
+      <div class="config-tabs flex border-b text-xs font-bold gap-4">
         <button onclick="trocarAbaConfig('geral')" id="tab-btn-geral" class="pb-2 border-b-2 border-[#003399] text-[#003399]">Geral & Link Principal</button>
         <button onclick="trocarAbaConfig('obras')" id="tab-btn-obras" class="pb-2 text-gray-500 hover:text-[#003399]">🏢 Gerir Obras</button>
         <button onclick="trocarAbaConfig('graficos')" id="tab-btn-graficos" class="pb-2 text-gray-500 hover:text-[#003399]">📊 Gráficos</button>
@@ -315,6 +331,7 @@
                 <tr>
                   <th class="p-2">Departamento / Filtro</th>
                   <th class="p-2">Nome Amigável</th>
+                  <th class="p-2">Gestor responsável</th>
                   <th class="p-2">URL Planilha PREVISTO (Desta Obra)</th>
                   <th class="p-2 text-center">Ações</th>
                 </tr>
@@ -342,7 +359,7 @@
       </div>
 
       <div class="flex justify-end border-t pt-3">
-        <button type="button" onclick="salvarConfiguracoesGerais()" class="bg-emerald-600 text-white font-bold px-6 py-2 rounded-lg shadow-md">Salvar Alterações</button>
+        <button type="button" onclick="salvarConfiguracoesGerais()" id="btn-salvar-configuracoes" class="bg-emerald-600 text-white font-bold px-6 py-2 rounded-lg shadow-md">Salvar Alterações</button>
       </div>
     </div>
   </div>
@@ -389,6 +406,8 @@
           <label class="flex items-center gap-2 bg-white p-2 rounded border"><input id="perm-configuracoes" type="checkbox"> Alterar configurações</label>
           <label class="flex items-center gap-2 bg-white p-2 rounded border"><input id="perm-usuarios" type="checkbox"> Gerenciar usuários</label>
           <label class="flex items-center gap-2 bg-white p-2 rounded border"><input id="perm-permissoes" type="checkbox"> Configurar permissões</label>
+          <label class="flex items-center gap-2 bg-white p-2 rounded border"><input id="perm-graficos" type="checkbox"> Criar e salvar gráficos pessoais</label>
+          <label class="flex items-center gap-2 bg-white p-2 rounded border"><input id="perm-relatorios" type="checkbox"> Gerar e imprimir relatórios</label>
         </div>
         <div class="flex flex-wrap items-center gap-3">
           <button type="button" id="btn-salvar-permissoes" onclick="salvarPermissoesPerfil()" class="bg-[#003399] text-white font-bold px-4 py-2 rounded-lg">Salvar permissões</button>

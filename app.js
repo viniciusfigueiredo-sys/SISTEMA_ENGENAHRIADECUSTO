@@ -11,10 +11,10 @@ try {
 
 const MASTER_USER = { id: "local_master", nome: "Vinícius Souza (Mestre)", usuario: "vinicius_souzaf", email: "mestre@brasilpontes.com.br", senha: "741852963", perfil: "Mestre", status: "Aprovado" };
 const PERMISSOES_PADRAO = {
-  Mestre: { dashboard:true, dadosBase:true, sincronizar:true, configuracoes:true, usuarios:true, permissoes:true },
-  Engenheiro: { dashboard:true, dadosBase:true, sincronizar:false, configuracoes:false, usuarios:false, permissoes:false },
-  Orçamentista: { dashboard:true, dadosBase:true, sincronizar:true, configuracoes:false, usuarios:false, permissoes:false },
-  Dono: { dashboard:true, dadosBase:true, sincronizar:false, configuracoes:false, usuarios:false, permissoes:false }
+  Mestre: { dashboard:true, dadosBase:true, sincronizar:true, configuracoes:true, usuarios:true, permissoes:true, graficos:true, relatorios:true },
+  Engenheiro: { dashboard:true, dadosBase:true, sincronizar:false, configuracoes:false, usuarios:false, permissoes:false, graficos:true, relatorios:true },
+  Orçamentista: { dashboard:true, dadosBase:true, sincronizar:true, configuracoes:false, usuarios:false, permissoes:false, graficos:true, relatorios:true },
+  Dono: { dashboard:true, dadosBase:true, sincronizar:false, configuracoes:false, usuarios:false, permissoes:false, graficos:true, relatorios:true }
 };
 let permissoesPerfis = Object.fromEntries(Object.entries(PERMISSOES_PADRAO).map(([perfil, regras]) => [perfil, { ...regras }]));
 try {
@@ -27,19 +27,11 @@ permissoesPerfis.Mestre = { ...PERMISSOES_PADRAO.Mestre };
 
 let usuariosBD = [MASTER_USER];
 let solicitacoesPendentesBD = [];
-let graficosConfig = [
+const GRAFICOS_PADRAO = [
   { id: "chart_cat", titulo: "Previsto x Realizado", tipo: "bar", xField: "categoria", yField: "comparativo" },
   { id: "chart_curv", titulo: "Evolução do Desempenho", tipo: "line", xField: "categoria", yField: "percentual" }
 ];
-try {
-  const savedCharts = JSON.parse(localStorage.getItem('graficos_bp') || 'null');
-  if (Array.isArray(savedCharts) && savedCharts.length) graficosConfig = savedCharts.map((g, i) => ({
-    id: String(g.id || `chart_${i}`), titulo: String(g.titulo || `Gráfico ${i + 1}`),
-    tipo: ['bar','line','doughnut','pie','polarArea','radar'].includes(g.tipo) ? g.tipo : 'bar',
-    xField: g.xField || (g.metrica === 'curvaS' ? 'categoria' : 'categoria'),
-    yField: g.yField || (g.metrica === 'curvaS' ? 'percentual' : 'comparativo')
-  }));
-} catch (e) { console.warn('Configuração de gráficos inválida; usando padrão.', e); }
+let graficosConfig = GRAFICOS_PADRAO.map(g => ({ ...g }));
 let graficosInstancias = {};
 let usuarioAutenticado = null;
 let obraAtivaID = null;
@@ -296,6 +288,7 @@ function verificarSessao() {
   } else {
     document.getElementById('screen-login').classList.add('hidden');
     document.getElementById('app-container').classList.remove('hidden');
+    carregarGraficosUsuario();
     popularSeletorObras();
     atualizarDashboard();
     aplicarPermissoesPerfil();
@@ -632,14 +625,17 @@ async function sincronizarTodasPlanilhas() {
 function popularSeletorObras() {
   const seletor = document.getElementById('seletor-obra');
   seletor.innerHTML = '';
-  const chaves = Object.keys(obrasBD).filter(k => obrasBD[k].status !== "Arquivada");
-  if (chaves.length === 0) return seletor.innerHTML = `<option value="">Sem dados validados...</option>`;
-  chaves.forEach(k => seletor.innerHTML += `<option value="${k}">${obrasBD[k].nome}</option>`);
-  if (!obraAtivaID || !obrasBD[obraAtivaID] || obrasBD[obraAtivaID].status === "Arquivada") obraAtivaID = chaves[0];
+  const podeVerArquivadas = usuarioAutenticado?.perfil === 'Mestre';
+  const chaves = Object.keys(obrasBD).filter(k => podeVerArquivadas || obrasBD[k].status !== "Arquivada");
+  if (chaves.length === 0) { obraAtivaID = null; seletor.innerHTML = '<option value="">Nenhuma obra ativa disponível</option>'; return; }
+  chaves.forEach(k => { const opt=document.createElement('option'); opt.value=k; opt.textContent=obrasBD[k].nome+(obrasBD[k].status==='Arquivada'?' (Arquivada)':''); seletor.appendChild(opt); });
+  if (!obraAtivaID || !obrasBD[obraAtivaID] || (!podeVerArquivadas && obrasBD[obraAtivaID].status === "Arquivada")) obraAtivaID = chaves[0];
   seletor.value = obraAtivaID;
 }
-
-function alterarObraAtiva(id) { obraAtivaID = id; atualizarDashboard(); }
+function alterarObraAtiva(id) {
+  if (!obrasBD[id] || (obrasBD[id].status === 'Arquivada' && usuarioAutenticado?.perfil !== 'Mestre')) return popularSeletorObras();
+  obraAtivaID = id; atualizarDashboard();
+}
 function aplicarCenario(fator) { multiplicadorCenario = parseFloat(fator); atualizarDashboard(); }
 
 function filtrarCategoriaDashboard(valor) { filtrosDashboard.categoria = valor || ''; atualizarDashboard(); }
@@ -652,7 +648,15 @@ function classificarFarol(prev, real) {
 }
 
 function atualizarDashboard() {
-  if (!obraAtivaID || !obrasBD[obraAtivaID]) return;
+  if (obraAtivaID && obrasBD[obraAtivaID]?.status === 'Arquivada' && usuarioAutenticado?.perfil !== 'Mestre') popularSeletorObras();
+  if (!obraAtivaID || !obrasBD[obraAtivaID]) {
+    ['obra-titulo','obra-cc','obra-resp'].forEach(id => { const el=document.getElementById(id); if(el) el.textContent='—'; });
+    ['kpi-previsto','kpi-realizado','kpi-desvio'].forEach(id => { const el=document.getElementById(id); if(el) el.textContent='R$ 0,00'; });
+    const tbody=document.getElementById('tabela-dre-body'); if(tbody) tbody.replaceChildren();
+    Object.values(graficosInstancias).forEach(chart=>chart?.destroy()); graficosInstancias={};
+    const charts=document.getElementById('grid-graficos-dinamicos'); if(charts) charts.replaceChildren();
+    return;
+  }
   const obra = obrasBD[obraAtivaID];
 
   document.getElementById('obra-titulo').innerText = obra.nome;
@@ -745,12 +749,12 @@ function obterLinhasGrafico(cfg, obra, cats) {
     return [...grupos.values()].map(g=>({...g,valor:campoY?.tipo==='contagem'?g.contagem:g.valor})).sort((a,b)=>b.valor-a.valor).slice(0,100);
   }
   if (cfg.xField === 'obra') {
-    return Object.entries(obrasBD || {}).filter(([, o]) => o.status === 'Ativa').map(([id, o]) => {
+    return Object.entries(obrasBD || {}).filter(([, o]) => o.status === 'Ativa' || usuarioAutenticado?.perfil === 'Mestre').map(([id, o]) => {
       const categorias = [...new Set([...Object.keys(o.categoriasPrevisto || {}), ...Object.keys(o.categoriasRealizado || {})])];
       const selecionadas = categorias.filter(c => (!filtrosDashboard.categoria || c === filtrosDashboard.categoria) && (!filtrosDashboard.farol || classificarFarol(((o.categoriasPrevisto || {})[c] || 0) * multiplicadorCenario, (o.categoriasRealizado || {})[c] || 0) === filtrosDashboard.farol));
       const p = selecionadas.reduce((s,c) => s + ((o.categoriasPrevisto || {})[c] || 0) * multiplicadorCenario, 0);
       const r = selecionadas.reduce((s,c) => s + ((o.categoriasRealizado || {})[c] || 0), 0);
-      return { key:id, label:o.nome || id, previsto:p, realizado:r, saldo:p-r, percentual:p ? r/p*100 : 0, idc:r ? p/r : 0 };
+      return { key:id, label:(o.nome || id)+(o.status === 'Arquivada' ? ' (Arquivada)' : ''), previsto:p, realizado:r, saldo:p-r, percentual:p ? r/p*100 : 0, idc:r ? p/r : 0 };
     });
   }
   return cats.filter(c => (!filtrosDashboard.categoria || c === filtrosDashboard.categoria)).map(c => {
@@ -813,6 +817,18 @@ function renderizarGridGraficosDinamicos(obra, cats) {
 // ==========================================
 // MODAIS E CONFIGURAÇÕES
 // ==========================================
+let modoMeusGraficos=false;
+function abrirModalMeusGraficos() {
+  if (!obterPermissoesUsuario().graficos) return alert('Seu perfil não pode criar gráficos.');
+  modoMeusGraficos=true;
+  const modal=document.getElementById('modal-configuracoes');
+  document.getElementById('titulo-modal-configuracoes').textContent='📊 Meus gráficos';
+  modal.querySelector('.config-tabs').classList.add('hidden');
+  ['geral','obras'].forEach(a=>document.getElementById('cfg-aba-'+a).classList.add('hidden'));
+  document.getElementById('cfg-aba-graficos').classList.remove('hidden');
+  document.getElementById('btn-salvar-configuracoes').classList.add('hidden');
+  atualizarSeletoresNovoGrafico(); renderizarListaGraficosConfig(); modal.classList.remove('hidden');
+}
 function abrirModalConfiguracoes() {
   if (!obterPermissoesUsuario().configuracoes) return alert('Seu perfil não tem permissão para alterar as configurações.');
   document.getElementById('config-app-title').value = configGlobal.titulo || "";
@@ -826,7 +842,7 @@ function abrirModalConfiguracoes() {
   document.getElementById('modal-configuracoes').classList.remove('hidden');
 }
 
-function fecharModalConfiguracoes() { document.getElementById('modal-configuracoes').classList.add('hidden'); }
+function fecharModalConfiguracoes() { const modal=document.getElementById('modal-configuracoes'); modal.classList.add('hidden'); if(modoMeusGraficos){ modoMeusGraficos=false; modal.querySelector('.config-tabs').classList.remove('hidden'); document.getElementById('titulo-modal-configuracoes').textContent='⚙️ Painel de Configurações do Sistema'; document.getElementById('btn-salvar-configuracoes').classList.remove('hidden'); trocarAbaConfig('geral'); } }
 
 function trocarAbaConfig(aba) {
   ['geral', 'obras', 'graficos'].forEach(a => {
@@ -848,6 +864,7 @@ function renderizarTabelaGestaoObras() {
       <tr>
         <td class="p-2 font-bold text-[10px]">${o.cc}</td>
         <td class="p-2"><input type="text" value="${o.nome}" onchange="atualizarCampoObra('${id}', 'nome', this.value)" class="border p-1 w-full text-xs"></td>
+        <td class="p-2"><input type="text" value="${o.responsavel || ''}" onchange="atualizarCampoObra('${id}', 'responsavel', this.value)" class="border p-1 w-full text-xs" placeholder="Nome do gestor"></td>
         <td class="p-2"><input type="url" value="${o.urlPrevistoCSV}" onchange="atualizarCampoObra('${id}', 'urlPrevistoCSV', this.value)" class="border p-1 w-full text-[10px]" placeholder="URL Previsto CSV"></td>
         <td class="p-2 text-center">
           <button onclick="alternarStatusArquivado('${id}')" class="bg-amber-500 text-white px-2 py-1 rounded text-[10px] font-bold">${o.status === 'Ativa' ? 'Arquivar' : 'Reativar'}</button>
@@ -858,11 +875,21 @@ function renderizarTabelaGestaoObras() {
 }
 
 async function atualizarCampoObra(id, campo, valor) {
-  if (obrasBD[id]) {
-    obrasBD[id][campo] = valor;
-    localStorage.setItem('obras_bp', JSON.stringify(obrasBD));
-    if (supabaseClient) { try { await supabaseClient.from('obras').update({ [campo === 'urlPrevistoCSV' ? 'url_previsto' : campo]: valor }).eq('id', id); } catch(e){} }
+  const obra=obrasBD[id]; if (!obra) return;
+  const anterior=obra[campo]; obra[campo]=String(valor ?? '').trim();
+  localStorage.setItem('obras_bp', JSON.stringify(obrasBD));
+  if (supabaseClient) {
+    try {
+      const coluna=campo==='urlPrevistoCSV'?'url_previsto':campo;
+      const {error}=await supabaseClient.from('obras').update({[coluna]:obra[campo]}).eq('id',id);
+      if (error) throw error;
+    } catch(e) {
+      obra[campo]=anterior; localStorage.setItem('obras_bp',JSON.stringify(obrasBD));
+      alert('Não foi possível salvar a alteração da obra no Supabase: '+(e.message||'erro de conexão'));
+      renderizarTabelaGestaoObras(); atualizarDashboard();
+    }
   }
+  if (campo==='responsavel' && id===obraAtivaID) atualizarDashboard();
 }
 
 async function alternarStatusArquivado(id) {
@@ -874,8 +901,27 @@ async function alternarStatusArquivado(id) {
   }
 }
 
+function chaveGraficosUsuario() {
+  const identidade=usuarioAutenticado?.id || usuarioAutenticado?.usuario || usuarioAutenticado?.email || 'anonimo';
+  return 'graficos_bp_usuario_'+encodeURIComponent(String(identidade));
+}
+function normalizarGraficos(lista) {
+  if (!Array.isArray(lista)) return GRAFICOS_PADRAO.map(g=>({...g}));
+  return lista.map((g,i)=>({ id:String(g.id||'grafico_'+i), titulo:String(g.titulo||'Gráfico '+(i+1)), tipo:['bar','line','doughnut','pie','polarArea','radar'].includes(g.tipo)?g.tipo:'bar', xField:g.xField||'categoria', yField:g.yField||'comparativo', horizontal:!!g.horizontal }));
+}
+function carregarGraficosUsuario() {
+  const chave=chaveGraficosUsuario();
+  try {
+    let salvos=JSON.parse(localStorage.getItem(chave)||'null');
+    if (!salvos && usuarioAutenticado?.perfil==='Mestre') {
+      const legado=JSON.parse(localStorage.getItem('graficos_bp')||'null');
+      if (Array.isArray(legado) && legado.length) { salvos=legado; localStorage.setItem(chave,JSON.stringify(legado)); }
+    }
+    graficosConfig=salvos?.length?normalizarGraficos(salvos):GRAFICOS_PADRAO.map(g=>({...g}));
+  } catch(e) { console.warn('Gráficos do usuário inválidos; usando padrões.',e); graficosConfig=GRAFICOS_PADRAO.map(g=>({...g})); }
+}
 function adicionarNovoGrafico() {
-  if (!obterPermissoesUsuario().configuracoes) return alert('Seu perfil não pode configurar gráficos.');
+  if (!obterPermissoesUsuario().graficos) return alert('Seu perfil não pode criar gráficos.');
   const titulo = document.getElementById('novo-chart-titulo').value.trim();
   const tipo = document.getElementById('novo-chart-tipo').value;
   const xField = document.getElementById('novo-chart-x').value;
@@ -885,8 +931,8 @@ function adicionarNovoGrafico() {
   document.getElementById('novo-chart-titulo').value = '';
   persistirGraficosConfig(); renderizarListaGraficosConfig(); atualizarDashboard();
 }
-function persistirGraficosConfig() { try { localStorage.setItem('graficos_bp', JSON.stringify(graficosConfig)); } catch(e) { alert('Não foi possível salvar os gráficos neste navegador.'); } }
-function removerGrafico(id) { graficosConfig = graficosConfig.filter(g => g.id !== id); persistirGraficosConfig(); renderizarListaGraficosConfig(); atualizarDashboard(); }
+function persistirGraficosConfig() { try { localStorage.setItem(chaveGraficosUsuario(), JSON.stringify(graficosConfig)); } catch(e) { alert('Não foi possível salvar os gráficos deste usuário neste navegador.'); } }
+function removerGrafico(id) { if (!obterPermissoesUsuario().graficos) return alert('Seu perfil não pode editar gráficos.'); graficosConfig = graficosConfig.filter(g => g.id !== id); persistirGraficosConfig(); renderizarListaGraficosConfig(); atualizarDashboard(); }
 function renderizarListaGraficosConfig() {
   const div = document.getElementById('lista-graficos-config'); if (!div) return; div.replaceChildren();
   const select = (label, value, options, onChange) => {
@@ -916,6 +962,7 @@ function renderizarListaGraficosConfig() {
 }
 
 async function salvarConfiguracoesGerais() {
+  if (modoMeusGraficos) return alert('Use a opção Meus gráficos para salvar suas personalizações.');
   if (!obterPermissoesUsuario().configuracoes) return alert('Seu perfil não pode alterar as configurações do sistema.');
   configGlobal.titulo = document.getElementById('config-app-title').value.trim();
   configGlobal.planilhasRealizado = configGlobal.planilhasRealizado.filter(f => f.nome?.trim() && f.url?.trim()).map(f => ({ ...f, nome: f.nome.trim(), url: f.url.trim() }));
@@ -945,6 +992,9 @@ function aplicarPermissoesPerfil() {
   document.getElementById('btn-gestao-usuarios').style.display = permissoes.usuarios ? 'inline-flex' : 'none';
   document.getElementById('btn-configuracoes').style.display = permissoes.configuracoes ? 'inline-flex' : 'none';
   document.getElementById('btn-sync').style.display = permissoes.sincronizar ? 'inline-flex' : 'none';
+  document.getElementById('btn-meus-graficos').style.display = permissoes.graficos ? 'inline-flex' : 'none';
+  document.getElementById('btn-relatorio').style.display = permissoes.relatorios ? 'inline-flex' : 'none';
+  document.getElementById('btn-relatorio-dashboard').style.display = permissoes.relatorios ? 'inline-flex' : 'none';
   const opcaoMestre=document.querySelector('#novo-usr-perfil option[value="Mestre"]');
   if (opcaoMestre) opcaoMestre.disabled=!permissoes.permissoes;
   document.getElementById('nav-dashboard').classList.toggle('hidden', !permissoes.dashboard);
@@ -953,6 +1003,19 @@ function aplicarPermissoesPerfil() {
   else if (!permissoes.dashboard && !permissoes.dadosBase) executarLogout();
 }
 
+function gerarRelatorioImprimir() {
+  if (!obterPermissoesUsuario().relatorios) return alert('Seu perfil não pode gerar relatórios.');
+  const root=document.getElementById('relatorio-impressao'); root.replaceChildren();
+  const h=document.createElement('h1'); h.textContent=configGlobal.titulo||'Brasil Pontes'; root.appendChild(h);
+  const subtitulo=document.createElement('h2'); subtitulo.textContent='Relatório de custo previsto x realizado'; root.appendChild(subtitulo);
+  const meta=document.createElement('p'); meta.textContent='Obra: '+(obrasBD[obraAtivaID]?.nome||'—')+' | Departamento: '+(obrasBD[obraAtivaID]?.cc||'—')+' | Gestor: '+(obrasBD[obraAtivaID]?.responsavel||'—'); root.appendChild(meta);
+  const data=document.createElement('p'); data.textContent='Emitido em '+new Date().toLocaleString('pt-BR')+' | Previsto: '+document.getElementById('kpi-previsto').textContent+' | Realizado: '+document.getElementById('kpi-realizado').textContent+' | Saldo: '+document.getElementById('kpi-desvio').textContent+' | IDC: '+document.getElementById('kpi-idc').textContent; root.appendChild(data);
+  const tabela=document.createElement('table'); tabela.className='report-table';
+  const head=document.createElement('thead'); const headerRow=document.createElement('tr');
+  ['Categoria / Natureza','Previsto (R$)','Realizado (R$)','% Uso','Desvio / Saldo','Farol / Status'].forEach(txt=>{const th=document.createElement('th');th.textContent=txt;headerRow.appendChild(th);}); head.appendChild(headerRow); tabela.appendChild(head);
+  const body=document.createElement('tbody'); document.querySelectorAll('#tabela-dre-body tr').forEach(row=>{const tr=document.createElement('tr');Array.from(row.children).forEach(td=>{const cell=document.createElement('td');cell.textContent=td.textContent.trim();tr.appendChild(cell);});body.appendChild(tr);}); tabela.appendChild(body); root.appendChild(tabela);
+  window.print();
+}
 function obterPermissoesUsuario(usuario = usuarioAutenticado) {
   if (!usuario || usuario.perfil === 'Mestre') return { ...PERMISSOES_PADRAO.Mestre };
   return { ...PERMISSOES_PADRAO[usuario.perfil] || PERMISSOES_PADRAO.Engenheiro, ...permissoesPerfis[usuario.perfil] };
@@ -979,7 +1042,7 @@ function fecharModalUsuarios() { document.getElementById('modal-usuarios').class
 function renderizarEditorPermissoesPerfil() {
   const perfil=document.getElementById('permissoes-perfil-select')?.value || 'Engenheiro';
   const regras=perfil==='Mestre'?PERMISSOES_PADRAO.Mestre:(permissoesPerfis[perfil] || PERMISSOES_PADRAO.Engenheiro);
-  const nomes={dashboard:'perm-dashboard',dadosBase:'perm-dados-base',sincronizar:'perm-sincronizar',configuracoes:'perm-configuracoes',usuarios:'perm-usuarios',permissoes:'perm-permissoes'};
+  const nomes={dashboard:'perm-dashboard',dadosBase:'perm-dados-base',sincronizar:'perm-sincronizar',configuracoes:'perm-configuracoes',usuarios:'perm-usuarios',permissoes:'perm-permissoes',graficos:'perm-graficos',relatorios:'perm-relatorios'};
   const bloqueado=perfil==='Mestre';
   Object.entries(nomes).forEach(([chave,id])=>{const campo=document.getElementById(id); if(campo){campo.checked=!!regras[chave];campo.disabled=bloqueado;}});
   document.getElementById('btn-salvar-permissoes').disabled=bloqueado;
@@ -998,7 +1061,9 @@ function salvarPermissoesPerfil() {
     sincronizar:document.getElementById('perm-sincronizar').checked,
     configuracoes:document.getElementById('perm-configuracoes').checked,
     usuarios:document.getElementById('perm-usuarios').checked,
-    permissoes:document.getElementById('perm-permissoes').checked
+    permissoes:document.getElementById('perm-permissoes').checked,
+    graficos:document.getElementById('perm-graficos').checked,
+    relatorios:document.getElementById('perm-relatorios').checked
   };
   try { localStorage.setItem('permissoes_bp',JSON.stringify(permissoesPerfis)); }
   catch(e) { return alert('Não foi possível salvar permissões neste navegador.'); }
