@@ -41,6 +41,7 @@ let linhasDashboardVisiveis = [];
 let filtrosDadosBase = { busca: '', obra: '', categoria: '' };
 let filtroObraDadosBaseManual = false;
 let filtrosPesquisaCustos = '';
+let graficoPesquisaCustos = null;
 let previstoPaginaAtual = 0;
 function normalizarTextoUI(valor) { return String(valor || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase(); }
 
@@ -384,63 +385,86 @@ function renderizarPrevisto() {
 }
 
 window.pesquisarCustos = pesquisarCustos;
+window.imprimirRelatorioPesquisa = imprimirRelatorioPesquisa;
 
 function pesquisarCustos(termo) {
   filtrosPesquisaCustos=String(termo||'');
   const query=normalizarTextoUI(filtrosPesquisaCustos.trim());
-  const resumo=document.getElementById('pesquisa-custos-resumo'), aviso=document.getElementById('pesquisa-custos-aviso'), host=document.getElementById('pesquisa-custos-resultados');
+  const resumo=document.getElementById('pesquisa-custos-resumo'), leitura=document.getElementById('pesquisa-custos-leitura'), aviso=document.getElementById('pesquisa-custos-aviso'), host=document.getElementById('pesquisa-custos-resultados');
+  const graficoCard=document.getElementById('pesquisa-custos-grafico-card'), canvas=document.getElementById('pesquisa-custos-chart'), graficoVazio=document.getElementById('pesquisa-custos-grafico-vazio');
   if(!resumo||!aviso||!host)return;
-  resumo.replaceChildren();host.replaceChildren();
-  if(!query){aviso.textContent='Digite um termo para pesquisar nos dados de Realizado da obra selecionada.';return;}
+  if(graficoPesquisaCustos){graficoPesquisaCustos.destroy();graficoPesquisaCustos=null;}
+  resumo.replaceChildren();host.replaceChildren();if(leitura){leitura.replaceChildren();leitura.classList.add('hidden');}graficoCard?.classList.add('hidden');graficoVazio?.classList.add('hidden');
+  const btnImprimir=document.getElementById('btn-imprimir-relatorio-pesquisa');btnImprimir?.classList.toggle('hidden',!query);
+  if(!query){aviso.textContent='Digite uma categoria, item ou descrição para gerar o relatório da pesquisa.';return;}
   const obra=obrasBD[obraAtivaID];if(!obra){aviso.textContent='Selecione uma obra no cabeçalho antes de pesquisar.';return;}
-  const dados=[];const norm=normalizarTextoUI;
-  const col=(headers,pred)=>headers.find(h=>pred(norm(h)));
-  let possuiFonteObra=false;
+  const dados=[];const norm=normalizarTextoUI;const col=(headers,pred)=>headers.find(h=>pred(norm(h)));let possuiFonteObra=false;
   (dadosBasePlanilhas||[]).filter(p=>p.tipo==='Realizado'||!p.tipo).forEach(planilha=>{
-    const headers=planilha.headers||[];
-    const obraHeader=col(headers,h=>h.includes('obra')||h.includes('departamento')||h.includes('centro de custo'));
-    if(!obraHeader)return;
+    const headers=planilha.headers||[];const obraHeader=col(headers,h=>h.includes('obra')||h.includes('departamento')||h.includes('centro de custo'));if(!obraHeader)return;
     const categoriaHeader=col(headers,h=>h.includes('categoria')||h.includes('natureza'));
-    const valorHeader=col(headers,h=>h.includes('valor liquido')||h.includes('valor da conta')||h.includes('valor total')||h.includes('valor pago')||h.includes('custo total'))||col(headers,h=>h.includes('valor'));
+    const valorHeader=headers.find(h=>/valor liquido|valor da conta|valor total|valor pago|custo total/.test(norm(h)))||col(headers,h=>h.includes('valor'));
     const itemHeader=col(headers,h=>h==='item'||h.includes('item ')||h.includes('codigo item')||h.includes('codigo'));
     const descricaoHeader=col(headers,h=>h.includes('descricao')||h.includes('servico')||h.includes('historico')||h.includes('especificacao'));
+    const camposBusca=headers.filter(header=>/categoria|natureza|item|descricao|servico|historico|fornecedor|produto|conta|codigo/.test(norm(header)));
     (planilha.rows||[]).forEach(row=>{
-      const obraLinha=norm(row[obraHeader]);
-      const obraOk=obraLinha===norm(obra.nome)||obraLinha===norm(obra.cc)||obraLinha===norm(obra.id)||((obra.cc||'').trim()&&obraLinha.includes(norm(obra.cc)));
-      if(!obraOk)return;possuiFonteObra=true;
-      const headersBusca=headers.filter(header=>/categoria|natureza|item|descricao|servico|historico|fornecedor|produto|conta|codigo/.test(norm(header)));
-      const corresponde=(headersBusca.length?headersBusca:headers).some(header=>norm(row[header]).includes(query));if(!corresponde)return;
+      const obraLinha=norm(row[obraHeader]);const obraOk=obraLinha===norm(obra.nome)||obraLinha===norm(obra.cc)||obraLinha===norm(obra.id)||((obra.cc||'').trim()&&obraLinha.includes(norm(obra.cc)));
+      if(!obraOk)return;possuiFonteObra=true;if(!(camposBusca.length?camposBusca:headers).some(header=>norm(row[header]).includes(query)))return;
       const categoria=String((categoriaHeader&&row[categoriaHeader])||'Outros').trim()||'Outros';
-      const valor=valorHeader?parseMonetario(row[valorHeader]):0;
-      dados.push({planilha:planilha.nome,categoria,item:itemHeader?row[itemHeader]:'',descricao:descricaoHeader?row[descricaoHeader]:'',valor,row});
+      dados.push({planilha:planilha.nome,categoria,item:itemHeader?row[itemHeader]:'',descricao:descricaoHeader?row[descricaoHeader]:'',valor:valorHeader?parseMonetario(row[valorHeader]):0,row});
     });
   });
-  const planilhaPrevisto=(dadosBasePlanilhas||[]).find(p=>p.tipo==='Previsto'&&p.id===`previsto-${obraAtivaID}`);
-  const previstosDiretos=[];
+  const planilhaPrevisto=(dadosBasePlanilhas||[]).find(p=>p.tipo==='Previsto'&&p.id===`previsto-${obraAtivaID}`);const previstosDiretos=[];
   if(planilhaPrevisto){
-    const headersPrev=planilhaPrevisto.headers||[];
-    const valorPrevHeader=headersPrev.find(h=>/custo total|valor total/.test(norm(h))||norm(h)==='valor')||headersPrev.find(h=>norm(h).includes('custo')||norm(h).includes('valor'));
-    const camposPrevBusca=headersPrev.filter(h=>/categoria|natureza|item|descricao|servico|historico|fornecedor|produto|conta|codigo/.test(norm(h)));
-    (planilhaPrevisto.rows||[]).forEach(row=>{const termos=camposPrevBusca.length?camposPrevBusca:headersPrev;if(termos.some(h=>norm(row[h]).includes(query)))previstosDiretos.push((valorPrevHeader?parseMonetario(row[valorPrevHeader]):0)*multiplicadorCenario);});
+    const headers=planilhaPrevisto.headers||[];const valorHeader=headers.find(h=>/custo total|valor total/.test(norm(h))||norm(h)==='valor')||col(headers,h=>h.includes('custo')||h.includes('valor'));
+    const categoriaHeader=col(headers,h=>h.includes('categoria')||h.includes('natureza'));
+    const itemHeader=col(headers,h=>h==='item'||h.includes('item ')||h.includes('codigo item')||h.includes('codigo'));
+    const descricaoHeader=col(headers,h=>h.includes('descricao')||h.includes('servico')||h.includes('historico')||h.includes('especificacao'));
+    const campos=headers.filter(h=>/categoria|natureza|item|descricao|servico|historico|fornecedor|produto|conta|codigo/.test(norm(h)));
+    (planilhaPrevisto.rows||[]).forEach(row=>{if((campos.length?campos:headers).some(header=>norm(row[header]).includes(query)))previstosDiretos.push({categoria:String((categoriaHeader&&row[categoriaHeader])||'Item encontrado').trim(),item:itemHeader?row[itemHeader]:'',descricao:descricaoHeader?row[descricaoHeader]:'',valor:(valorHeader?parseMonetario(row[valorHeader]):0)*multiplicadorCenario});});
   }
-  const cats=[...new Set(dados.map(x=>x.categoria))];
-  const prevCats=Object.keys(obra.categoriasPrevisto||{}).filter(c=>cats.some(x=>norm(x)===norm(c)));
+  const cats=[...new Set(dados.map(x=>x.categoria))];const prevCats=Object.keys(obra.categoriasPrevisto||{}).filter(c=>cats.some(x=>norm(x)===norm(c)));
   const previstoCategorias=prevCats.reduce((sum,c)=>sum+(obra.categoriasPrevisto[c]||0)*multiplicadorCenario,0);
-  const previstoDireto=previstosDiretos.reduce((sum,n)=>sum+n,0);
-  const temPrevistoDireto=previstosDiretos.length>0;
-  const previsto=temPrevistoDireto?previstoDireto:previstoCategorias;
-  const temPrevisto=temPrevistoDireto||prevCats.length>0;
-  const realizado=dados.reduce((s,x)=>s+x.valor,0);
-  const rotuloPrevisto=temPrevistoDireto?'Previsto dos itens encontrados':'Previsto nas categorias encontradas';
-  [[rotuloPrevisto,temPrevisto?previsto:null],['Realizado nos registros encontrados',realizado],['Registros encontrados',dados.length]].forEach(([label,value])=>{const card=document.createElement('div');card.className='bg-white p-4 rounded-xl border border-gray-200 shadow-sm';const l=document.createElement('p');l.className='text-xs font-bold text-gray-500';l.textContent=label;const v=document.createElement('p');v.className='text-lg font-black text-[#003399] mt-1';v.textContent=value===null?'Sem categoria prevista correspondente':typeof value==='number'&&label==='Registros encontrados'?String(value):typeof value==='number'?value.toLocaleString('pt-BR',{style:'currency',currency:'BRL'}):value;card.append(l,v);resumo.appendChild(card);});
-  if(!possuiFonteObra)aviso.textContent='Não encontrei uma coluna de obra nas planilhas importadas para separar os registros com segurança.';
+  const previstoDireto=previstosDiretos.reduce((sum,x)=>sum+x.valor,0);const temPrevistoDireto=previstosDiretos.length>0;const previsto=temPrevistoDireto?previstoDireto:previstoCategorias;const temPrevisto=temPrevistoDireto||prevCats.length>0;
+  const realizado=dados.reduce((sum,x)=>sum+x.valor,0);const saldo=temPrevisto?previsto-realizado:null;const uso=temPrevisto&&previsto>0?realizado/previsto*100:null;
+  const moeda=n=>Number(n||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+  const cards=[['Previsto da pesquisa',temPrevisto?moeda(previsto):'Sem correspondência'],['Realizado encontrado',moeda(realizado)],['Saldo previsto − realizado',saldo===null?'Sem previsto':moeda(saldo)],['Uso do previsto',uso===null?(temPrevisto?'N/P':'Sem previsto'):uso.toFixed(1)+'%'],['Registros realizados',String(dados.length)]];
+  cards.forEach(([label,value])=>{const card=document.createElement('article');card.className='bg-white p-4 rounded-xl border border-gray-200 shadow-sm';const l=document.createElement('p');l.className='text-xs font-bold text-gray-500';l.textContent=label;const v=document.createElement('p');v.className='text-lg font-black text-[#003399] mt-1';v.textContent=value;card.append(l,v);resumo.appendChild(card);});
+  const grupos=new Map();const grupo=categoria=>{const key=norm(categoria)||'item';if(!grupos.has(key))grupos.set(key,{categoria:categoria||'Item encontrado',previsto:0,realizado:0});return grupos.get(key);};
+  if(temPrevistoDireto)previstosDiretos.forEach(x=>grupo(x.categoria).previsto+=x.valor);else prevCats.forEach(c=>grupo(c).previsto+=(obra.categoriasPrevisto[c]||0)*multiplicadorCenario);
+  dados.forEach(x=>grupo(x.categoria).realizado+=x.valor);
+  const linhasGrafico=[...grupos.values()].sort((a,b)=>(b.previsto+b.realizado)-(a.previsto+a.realizado)).slice(0,12);
+  if(linhasGrafico.length&&canvas&&typeof Chart!=='undefined'){
+    graficoCard?.classList.remove('hidden');graficoPesquisaCustos=new Chart(canvas.getContext('2d'),{type:'bar',data:{labels:linhasGrafico.map(x=>x.categoria),datasets:[{label:'Previsto',data:linhasGrafico.map(x=>x.previsto),backgroundColor:'#00CFFF',borderColor:'#009fc4',borderWidth:1},{label:'Realizado',data:linhasGrafico.map(x=>x.realizado),backgroundColor:'#003399',borderColor:'#002266',borderWidth:1}]},options:{responsive:true,maintainAspectRatio:false,indexAxis:linhasGrafico.length>7?'y':'x',plugins:{legend:{position:'bottom'},tooltip:{callbacks:{label:ctx=>ctx.dataset.label+': '+moeda(ctx.raw)}}},scales:{y:{beginAtZero:true,ticks:{callback:value=>Number(value).toLocaleString('pt-BR')}},x:{beginAtZero:true}}}});
+  } else if(linhasGrafico.length&&graficoVazio){graficoCard?.classList.remove('hidden');graficoVazio.classList.remove('hidden');graficoVazio.textContent='Gráfico indisponível: biblioteca de gráficos não carregada.';}
+  if(leitura){leitura.classList.remove('hidden');leitura.className='bg-white p-4 rounded-xl border border-gray-200 text-sm text-gray-700';const title=document.createElement('h3');title.className='font-bold text-[#003399] mb-1';title.textContent='Leitura da pesquisa';const p=document.createElement('p');p.textContent=temPrevistoDireto?'O previsto foi calculado a partir dos itens correspondentes encontrados na planilha da obra.':temPrevisto?'Não houve correspondência direta de item no Previsto; foi usado o total previsto das categorias presentes nos registros realizados.':'Não foi localizada previsão compatível com o termo pesquisado.';leitura.append(title,p);}
+  if(!possuiFonteObra)aviso.textContent='Não encontrei uma coluna que identifique a obra nas planilhas importadas; não somei dados de outras obras.';
+  else if(!dados.length&&previstosDiretos.length)aviso.textContent='Há itens previstos correspondentes a “'+filtrosPesquisaCustos+'”, mas nenhum registro realizado correspondente nesta obra.';
   else if(!dados.length)aviso.textContent='Nenhum registro corresponde a “'+filtrosPesquisaCustos+'” na obra '+(obra.nome||obra.cc)+'.';
-  else aviso.textContent='Pesquisa na obra '+(obra.nome||obra.cc)+'. O previsto soma os itens correspondentes da planilha da obra quando há descrição compatível; sem correspondência direta, usa o total previsto das categorias encontradas.';
-  if(!dados.length)return;
-  const wrap=document.createElement('div');wrap.className='overflow-auto max-h-[65vh]';const table=document.createElement('table');table.className='min-w-full text-xs text-left';const thead=document.createElement('thead');thead.className='sticky top-0 bg-[#003399] text-white';const trh=document.createElement('tr');['Planilha','Categoria','Item','Descrição','Realizado'].forEach(x=>{const th=document.createElement('th');th.className='p-3 whitespace-nowrap';th.textContent=x;trh.appendChild(th);});thead.appendChild(trh);const tbody=document.createElement('tbody');tbody.className='divide-y divide-gray-200';
-  dados.slice(0,500).forEach(item=>{const tr=document.createElement('tr');[item.planilha,item.categoria,item.item,item.descricao,item.valor.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})].forEach((v,i)=>{const td=document.createElement('td');td.className='p-3 whitespace-nowrap';td.textContent=String(v??'');tr.appendChild(td);});tbody.appendChild(tr);});table.append(thead,tbody);wrap.appendChild(table);host.appendChild(wrap);
-  if(dados.length>500){const nota=document.createElement('p');nota.className='text-xs text-gray-500 p-3';nota.textContent='Exibindo os primeiros 500 de '+dados.length+' registros encontrados.';host.appendChild(nota);}
+  else aviso.textContent='Relatório para “'+filtrosPesquisaCustos+'” na obra '+(obra.nome||obra.cc)+'. O gráfico mostra até 12 categorias/itens de maior valor.';
+  if(previstosDiretos.length){const sec=document.createElement('section');sec.className='mb-4';const t=document.createElement('h3');t.className='font-bold text-[#003399] p-3';t.textContent='Itens previstos encontrados ('+previstosDiretos.length+')';sec.appendChild(t);sec.appendChild(criarTabelaPesquisa(['Categoria','Item','Descrição','Previsto'],previstosDiretos.map(x=>[x.categoria,x.item,x.descricao,moeda(x.valor)])));host.appendChild(sec);}
+  if(dados.length){const sec=document.createElement('section');const t=document.createElement('h3');t.className='font-bold text-[#003399] p-3';t.textContent='Registros realizados encontrados ('+dados.length+')';sec.appendChild(t);sec.appendChild(criarTabelaPesquisa(['Planilha','Categoria','Item','Descrição','Realizado'],dados.slice(0,500).map(x=>[x.planilha,x.categoria,x.item,x.descricao,moeda(x.valor)])));host.appendChild(sec);if(dados.length>500){const n=document.createElement('p');n.className='text-xs text-gray-500 p-3';n.textContent='Exibindo os primeiros 500 de '+dados.length+' registros realizados.';host.appendChild(n);}}
 }
+async function imprimirRelatorioPesquisa(){
+  if(!obterPermissoesUsuario().relatorios)return alert('Seu perfil não pode imprimir relatórios.');
+  if(!filtrosPesquisaCustos.trim())return alert('Digite um termo antes de imprimir o relatório da pesquisa.');
+  const root=document.getElementById('relatorio-impressao');if(!root)return;
+  root.replaceChildren();
+  const sec=title=>{const box=el('div','report-section-heading');box.appendChild(el('h2','',title));return box;};
+  const el=(tag,cls,text)=>{const n=document.createElement(tag);if(cls)n.className=cls;if(text!==undefined)n.textContent=String(text);return n;};
+  const logo=el('img','report-logo');logo.src='assets/logo-brasil-pontes.png';logo.alt='Logo Brasil Pontes';
+  const brand=el('div','report-brand');brand.append(el('strong','',configGlobal.titulo||'Brasil Pontes'),el('span','','Controladoria & Engenharia de Custos'));
+  const wave=document.createElementNS('http://www.w3.org/2000/svg','svg');wave.setAttribute('viewBox','0 0 1200 150');wave.setAttribute('preserveAspectRatio','none');wave.setAttribute('aria-hidden','true');const path=document.createElementNS('http://www.w3.org/2000/svg','path');path.setAttribute('d','M0 0 H1200 V92 C900 125 640 40 340 70 C190 85 80 115 0 138 Z');path.setAttribute('fill','#4472c4');wave.appendChild(path);const header=el('header','report-letterhead');header.append(wave,logo,brand);root.appendChild(header);
+  const capa=el('section','report-cover');capa.append(el('p','report-kicker','PESQUISA · ENGENHARIA DE CUSTOS'),el('h1','report-title','Relatório da pesquisa'),el('p','report-subtitle','Termo: “'+filtrosPesquisaCustos+'” · Obra: '+(obrasBD[obraAtivaID]?.nome||obrasBD[obraAtivaID]?.cc||'—')));capa.appendChild(el('p','report-generated','Emitido em '+new Date().toLocaleString('pt-BR')+' · Cenário: '+(document.getElementById('seletor-cenario')?.selectedOptions[0]?.textContent||'Base')));root.appendChild(capa);
+  const resumo=document.getElementById('pesquisa-custos-resumo');if(resumo){root.appendChild(sec('Indicadores da pesquisa'));const kpis=resumo.cloneNode(true);kpis.className='report-kpi-grid';Array.from(kpis.children).forEach((card,i)=>{card.className='report-kpi report-kpi-'+i;const textos=card.querySelectorAll('p');if(textos[0])textos[0].className='';if(textos[1])textos[1].className='';});root.appendChild(kpis);}
+  const leitura=document.getElementById('pesquisa-custos-leitura');if(leitura&&!leitura.classList.contains('hidden')){root.appendChild(sec('Leitura gerencial'));root.appendChild(el('p','report-methodology',leitura.innerText));}
+  const canvas=document.getElementById('pesquisa-custos-chart');if(canvas&&!document.getElementById('pesquisa-custos-grafico-card')?.classList.contains('hidden')){try{root.appendChild(sec('Previsto x realizado'));const figure=el('figure','report-chart-card');const img=el('img','',null);img.src=canvas.toDataURL('image/png');img.alt='Gráfico de previsto e realizado da pesquisa';figure.appendChild(img);root.appendChild(figure);}catch(e){console.warn('Não foi possível anexar o gráfico ao relatório.',e);}}
+  const resultados=document.getElementById('pesquisa-custos-resultados');if(resultados?.children.length){root.appendChild(sec('Detalhamento dos resultados'));root.appendChild(resultados.cloneNode(true));}
+  const footer=el('footer','report-letterhead-footer');const waveFooter=document.createElementNS('http://www.w3.org/2000/svg','svg');waveFooter.setAttribute('viewBox','0 0 1200 100');waveFooter.setAttribute('preserveAspectRatio','none');waveFooter.setAttribute('aria-hidden','true');const pathFooter=document.createElementNS('http://www.w3.org/2000/svg','path');pathFooter.setAttribute('d','M0 30 C300 0 680 72 930 42 C1050 28 1130 15 1200 0 V100 H0 Z');pathFooter.setAttribute('fill','#003399');waveFooter.appendChild(pathFooter);footer.append(waveFooter,el('div','report-footer-text','Brasil Pontes · Controladoria & Engenharia de Custos'));root.appendChild(footer);
+  await Promise.allSettled(Array.from(root.querySelectorAll('img')).map(img=>img.decode?img.decode():Promise.resolve()));window.print();
+}
+
+function criarTabelaPesquisa(titulos,linhas){const wrap=document.createElement('div');wrap.className='overflow-auto max-h-[55vh]';const table=document.createElement('table');table.className='min-w-full text-xs text-left search-report-table';const thead=document.createElement('thead');thead.className='sticky top-0 bg-[#003399] text-white';const trh=document.createElement('tr');titulos.forEach(t=>{const th=document.createElement('th');th.className='p-3 whitespace-nowrap';th.textContent=t;trh.appendChild(th);});thead.appendChild(trh);const tbody=document.createElement('tbody');tbody.className='divide-y divide-gray-200';linhas.forEach(valores=>{const tr=document.createElement('tr');valores.forEach(v=>{const td=document.createElement('td');td.className='p-3 whitespace-nowrap';td.textContent=String(v??'');tr.appendChild(td);});tbody.appendChild(tr);});table.append(thead,tbody);wrap.appendChild(table);return wrap;}
+
 function limparPesquisaCustos(){const input=document.getElementById('pesquisa-custos-input');if(input)input.value='';pesquisarCustos('');}
 
 function sincronizarFiltroDadosBaseComObra(){

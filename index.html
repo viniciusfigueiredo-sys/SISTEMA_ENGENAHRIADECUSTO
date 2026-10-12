@@ -55,6 +55,8 @@
       #relatorio-impressao .report-kpi-3 { border-top-color:#f59e0b; }
       #relatorio-impressao .report-kpi span { display:block; color:#6b7280; font-size:7pt; margin-bottom:1mm; }
       #relatorio-impressao .report-kpi strong { color:#003399; font-size:10pt; }
+      #relatorio-impressao .report-kpi p:first-child { display:block; color:#6b7280; font-size:7pt; margin:0 0 1mm; }
+      #relatorio-impressao .report-kpi p:last-child { color:#003399; font-size:10pt; font-weight:bold; margin:0; }
       #relatorio-impressao .report-farol-summary { display:flex; gap:6mm; margin-top:2mm; font-size:8pt; font-weight:bold; }
       #relatorio-impressao .report-alert-list { margin:1mm 0 0; padding-left:5mm; font-size:8pt; }
       #relatorio-impressao .report-alert-list li { padding:.5mm 0; }
@@ -75,6 +77,11 @@
       #relatorio-impressao .report-chart-card { border:1px solid #dbe3ee; margin:0; padding:2mm; break-inside:avoid; }
       #relatorio-impressao .report-chart-card figcaption { color:#003399; font-weight:bold; font-size:8pt; margin-bottom:1mm; }
       #relatorio-impressao .report-chart-card img { width:100%; height:auto; }
+      #relatorio-impressao .overflow-auto { max-height:none !important; overflow:visible !important; }
+      #relatorio-impressao .search-report-table { border-collapse:collapse; width:100%; font-size:7.5pt; }
+      #relatorio-impressao .search-report-table th, #relatorio-impressao .search-report-table td { border:1px solid #cbd5e1; padding:1.5mm 1mm; text-align:left; }
+      #relatorio-impressao .search-report-table thead { display:table-header-group; }
+      #relatorio-impressao .search-report-table tr { break-inside:avoid; }
       #relatorio-impressao .mini-report-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:2mm; }
       #relatorio-impressao .mini-report-card { border:1px solid #dbe3ee; padding:2mm; break-inside:avoid; }
       #relatorio-impressao .mini-report-card h3 { color:#003399; font-size:8pt; margin:0 0 1mm; }
@@ -335,8 +342,15 @@
           <label for="pesquisa-custos-input" class="sr-only">Pesquisar categoria, item ou descrição</label>
           <input id="pesquisa-custos-input" type="search" placeholder="Digite uma categoria, item ou descrição…" class="border p-3 rounded-lg text-sm flex-1" oninput="pesquisarCustos(this.value)">
           <button type="button" onclick="limparPesquisaCustos()" class="px-4 py-2 border rounded-lg text-sm font-bold text-[#003399]">Limpar</button>
+          <button id="btn-imprimir-relatorio-pesquisa" type="button" onclick="imprimirRelatorioPesquisa()" class="hidden px-4 py-2 rounded-lg text-sm font-bold bg-[#003399] text-white">🖨️ Imprimir relatório</button>
         </div>
-        <div id="pesquisa-custos-resumo" class="grid grid-cols-1 sm:grid-cols-3 gap-3"></div>
+        <div id="pesquisa-custos-resumo" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3"></div>
+        <div id="pesquisa-custos-leitura" class="hidden bg-white p-4 rounded-xl border border-gray-200 text-sm text-gray-700"></div>
+        <section id="pesquisa-custos-grafico-card" class="hidden bg-white p-5 rounded-xl shadow-sm border border-gray-200">
+          <h3 class="font-bold text-[#003399] mb-3">Previsto x realizado por categoria encontrada</h3>
+          <div class="relative h-72"><canvas id="pesquisa-custos-chart" aria-label="Gráfico de previsto e realizado da pesquisa" role="img"></canvas></div>
+          <p id="pesquisa-custos-grafico-vazio" class="hidden text-xs text-gray-500 mt-2"></p>
+        </section>
         <div id="pesquisa-custos-aviso" class="text-sm text-gray-600"></div>
         <div id="pesquisa-custos-resultados" class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden"></div>
       </section>
