@@ -362,6 +362,11 @@
           <p id="previsto-status" class="text-xs text-gray-500 mt-2"></p>
         </div>
         <div id="previsto-kpis" class="grid grid-cols-1 sm:grid-cols-3 gap-3"></div>
+        <section class="bg-white p-5 rounded-xl shadow-sm border border-gray-200">
+          <h3 class="font-bold text-[#003399] mb-3">Composição do previsto</h3>
+          <div class="relative h-72"><canvas id="previsto-chart" aria-label="Gráfico do previsto por categoria" role="img"></canvas></div>
+          <p id="previsto-chart-vazio" class="hidden text-xs text-gray-500 mt-2"></p>
+        </section>
         <div id="previsto-tabela" class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden"></div>
         <div id="previsto-paginacao" class="flex items-center justify-center gap-4"></div>
       </section>
@@ -369,10 +374,16 @@
       <section id="view-dados-base" class="hidden space-y-5">
         <div class="bg-white p-5 rounded-xl shadow-sm border border-gray-200">
           <h2 class="text-xl font-black text-[#003399]">Realizado · planilhas importadas</h2>
-          <p class="text-sm text-gray-600 mt-1">Planilhas de realizado importadas. Cada fonte aparece em uma aba com o nome da planilha, separada das demais obras pelos filtros disponíveis.</p>
+          <p class="text-sm text-gray-600 mt-1">Planilhas de realizado importadas. KPIs e gráfico refletem a obra, a planilha e os filtros selecionados.</p>
           <p id="dados-base-status" class="text-xs text-gray-500 mt-2">Sincronize as planilhas para carregar a base.</p>
         </div>
         <div id="dados-base-filtros" class="bg-white p-4 rounded-xl shadow-sm border border-gray-200 flex flex-wrap gap-3 items-center"></div>
+        <div id="realizado-kpis" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3"></div>
+        <section class="bg-white p-5 rounded-xl shadow-sm border border-gray-200">
+          <h3 class="font-bold text-[#003399] mb-3">Realizado por categoria na planilha selecionada</h3>
+          <div class="relative h-72"><canvas id="realizado-chart" aria-label="Gráfico do realizado por categoria" role="img"></canvas></div>
+          <p id="realizado-chart-vazio" class="hidden text-xs text-gray-500 mt-2"></p>
+        </section>
         <div id="dados-base-tabs" class="flex flex-wrap gap-2" role="tablist" aria-label="Planilhas importadas"></div>
         <div id="dados-base-conteudo" class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
           <div class="p-8 text-center text-gray-500">Nenhuma planilha importada. Use “Sincronizar Base de Dados” para começar.</div>
