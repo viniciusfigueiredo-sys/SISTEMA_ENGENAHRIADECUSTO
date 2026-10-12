@@ -215,7 +215,7 @@
         <button id="nav-dashboard" type="button" onclick="abrirAbaSistema('dashboard')" class="px-4 py-3 border-b-2 border-[#003399] text-[#003399] font-bold text-sm whitespace-nowrap">📊 Análises</button>
         <button id="nav-pesquisa" type="button" onclick="abrirAbaSistema('pesquisa')" class="px-4 py-3 text-gray-500 font-bold text-sm hover:text-[#003399] whitespace-nowrap">🔎 Pesquisa</button>
         <button id="nav-dados-base" type="button" onclick="abrirAbaSistema('realizado')" class="px-4 py-3 text-gray-500 font-bold text-sm hover:text-[#003399] whitespace-nowrap">📥 Realizado</button>
-        <button id="nav-banco-revisto" type="button" onclick="abrirAbaSistema('banco-revisto')" class="px-4 py-3 text-gray-500 font-bold text-sm hover:text-[#003399] whitespace-nowrap">🗃️ Banco de dados revisto</button>
+        <button id="nav-previsto" type="button" onclick="abrirAbaSistema('previsto')" class="px-4 py-3 text-gray-500 font-bold text-sm hover:text-[#003399] whitespace-nowrap">📄 Previsto</button>
       </nav>
 
       <div id="view-dashboard" class="space-y-6">
@@ -341,14 +341,15 @@
         <div id="pesquisa-custos-resultados" class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden"></div>
       </section>
 
-      <section id="view-banco-revisto" class="hidden space-y-5">
+      <section id="view-previsto" class="hidden space-y-5">
         <div class="bg-white p-5 rounded-xl shadow-sm border border-gray-200">
-          <h2 class="text-xl font-black text-[#003399]">Banco de dados revisto</h2>
-          <p class="text-sm text-gray-600 mt-1">Base consolidada por categoria da obra selecionada, comparando previsto, realizado, saldo e percentual de uso. Troque a obra no seletor do cabeçalho para consultar outra.</p>
-          <p id="banco-revisto-status" class="text-xs text-gray-500 mt-2"></p>
+          <h2 class="text-xl font-black text-[#003399]">Previsto · planilha da obra</h2>
+          <p class="text-sm text-gray-600 mt-1">Planilha original de previsto vinculada à obra selecionada, exibida separadamente por obra. Troque a obra no seletor do cabeçalho para consultar outra.</p>
+          <p id="previsto-status" class="text-xs text-gray-500 mt-2"></p>
         </div>
-        <div id="banco-revisto-kpis" class="grid grid-cols-1 sm:grid-cols-3 gap-3"></div>
-        <div id="banco-revisto-tabela" class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-auto max-h-[70vh]"></div>
+        <div id="previsto-kpis" class="grid grid-cols-1 sm:grid-cols-3 gap-3"></div>
+        <div id="previsto-tabela" class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden"></div>
+        <div id="previsto-paginacao" class="flex items-center justify-center gap-4"></div>
       </section>
 
       <section id="view-dados-base" class="hidden space-y-5">

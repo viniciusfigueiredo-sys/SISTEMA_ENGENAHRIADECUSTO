@@ -41,6 +41,7 @@ let linhasDashboardVisiveis = [];
 let filtrosDadosBase = { busca: '', obra: '', categoria: '' };
 let filtroObraDadosBaseManual = false;
 let filtrosPesquisaCustos = '';
+let previstoPaginaAtual = 0;
 function normalizarTextoUI(valor) { return String(valor || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase(); }
 
 function campoBaseId(planilhaId, header) { return `base:${encodeURIComponent(planilhaId)}:${encodeURIComponent(header)}`; }
@@ -341,41 +342,48 @@ function executarLogout() { usuarioAutenticado = null; localStorage.removeItem('
 function exibirFormSolicitacao() { document.getElementById('box-login').classList.add('hidden'); document.getElementById('box-solicitacao').classList.remove('hidden'); }
 function exibirFormLogin() { document.getElementById('box-solicitacao').classList.add('hidden'); document.getElementById('box-login').classList.remove('hidden'); }
 
+window.abrirAbaSistema = abrirAbaSistema;
+
 function abrirAbaSistema(aba) {
   const chave = aba === 'dados-base' ? 'realizado' : aba;
   const dashboard = chave === 'dashboard';
   const permissoes=obterPermissoesUsuario();
   if (dashboard && !permissoes.dashboard) return alert('Seu perfil não tem acesso às Análises.');
   if (!dashboard && !permissoes.dadosBase) return alert('Seu perfil não tem acesso aos dados.');
-  const views={dashboard:'view-dashboard',pesquisa:'view-pesquisa',realizado:'view-dados-base','banco-revisto':'view-banco-revisto'};
+  const views={dashboard:'view-dashboard',pesquisa:'view-pesquisa',realizado:'view-dados-base',previsto:'view-previsto'};
   Object.entries(views).forEach(([nome,id])=>document.getElementById(id)?.classList.toggle('hidden',nome!==chave));
-  const navs={dashboard:'nav-dashboard',pesquisa:'nav-pesquisa',realizado:'nav-dados-base','banco-revisto':'nav-banco-revisto'};
+  const navs={dashboard:'nav-dashboard',pesquisa:'nav-pesquisa',realizado:'nav-dados-base',previsto:'nav-previsto'};
   Object.entries(navs).forEach(([nome,id])=>{const el=document.getElementById(id);if(el)el.className=nome===chave?'px-4 py-3 border-b-2 border-[#003399] text-[#003399] font-bold text-sm whitespace-nowrap':'px-4 py-3 text-gray-500 font-bold text-sm hover:text-[#003399] whitespace-nowrap';});
   if(chave==='realizado') renderizarDadosBase();
   if(chave==='pesquisa') pesquisarCustos(filtrosPesquisaCustos);
-  if(chave==='banco-revisto') renderizarBancoRevisto();
+  if(chave==='previsto') renderizarPrevisto();
 }
 
-function renderizarBancoRevisto() {
+function renderizarPrevisto() {
   const obra=obrasBD[obraAtivaID];
-  const status=document.getElementById('banco-revisto-status');
-  const host=document.getElementById('banco-revisto-tabela');
-  const kpis=document.getElementById('banco-revisto-kpis');
+  const status=document.getElementById('previsto-status');
+  const host=document.getElementById('previsto-tabela');
+  const kpis=document.getElementById('previsto-kpis');
+  const paginacao=document.getElementById('previsto-paginacao');
   if(!host||!kpis)return;
-  host.replaceChildren();kpis.replaceChildren();
-  if(!obra){if(status)status.textContent='Selecione uma obra para consultar a base.';return;}
-  const categorias=[...new Set([...Object.keys(obra.categoriasPrevisto||{}),...Object.keys(obra.categoriasRealizado||{})])].sort((a,b)=>a.localeCompare(b,'pt-BR'));
-  const totalPrevisto=categorias.reduce((s,c)=>s+(obra.categoriasPrevisto?.[c]||0)*multiplicadorCenario,0);
-  const totalRealizado=categorias.reduce((s,c)=>s+(obra.categoriasRealizado?.[c]||0),0);
+  host.replaceChildren();kpis.replaceChildren();paginacao?.replaceChildren();
+  if(!obra){if(status)status.textContent='Selecione uma obra para consultar o previsto.';return;}
+  const planilha=(dadosBasePlanilhas||[]).find(p=>p.tipo==='Previsto'&&p.id===`previsto-${obraAtivaID}`);
   const moeda=n=>Number(n||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
-  if(status)status.textContent='Obra: '+(obra.nome||obra.cc||'—')+' • '+categorias.length+' categorias consolidadas • valores atualizados na última sincronização.';
-  [['Previsto no cenário selecionado',totalPrevisto],['Realizado',totalRealizado],['Saldo',totalPrevisto-totalRealizado]].forEach(([rotulo,valor])=>{const card=document.createElement('div');card.className='bg-white p-4 rounded-xl shadow-sm border border-gray-200';const label=document.createElement('p');label.className='text-xs font-bold text-gray-500 uppercase';label.textContent=rotulo;const amount=document.createElement('p');amount.className='text-lg font-black text-[#003399] mt-1';amount.textContent=moeda(valor);card.append(label,amount);kpis.appendChild(card);});
-  const wrap=document.createElement('div');wrap.className='overflow-auto max-h-[70vh]';const table=document.createElement('table');table.className='min-w-full text-xs text-left';
-  const thead=document.createElement('thead');thead.className='sticky top-0 bg-[#003399] text-white';const trh=document.createElement('tr');['Categoria','Previsto','Realizado','Saldo','Uso do previsto','Farol'].forEach(t=>{const th=document.createElement('th');th.className='p-3 whitespace-nowrap';th.textContent=t;trh.appendChild(th);});thead.appendChild(trh);
-  const tbody=document.createElement('tbody');tbody.className='divide-y divide-gray-200';categorias.forEach(cat=>{const prev=(obra.categoriasPrevisto?.[cat]||0)*multiplicadorCenario,real=obra.categoriasRealizado?.[cat]||0,uso=prev>0?real/prev*100:null;const farol=classificarFarol(prev,real);const tr=document.createElement('tr');[cat,moeda(prev),moeda(real),moeda(prev-real),uso===null?(real>0?'N/P':'—'):uso.toFixed(1)+'%',farol==='red'?(prev===0&&real>0?'N/P · Não previsto':'Estourado'):farol==='amber'?'Atenção':'Seguro'].forEach((v,i)=>{const td=document.createElement(i===0?'th':'td');td.className='p-3 whitespace-nowrap'+(i===0?' text-left':' text-right');td.textContent=v;tr.appendChild(td);});tbody.appendChild(tr);});
-  if(!categorias.length){const tr=document.createElement('tr');const td=document.createElement('td');td.colSpan=6;td.className='p-8 text-center text-gray-500';td.textContent='Não há categorias importadas para esta obra. Sincronize as planilhas de Previsto e Realizado.';tr.appendChild(td);tbody.appendChild(tr);}
-  table.append(thead,tbody);wrap.appendChild(table);host.appendChild(wrap);
+  const categorias=Object.keys(obra.categoriasPrevisto||{});
+  const previsto=Number(obra.previstoTotal||categorias.reduce((s,c)=>s+(obra.categoriasPrevisto?.[c]||0),0))*multiplicadorCenario;
+  if(status)status.textContent='Obra: '+(obra.nome||obra.cc||'—')+' • Fonte: '+(planilha?.nome||'Planilha Previsto')+' • '+(planilha?.atualizadoEm?'Atualizada em '+new Date(planilha.atualizadoEm).toLocaleString('pt-BR'):'');
+  [['Total previsto no cenário',moeda(previsto)],['Categorias previstas',String(categorias.length)],['Linhas da planilha',String(planilha?.rows?.length||0)]].forEach(([label,value])=>{const card=document.createElement('div');card.className='bg-white p-4 rounded-xl shadow-sm border border-gray-200';const l=document.createElement('p');l.className='text-xs font-bold text-gray-500 uppercase';l.textContent=label;const v=document.createElement('p');v.className='text-lg font-black text-[#003399] mt-1';v.textContent=value;card.append(l,v);kpis.appendChild(card);});
+  if(!planilha){const vazio=document.createElement('div');vazio.className='p-8 text-center text-gray-500';vazio.textContent='Não há planilha de Previsto importada para esta obra. Cadastre a planilha nas configurações da obra e sincronize os dados.';host.appendChild(vazio);return;}
+  const headers=planilha.headers||[],rows=planilha.rows||[];
+  if(!headers.length){const vazio=document.createElement('div');vazio.className='p-8 text-center text-gray-500';vazio.textContent='A planilha de Previsto não possui dados para exibir.';host.appendChild(vazio);return;}
+  const totalPaginas=Math.max(1,Math.ceil(rows.length/DADOS_BASE_PAGINA_TAMANHO));previstoPaginaAtual=Math.min(previstoPaginaAtual,totalPaginas-1);const inicio=previstoPaginaAtual*DADOS_BASE_PAGINA_TAMANHO;const fatia=rows.slice(inicio,inicio+DADOS_BASE_PAGINA_TAMANHO);
+  const wrap=document.createElement('div');wrap.className='overflow-auto max-h-[70vh]';const table=document.createElement('table');table.className='min-w-full text-xs text-left';const thead=document.createElement('thead');thead.className='sticky top-0 bg-[#003399] text-white uppercase';const trh=document.createElement('tr');headers.forEach(h=>{const th=document.createElement('th');th.className='p-3 whitespace-nowrap';th.textContent=h;trh.appendChild(th);});thead.appendChild(trh);const tbody=document.createElement('tbody');tbody.className='divide-y divide-gray-200';
+  fatia.forEach(row=>{const tr=document.createElement('tr');headers.forEach(h=>{const td=document.createElement('td');td.className='p-3 whitespace-nowrap';td.textContent=row[h]??'';tr.appendChild(td);});tbody.appendChild(tr);});table.append(thead,tbody);wrap.appendChild(table);host.appendChild(wrap);
+  if(paginacao){const anterior=document.createElement('button');anterior.type='button';anterior.textContent='← Anterior';anterior.disabled=previstoPaginaAtual===0;anterior.className='px-3 py-2 border rounded-lg text-sm font-bold disabled:opacity-40';anterior.onclick=()=>{previstoPaginaAtual--;renderizarPrevisto();};const texto=document.createElement('span');texto.className='text-sm text-gray-600';texto.textContent=`Página ${previstoPaginaAtual+1} de ${totalPaginas} • ${rows.length} linhas`;const proxima=document.createElement('button');proxima.type='button';proxima.textContent='Próxima →';proxima.disabled=previstoPaginaAtual>=totalPaginas-1;proxima.className='px-3 py-2 border rounded-lg text-sm font-bold disabled:opacity-40';proxima.onclick=()=>{previstoPaginaAtual++;renderizarPrevisto();};paginacao.append(anterior,texto,proxima);}
 }
+
+window.pesquisarCustos = pesquisarCustos;
 
 function pesquisarCustos(termo) {
   filtrosPesquisaCustos=String(termo||'');
@@ -741,7 +749,7 @@ function alterarObraAtiva(id) {
   filtroObraDadosBaseManual=false; sincronizarFiltroDadosBaseComObra();
   atualizarDashboard();
   if(!document.getElementById('view-dados-base')?.classList.contains('hidden'))renderizarDadosBase();
-  if(!document.getElementById('view-banco-revisto')?.classList.contains('hidden'))renderizarBancoRevisto();
+  if(!document.getElementById('view-previsto')?.classList.contains('hidden'))renderizarPrevisto();
   if(!document.getElementById('view-pesquisa')?.classList.contains('hidden'))pesquisarCustos(filtrosPesquisaCustos);
 }
 function aplicarCenario(fator) { multiplicadorCenario = parseFloat(fator); atualizarDashboard(); }
@@ -881,7 +889,7 @@ function atualizarDashboard() {
   if (resumo) resumo.textContent = filtrosDashboard.base ? `Filtro da base ativo: ${filtrosDashboard.base.planilhaNome} • ${filtrosDashboard.base.header} = ${filtrosDashboard.base.value}. Gráficos da planilha e Dados Base estão conectados.` : (filtrosDashboard.categoria || filtrosDashboard.farol ? 'Filtros ativos — KPIs, demonstrativo e gráficos estão sincronizados.' : 'Selecione uma categoria, um farol ou um ponto de gráfico para filtrar a análise.');
   renderizarGridGraficosDinamicos(obra, cats);
   if (!document.getElementById('view-dados-base')?.classList.contains('hidden')) renderizarDadosBase();
-  if (!document.getElementById('view-banco-revisto')?.classList.contains('hidden')) renderizarBancoRevisto();
+  if (!document.getElementById('view-previsto')?.classList.contains('hidden')) renderizarPrevisto();
   if (!document.getElementById('view-pesquisa')?.classList.contains('hidden')) pesquisarCustos(filtrosPesquisaCustos);
 }
 
@@ -1144,7 +1152,7 @@ function aplicarPermissoesPerfil() {
   const opcaoMestre=document.querySelector('#novo-usr-perfil option[value="Mestre"]');
   if (opcaoMestre) opcaoMestre.disabled=!permissoes.permissoes;
   document.getElementById('nav-dashboard').classList.toggle('hidden', !permissoes.dashboard);
-  ['nav-pesquisa','nav-dados-base','nav-banco-revisto'].forEach(id=>document.getElementById(id)?.classList.toggle('hidden',!permissoes.dadosBase));
+  ['nav-pesquisa','nav-dados-base','nav-previsto'].forEach(id=>document.getElementById(id)?.classList.toggle('hidden',!permissoes.dadosBase));
   if (!permissoes.dashboard && permissoes.dadosBase) abrirAbaSistema('realizado');
   else if (!permissoes.dashboard && !permissoes.dadosBase) executarLogout();
 }
