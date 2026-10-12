@@ -211,9 +211,11 @@
 
     <main class="flex-grow max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
 
-      <nav class="flex gap-2 border-b border-gray-200" aria-label="Seções do sistema">
-        <button id="nav-dashboard" type="button" onclick="abrirAbaSistema('dashboard')" class="px-4 py-3 border-b-2 border-[#003399] text-[#003399] font-bold text-sm">📊 Análises</button>
-        <button id="nav-dados-base" type="button" onclick="abrirAbaSistema('dados-base')" class="px-4 py-3 text-gray-500 font-bold text-sm hover:text-[#003399]">🗂️ Dados Base</button>
+      <nav class="flex gap-2 border-b border-gray-200 overflow-x-auto" aria-label="Seções do sistema">
+        <button id="nav-dashboard" type="button" onclick="abrirAbaSistema('dashboard')" class="px-4 py-3 border-b-2 border-[#003399] text-[#003399] font-bold text-sm whitespace-nowrap">📊 Análises</button>
+        <button id="nav-pesquisa" type="button" onclick="abrirAbaSistema('pesquisa')" class="px-4 py-3 text-gray-500 font-bold text-sm hover:text-[#003399] whitespace-nowrap">🔎 Pesquisa</button>
+        <button id="nav-dados-base" type="button" onclick="abrirAbaSistema('realizado')" class="px-4 py-3 text-gray-500 font-bold text-sm hover:text-[#003399] whitespace-nowrap">📥 Realizado</button>
+        <button id="nav-banco-revisto" type="button" onclick="abrirAbaSistema('banco-revisto')" class="px-4 py-3 text-gray-500 font-bold text-sm hover:text-[#003399] whitespace-nowrap">🗃️ Banco de dados revisto</button>
       </nav>
 
       <div id="view-dashboard" class="space-y-6">
@@ -324,10 +326,35 @@
       <section id="grid-graficos-dinamicos" class="grid grid-cols-1 lg:grid-cols-2 gap-6"></section>
       </div>
 
+      <section id="view-pesquisa" class="hidden space-y-5">
+        <div class="bg-white p-5 rounded-xl shadow-sm border border-gray-200">
+          <h2 class="text-xl font-black text-[#003399]">Pesquisa de itens e custos</h2>
+          <p class="text-sm text-gray-600 mt-1">Pesquise por categoria, item, descrição, fornecedor ou outro campo das planilhas de Realizado. A busca considera somente a obra selecionada no cabeçalho.</p>
+        </div>
+        <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-200 flex flex-col sm:flex-row gap-3">
+          <label for="pesquisa-custos-input" class="sr-only">Pesquisar categoria, item ou descrição</label>
+          <input id="pesquisa-custos-input" type="search" placeholder="Digite uma categoria, item ou descrição…" class="border p-3 rounded-lg text-sm flex-1" oninput="pesquisarCustos(this.value)">
+          <button type="button" onclick="limparPesquisaCustos()" class="px-4 py-2 border rounded-lg text-sm font-bold text-[#003399]">Limpar</button>
+        </div>
+        <div id="pesquisa-custos-resumo" class="grid grid-cols-1 sm:grid-cols-3 gap-3"></div>
+        <div id="pesquisa-custos-aviso" class="text-sm text-gray-600"></div>
+        <div id="pesquisa-custos-resultados" class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden"></div>
+      </section>
+
+      <section id="view-banco-revisto" class="hidden space-y-5">
+        <div class="bg-white p-5 rounded-xl shadow-sm border border-gray-200">
+          <h2 class="text-xl font-black text-[#003399]">Banco de dados revisto</h2>
+          <p class="text-sm text-gray-600 mt-1">Base consolidada por categoria da obra selecionada, comparando previsto, realizado, saldo e percentual de uso. Troque a obra no seletor do cabeçalho para consultar outra.</p>
+          <p id="banco-revisto-status" class="text-xs text-gray-500 mt-2"></p>
+        </div>
+        <div id="banco-revisto-kpis" class="grid grid-cols-1 sm:grid-cols-3 gap-3"></div>
+        <div id="banco-revisto-tabela" class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-auto max-h-[70vh]"></div>
+      </section>
+
       <section id="view-dados-base" class="hidden space-y-5">
         <div class="bg-white p-5 rounded-xl shadow-sm border border-gray-200">
-          <h2 class="text-xl font-black text-[#003399]">Dados Base</h2>
-          <p class="text-sm text-gray-600 mt-1">Planilhas importadas que alimentam as análises e os KPI’s. Cada fonte aparece em uma aba identificada pelo nome da planilha.</p>
+          <h2 class="text-xl font-black text-[#003399]">Realizado · planilhas importadas</h2>
+          <p class="text-sm text-gray-600 mt-1">Planilhas de realizado importadas. Cada fonte aparece em uma aba com o nome da planilha, separada das demais obras pelos filtros disponíveis.</p>
           <p id="dados-base-status" class="text-xs text-gray-500 mt-2">Sincronize as planilhas para carregar a base.</p>
         </div>
         <div id="dados-base-filtros" class="bg-white p-4 rounded-xl shadow-sm border border-gray-200 flex flex-wrap gap-3 items-center"></div>

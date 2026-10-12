@@ -39,6 +39,8 @@ let multiplicadorCenario = 1;
 let filtrosDashboard = { categoria: '', farol: '', base: null };
 let linhasDashboardVisiveis = [];
 let filtrosDadosBase = { busca: '', obra: '', categoria: '' };
+let filtroObraDadosBaseManual = false;
+let filtrosPesquisaCustos = '';
 function normalizarTextoUI(valor) { return String(valor || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase(); }
 
 function campoBaseId(planilhaId, header) { return `base:${encodeURIComponent(planilhaId)}:${encodeURIComponent(header)}`; }
@@ -340,15 +342,109 @@ function exibirFormSolicitacao() { document.getElementById('box-login').classLis
 function exibirFormLogin() { document.getElementById('box-solicitacao').classList.add('hidden'); document.getElementById('box-login').classList.remove('hidden'); }
 
 function abrirAbaSistema(aba) {
-  const dashboard = aba === 'dashboard';
+  const chave = aba === 'dados-base' ? 'realizado' : aba;
+  const dashboard = chave === 'dashboard';
   const permissoes=obterPermissoesUsuario();
   if (dashboard && !permissoes.dashboard) return alert('Seu perfil não tem acesso às Análises.');
-  if (!dashboard && !permissoes.dadosBase) return alert('Seu perfil não tem acesso aos Dados Base.');
-  document.getElementById('view-dashboard').classList.toggle('hidden', !dashboard);
-  document.getElementById('view-dados-base').classList.toggle('hidden', dashboard);
-  document.getElementById('nav-dashboard').className = dashboard ? 'px-4 py-3 border-b-2 border-[#003399] text-[#003399] font-bold text-sm' : 'px-4 py-3 text-gray-500 font-bold text-sm hover:text-[#003399]';
-  document.getElementById('nav-dados-base').className = dashboard ? 'px-4 py-3 text-gray-500 font-bold text-sm hover:text-[#003399]' : 'px-4 py-3 border-b-2 border-[#003399] text-[#003399] font-bold text-sm';
-  if (!dashboard) renderizarDadosBase();
+  if (!dashboard && !permissoes.dadosBase) return alert('Seu perfil não tem acesso aos dados.');
+  const views={dashboard:'view-dashboard',pesquisa:'view-pesquisa',realizado:'view-dados-base','banco-revisto':'view-banco-revisto'};
+  Object.entries(views).forEach(([nome,id])=>document.getElementById(id)?.classList.toggle('hidden',nome!==chave));
+  const navs={dashboard:'nav-dashboard',pesquisa:'nav-pesquisa',realizado:'nav-dados-base','banco-revisto':'nav-banco-revisto'};
+  Object.entries(navs).forEach(([nome,id])=>{const el=document.getElementById(id);if(el)el.className=nome===chave?'px-4 py-3 border-b-2 border-[#003399] text-[#003399] font-bold text-sm whitespace-nowrap':'px-4 py-3 text-gray-500 font-bold text-sm hover:text-[#003399] whitespace-nowrap';});
+  if(chave==='realizado') renderizarDadosBase();
+  if(chave==='pesquisa') pesquisarCustos(filtrosPesquisaCustos);
+  if(chave==='banco-revisto') renderizarBancoRevisto();
+}
+
+function renderizarBancoRevisto() {
+  const obra=obrasBD[obraAtivaID];
+  const status=document.getElementById('banco-revisto-status');
+  const host=document.getElementById('banco-revisto-tabela');
+  const kpis=document.getElementById('banco-revisto-kpis');
+  if(!host||!kpis)return;
+  host.replaceChildren();kpis.replaceChildren();
+  if(!obra){if(status)status.textContent='Selecione uma obra para consultar a base.';return;}
+  const categorias=[...new Set([...Object.keys(obra.categoriasPrevisto||{}),...Object.keys(obra.categoriasRealizado||{})])].sort((a,b)=>a.localeCompare(b,'pt-BR'));
+  const totalPrevisto=categorias.reduce((s,c)=>s+(obra.categoriasPrevisto?.[c]||0)*multiplicadorCenario,0);
+  const totalRealizado=categorias.reduce((s,c)=>s+(obra.categoriasRealizado?.[c]||0),0);
+  const moeda=n=>Number(n||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+  if(status)status.textContent='Obra: '+(obra.nome||obra.cc||'—')+' • '+categorias.length+' categorias consolidadas • valores atualizados na última sincronização.';
+  [['Previsto no cenário selecionado',totalPrevisto],['Realizado',totalRealizado],['Saldo',totalPrevisto-totalRealizado]].forEach(([rotulo,valor])=>{const card=document.createElement('div');card.className='bg-white p-4 rounded-xl shadow-sm border border-gray-200';const label=document.createElement('p');label.className='text-xs font-bold text-gray-500 uppercase';label.textContent=rotulo;const amount=document.createElement('p');amount.className='text-lg font-black text-[#003399] mt-1';amount.textContent=moeda(valor);card.append(label,amount);kpis.appendChild(card);});
+  const wrap=document.createElement('div');wrap.className='overflow-auto max-h-[70vh]';const table=document.createElement('table');table.className='min-w-full text-xs text-left';
+  const thead=document.createElement('thead');thead.className='sticky top-0 bg-[#003399] text-white';const trh=document.createElement('tr');['Categoria','Previsto','Realizado','Saldo','Uso do previsto','Farol'].forEach(t=>{const th=document.createElement('th');th.className='p-3 whitespace-nowrap';th.textContent=t;trh.appendChild(th);});thead.appendChild(trh);
+  const tbody=document.createElement('tbody');tbody.className='divide-y divide-gray-200';categorias.forEach(cat=>{const prev=(obra.categoriasPrevisto?.[cat]||0)*multiplicadorCenario,real=obra.categoriasRealizado?.[cat]||0,uso=prev>0?real/prev*100:null;const farol=classificarFarol(prev,real);const tr=document.createElement('tr');[cat,moeda(prev),moeda(real),moeda(prev-real),uso===null?(real>0?'N/P':'—'):uso.toFixed(1)+'%',farol==='red'?(prev===0&&real>0?'N/P · Não previsto':'Estourado'):farol==='amber'?'Atenção':'Seguro'].forEach((v,i)=>{const td=document.createElement(i===0?'th':'td');td.className='p-3 whitespace-nowrap'+(i===0?' text-left':' text-right');td.textContent=v;tr.appendChild(td);});tbody.appendChild(tr);});
+  if(!categorias.length){const tr=document.createElement('tr');const td=document.createElement('td');td.colSpan=6;td.className='p-8 text-center text-gray-500';td.textContent='Não há categorias importadas para esta obra. Sincronize as planilhas de Previsto e Realizado.';tr.appendChild(td);tbody.appendChild(tr);}
+  table.append(thead,tbody);wrap.appendChild(table);host.appendChild(wrap);
+}
+
+function pesquisarCustos(termo) {
+  filtrosPesquisaCustos=String(termo||'');
+  const query=normalizarTextoUI(filtrosPesquisaCustos.trim());
+  const resumo=document.getElementById('pesquisa-custos-resumo'), aviso=document.getElementById('pesquisa-custos-aviso'), host=document.getElementById('pesquisa-custos-resultados');
+  if(!resumo||!aviso||!host)return;
+  resumo.replaceChildren();host.replaceChildren();
+  if(!query){aviso.textContent='Digite um termo para pesquisar nos dados de Realizado da obra selecionada.';return;}
+  const obra=obrasBD[obraAtivaID];if(!obra){aviso.textContent='Selecione uma obra no cabeçalho antes de pesquisar.';return;}
+  const dados=[];const norm=normalizarTextoUI;
+  const col=(headers,pred)=>headers.find(h=>pred(norm(h)));
+  let possuiFonteObra=false;
+  (dadosBasePlanilhas||[]).filter(p=>p.tipo==='Realizado'||!p.tipo).forEach(planilha=>{
+    const headers=planilha.headers||[];
+    const obraHeader=col(headers,h=>h.includes('obra')||h.includes('departamento')||h.includes('centro de custo'));
+    if(!obraHeader)return;
+    const categoriaHeader=col(headers,h=>h.includes('categoria')||h.includes('natureza'));
+    const valorHeader=col(headers,h=>h.includes('valor liquido')||h.includes('valor da conta')||h.includes('valor total')||h.includes('valor pago')||h.includes('custo total'))||col(headers,h=>h.includes('valor'));
+    const itemHeader=col(headers,h=>h==='item'||h.includes('item ')||h.includes('codigo item')||h.includes('codigo'));
+    const descricaoHeader=col(headers,h=>h.includes('descricao')||h.includes('servico')||h.includes('historico')||h.includes('especificacao'));
+    (planilha.rows||[]).forEach(row=>{
+      const obraLinha=norm(row[obraHeader]);
+      const obraOk=obraLinha===norm(obra.nome)||obraLinha===norm(obra.cc)||obraLinha===norm(obra.id)||((obra.cc||'').trim()&&obraLinha.includes(norm(obra.cc)));
+      if(!obraOk)return;possuiFonteObra=true;
+      const headersBusca=headers.filter(header=>/categoria|natureza|item|descricao|servico|historico|fornecedor|produto|conta|codigo/.test(norm(header)));
+      const corresponde=(headersBusca.length?headersBusca:headers).some(header=>norm(row[header]).includes(query));if(!corresponde)return;
+      const categoria=String((categoriaHeader&&row[categoriaHeader])||'Outros').trim()||'Outros';
+      const valor=valorHeader?parseMonetario(row[valorHeader]):0;
+      dados.push({planilha:planilha.nome,categoria,item:itemHeader?row[itemHeader]:'',descricao:descricaoHeader?row[descricaoHeader]:'',valor,row});
+    });
+  });
+  const planilhaPrevisto=(dadosBasePlanilhas||[]).find(p=>p.tipo==='Previsto'&&p.id===`previsto-${obraAtivaID}`);
+  const previstosDiretos=[];
+  if(planilhaPrevisto){
+    const headersPrev=planilhaPrevisto.headers||[];
+    const valorPrevHeader=headersPrev.find(h=>/custo total|valor total/.test(norm(h))||norm(h)==='valor')||headersPrev.find(h=>norm(h).includes('custo')||norm(h).includes('valor'));
+    const camposPrevBusca=headersPrev.filter(h=>/categoria|natureza|item|descricao|servico|historico|fornecedor|produto|conta|codigo/.test(norm(h)));
+    (planilhaPrevisto.rows||[]).forEach(row=>{const termos=camposPrevBusca.length?camposPrevBusca:headersPrev;if(termos.some(h=>norm(row[h]).includes(query)))previstosDiretos.push((valorPrevHeader?parseMonetario(row[valorPrevHeader]):0)*multiplicadorCenario);});
+  }
+  const cats=[...new Set(dados.map(x=>x.categoria))];
+  const prevCats=Object.keys(obra.categoriasPrevisto||{}).filter(c=>cats.some(x=>norm(x)===norm(c)));
+  const previstoCategorias=prevCats.reduce((sum,c)=>sum+(obra.categoriasPrevisto[c]||0)*multiplicadorCenario,0);
+  const previstoDireto=previstosDiretos.reduce((sum,n)=>sum+n,0);
+  const temPrevistoDireto=previstosDiretos.length>0;
+  const previsto=temPrevistoDireto?previstoDireto:previstoCategorias;
+  const temPrevisto=temPrevistoDireto||prevCats.length>0;
+  const realizado=dados.reduce((s,x)=>s+x.valor,0);
+  const rotuloPrevisto=temPrevistoDireto?'Previsto dos itens encontrados':'Previsto nas categorias encontradas';
+  [[rotuloPrevisto,temPrevisto?previsto:null],['Realizado nos registros encontrados',realizado],['Registros encontrados',dados.length]].forEach(([label,value])=>{const card=document.createElement('div');card.className='bg-white p-4 rounded-xl border border-gray-200 shadow-sm';const l=document.createElement('p');l.className='text-xs font-bold text-gray-500';l.textContent=label;const v=document.createElement('p');v.className='text-lg font-black text-[#003399] mt-1';v.textContent=value===null?'Sem categoria prevista correspondente':typeof value==='number'&&label==='Registros encontrados'?String(value):typeof value==='number'?value.toLocaleString('pt-BR',{style:'currency',currency:'BRL'}):value;card.append(l,v);resumo.appendChild(card);});
+  if(!possuiFonteObra)aviso.textContent='Não encontrei uma coluna de obra nas planilhas importadas para separar os registros com segurança.';
+  else if(!dados.length)aviso.textContent='Nenhum registro corresponde a “'+filtrosPesquisaCustos+'” na obra '+(obra.nome||obra.cc)+'.';
+  else aviso.textContent='Pesquisa na obra '+(obra.nome||obra.cc)+'. O previsto soma os itens correspondentes da planilha da obra quando há descrição compatível; sem correspondência direta, usa o total previsto das categorias encontradas.';
+  if(!dados.length)return;
+  const wrap=document.createElement('div');wrap.className='overflow-auto max-h-[65vh]';const table=document.createElement('table');table.className='min-w-full text-xs text-left';const thead=document.createElement('thead');thead.className='sticky top-0 bg-[#003399] text-white';const trh=document.createElement('tr');['Planilha','Categoria','Item','Descrição','Realizado'].forEach(x=>{const th=document.createElement('th');th.className='p-3 whitespace-nowrap';th.textContent=x;trh.appendChild(th);});thead.appendChild(trh);const tbody=document.createElement('tbody');tbody.className='divide-y divide-gray-200';
+  dados.slice(0,500).forEach(item=>{const tr=document.createElement('tr');[item.planilha,item.categoria,item.item,item.descricao,item.valor.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})].forEach((v,i)=>{const td=document.createElement('td');td.className='p-3 whitespace-nowrap';td.textContent=String(v??'');tr.appendChild(td);});tbody.appendChild(tr);});table.append(thead,tbody);wrap.appendChild(table);host.appendChild(wrap);
+  if(dados.length>500){const nota=document.createElement('p');nota.className='text-xs text-gray-500 p-3';nota.textContent='Exibindo os primeiros 500 de '+dados.length+' registros encontrados.';host.appendChild(nota);}
+}
+function limparPesquisaCustos(){const input=document.getElementById('pesquisa-custos-input');if(input)input.value='';pesquisarCustos('');}
+
+function sincronizarFiltroDadosBaseComObra(){
+  const obra=obrasBD[obraAtivaID];if(!obra){filtrosDadosBase.obra='';return;}
+  const candidatos=[obra.nome,obra.cc,obra.id].filter(Boolean).map(normalizarTextoUI);
+  for(const planilha of (dadosBasePlanilhas||[]).filter(p=>p.tipo==='Realizado'||!p.tipo)){
+    const header=(planilha.headers||[]).find(h=>{const n=normalizarTextoUI(h);return n.includes('obra')||n.includes('departamento')||n.includes('centro de custo');});
+    if(!header)continue;
+    const valor=(planilha.rows||[]).map(r=>String(r[header]||'').trim()).find(v=>candidatos.includes(normalizarTextoUI(v))||candidatos.some(c=>c&&normalizarTextoUI(v).includes(c)));
+    if(valor){filtrosDadosBase.obra=valor;return;}
+  }
+  filtrosDadosBase.obra='__OBRA_SEM_CORRESPONDENCIA__';
 }
 
 function renderizarDadosBase() {
@@ -359,14 +455,16 @@ function renderizarDadosBase() {
   const status = document.getElementById('dados-base-status');
   if (!tabs || !conteudo || !status) return;
   tabs.innerHTML = '';
-  if (!dadosBasePlanilhas.length) {
+  const planilhasRealizado = dadosBasePlanilhas.filter(p => p.tipo === 'Realizado' || !p.tipo);
+  if (!planilhasRealizado.length) {
     status.innerText = 'Nenhuma planilha importada ainda.';
     conteudo.innerHTML = '<div class="p-8 text-center text-gray-500">Nenhuma planilha importada. Use “Sincronizar Base de Dados” para começar.</div>';
     document.getElementById('dados-base-paginacao').replaceChildren();
     return;
   }
-  if (!dadosBasePlanilhas.some(p => p.id === dadosBaseAtivo)) dadosBaseAtivo = dadosBasePlanilhas[0].id;
-  dadosBasePlanilhas.forEach(planilha => {
+  if (!filtroObraDadosBaseManual) sincronizarFiltroDadosBaseComObra();
+  if (!planilhasRealizado.some(p => p.id === dadosBaseAtivo)) dadosBaseAtivo = planilhasRealizado[0].id;
+  planilhasRealizado.forEach(planilha => {
     const botao = document.createElement('button');
     botao.type = 'button';
     botao.role = 'tab';
@@ -380,12 +478,12 @@ function renderizarDadosBase() {
   const rowsOriginais = ativa?.rows || [];
   const norm = normalizarTextoUI;
   const headersNorm = (ativa?.headers || []).map(h => [h, norm(h)]);
-  const obraHeader = headersNorm.find(([, h]) => /obra|departamento|centro de custo|codigo/.test(h))?.[0];
+  const obraHeader = headersNorm.find(([, h]) => /obra|departamento|centro de custo/.test(h))?.[0];
   const categoriaHeader = headersNorm.find(([, h]) => /categoria|natureza|descricao|servico|item/.test(h))?.[0];
   const busca = norm(filtrosDadosBase.busca);
   const rowsFiltradas = rowsOriginais.filter(row => {
     const texto = !busca || ativa.headers.some(h => norm(row[h]).includes(busca));
-    const obraOk = !filtrosDadosBase.obra || !obraHeader || norm(row[obraHeader]) === norm(filtrosDadosBase.obra);
+    const obraOk = obraHeader ? (!filtrosDadosBase.obra || norm(row[obraHeader]) === norm(filtrosDadosBase.obra)) : !obraAtivaID;
     const catOk = !filtrosDadosBase.categoria || !categoriaHeader || norm(row[categoriaHeader]) === norm(filtrosDadosBase.categoria);
     const filtroBase=filtrosDashboard.base;
     const baseOk=!filtroBase || filtroBase.planilhaId!==ativa?.id || norm(row[filtroBase.header])===norm(filtroBase.value);
@@ -397,7 +495,7 @@ function renderizarDadosBase() {
   dadosBasePaginaAtual = Math.min(dadosBasePaginaAtual, totalPaginas - 1);
   const inicio = dadosBasePaginaAtual * DADOS_BASE_PAGINA_TAMANHO;
   const fim = Math.min(inicio + DADOS_BASE_PAGINA_TAMANHO, totalLinhas);
-  status.innerText = `${dadosBasePlanilhas.length} planilha(s) • Última importação: ${ativa?.atualizadoEm ? new Date(ativa.atualizadoEm).toLocaleString('pt-BR') : '—'} • Mostrando ${totalLinhas ? inicio + 1 : 0}–${fim} de ${totalLinhas} linha(s).`;
+  status.innerText = `${planilhasRealizado.length} planilha(s) de Realizado${!obraHeader ? ' • Esta planilha não identifica a obra; os registros não podem ser separados com segurança' : filtrosDadosBase.obra==='__OBRA_SEM_CORRESPONDENCIA__' ? ' • Sem registros vinculados à obra selecionada' : ''} • Última importação: ${ativa?.atualizadoEm ? new Date(ativa.atualizadoEm).toLocaleString('pt-BR') : '—'} • Mostrando ${totalLinhas ? inicio + 1 : 0}–${fim} de ${totalLinhas} linha(s).`;
   if (!ativa || !ativa.headers?.length) {
     conteudo.innerHTML = '<div class="p-8 text-center text-gray-500">Esta fonte não possui linhas para exibir.</div>';
     return;
@@ -418,6 +516,7 @@ function renderizarDadosBase() {
     ativa.headers.forEach(header => { const td = document.createElement('td'); td.className = 'p-3 whitespace-nowrap'; td.textContent = row[header] ?? ''; tr.appendChild(td); });
     tbody.appendChild(tr);
   });
+  if(!rowsFiltradas.length){const tr=document.createElement('tr');const td=document.createElement('td');td.colSpan=ativa.headers.length;td.className='p-8 text-center text-gray-500';td.textContent=filtrosDadosBase.obra==='__OBRA_SEM_CORRESPONDENCIA__'?'Não encontrei linhas desta planilha vinculadas à obra selecionada.':'Nenhum registro corresponde aos filtros atuais.';tr.appendChild(td);tbody.appendChild(tr);}
   table.append(thead, tbody);
   tabela.appendChild(table);
   conteudo.replaceChildren(tabela);
@@ -459,12 +558,14 @@ function renderizarControlesFiltroDadosBase(planilha, obraHeader, categoriaHeade
     [...new Set((planilha?.rows || []).map(r => String(r[header] ?? '').trim()).filter(Boolean))].sort((a,b) => a.localeCompare(b, 'pt-BR')).forEach(value => {
       const option = document.createElement('option'); option.value = value; option.textContent = value; select.appendChild(option);
     });
+    if(key==='obra'&&filtrosDadosBase.obra==='__OBRA_SEM_CORRESPONDENCIA__'){const option=document.createElement('option');option.value='__OBRA_SEM_CORRESPONDENCIA__';option.textContent='Obra selecionada sem correspondência';select.appendChild(option);}
     select.value = filtrosDadosBase[key]; select.onchange = () => {
       filtrosDadosBase[key] = select.value; dadosBasePaginaAtual = 0;
+      if(key==='obra')filtroObraDadosBaseManual=!!select.value;
       if (key === 'categoria') { filtrosDashboard.categoria = select.value; atualizarDashboard(); }
       if (key === 'obra') {
         const match = Object.entries(obrasBD || {}).find(([id, o]) => [id, o.nome, o.cc].some(v => norm(v) === norm(select.value)));
-        if (match) { obraAtivaID = match[0]; const picker = document.getElementById('seletor-obra'); if (picker) picker.value = obraAtivaID; atualizarDashboard(); }
+        if (match) { obraAtivaID = match[0]; filtroObraDadosBaseManual=true; const picker = document.getElementById('seletor-obra'); if (picker) picker.value = obraAtivaID; atualizarDashboard(); }
       }
       renderizarDadosBase();
     };
@@ -592,6 +693,7 @@ async function sincronizarTodasPlanilhas() {
     await salvarDadosBaseArmazenados(novasBases);
     localStorage.setItem('obras_bp', JSON.stringify(obrasBD));
     dadosBasePlanilhas = novasBases;
+    filtroObraDadosBaseManual=false; sincronizarFiltroDadosBaseComObra();
     atualizarSeletoresNovoGrafico();
     renderizarListaGraficosConfig();
     dadosBasePaginaAtual = 0;
@@ -635,7 +737,12 @@ function popularSeletorObras() {
 }
 function alterarObraAtiva(id) {
   if (!obrasBD[id] || (obrasBD[id].status === 'Arquivada' && usuarioAutenticado?.perfil !== 'Mestre')) return popularSeletorObras();
-  obraAtivaID = id; atualizarDashboard();
+  obraAtivaID = id;
+  filtroObraDadosBaseManual=false; sincronizarFiltroDadosBaseComObra();
+  atualizarDashboard();
+  if(!document.getElementById('view-dados-base')?.classList.contains('hidden'))renderizarDadosBase();
+  if(!document.getElementById('view-banco-revisto')?.classList.contains('hidden'))renderizarBancoRevisto();
+  if(!document.getElementById('view-pesquisa')?.classList.contains('hidden'))pesquisarCustos(filtrosPesquisaCustos);
 }
 function aplicarCenario(fator) { multiplicadorCenario = parseFloat(fator); atualizarDashboard(); }
 
@@ -774,6 +881,8 @@ function atualizarDashboard() {
   if (resumo) resumo.textContent = filtrosDashboard.base ? `Filtro da base ativo: ${filtrosDashboard.base.planilhaNome} • ${filtrosDashboard.base.header} = ${filtrosDashboard.base.value}. Gráficos da planilha e Dados Base estão conectados.` : (filtrosDashboard.categoria || filtrosDashboard.farol ? 'Filtros ativos — KPIs, demonstrativo e gráficos estão sincronizados.' : 'Selecione uma categoria, um farol ou um ponto de gráfico para filtrar a análise.');
   renderizarGridGraficosDinamicos(obra, cats);
   if (!document.getElementById('view-dados-base')?.classList.contains('hidden')) renderizarDadosBase();
+  if (!document.getElementById('view-banco-revisto')?.classList.contains('hidden')) renderizarBancoRevisto();
+  if (!document.getElementById('view-pesquisa')?.classList.contains('hidden')) pesquisarCustos(filtrosPesquisaCustos);
 }
 
 function obterLinhasGrafico(cfg, obra, cats) {
@@ -1035,8 +1144,8 @@ function aplicarPermissoesPerfil() {
   const opcaoMestre=document.querySelector('#novo-usr-perfil option[value="Mestre"]');
   if (opcaoMestre) opcaoMestre.disabled=!permissoes.permissoes;
   document.getElementById('nav-dashboard').classList.toggle('hidden', !permissoes.dashboard);
-  document.getElementById('nav-dados-base').classList.toggle('hidden', !permissoes.dadosBase);
-  if (!permissoes.dashboard && permissoes.dadosBase) abrirAbaSistema('dados-base');
+  ['nav-pesquisa','nav-dados-base','nav-banco-revisto'].forEach(id=>document.getElementById(id)?.classList.toggle('hidden',!permissoes.dadosBase));
+  if (!permissoes.dashboard && permissoes.dadosBase) abrirAbaSistema('realizado');
   else if (!permissoes.dashboard && !permissoes.dadosBase) executarLogout();
 }
 
