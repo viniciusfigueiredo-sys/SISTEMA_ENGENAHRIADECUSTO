@@ -37,6 +37,7 @@ let usuarioAutenticado = null;
 let obraAtivaID = null;
 let multiplicadorCenario = 1;
 let filtrosDashboard = { categoria: '', farol: '', base: null };
+let campoBaseFiltroSelecionado = '';
 let linhasDashboardVisiveis = [];
 let filtrosDadosBase = { busca: '', obra: '', categoria: '' };
 let filtroObraDadosBaseManual = false;
@@ -306,18 +307,18 @@ function extrairIdPlanilhaGoogle(url) {
   return match?.[1] || null;
 }
 
-function buscarPlanilhaGoogle(url) {
+const GOOGLE_SHEETS_PAGE_SIZE = 5000;
+
+function buscarPaginaPlanilhaGoogle(id, gid, offset, limite = GOOGLE_SHEETS_PAGE_SIZE) {
   return new Promise((resolve, reject) => {
-    const id = extrairIdPlanilhaGoogle(url);
-    if (!id) return reject(new Error("O link Google Planilhas não contém um ID válido."));
-    const gid = String(url).match(/[?&#]gid=(\d+)/)?.[1];
     const callbackName = `bpSheetsCallback_${Date.now()}_${Math.random().toString(36).slice(2)}`;
     const script = document.createElement("script");
     // Defina explicitamente o formato JSON/JSONP; sem out:json, algumas respostas
     // do Google não chamam o callback e a tela acaba esperando até o timeout.
     const parametros = new URLSearchParams({ tqx: `out:json;responseHandler:${callbackName}`, headers: "0" });
     if (gid) parametros.set("gid", gid);
-    const timer = setTimeout(() => finalizar(new Error("Tempo esgotado ao ler a planilha Google. Confira o compartilhamento 'Qualquer pessoa com o link — Leitor'.")), 25000);
+    parametros.set("tq", `select * limit ${limite} offset ${offset}`);
+    const timer = setTimeout(() => finalizar(new Error(`Tempo esgotado ao ler a página de dados ${Math.floor(offset / limite) + 1} da planilha Google. Confira o compartilhamento 'Qualquer pessoa com o link — Leitor'.`)), 30000);
     function finalizar(erro, resultado) {
       clearTimeout(timer);
       script.remove();
@@ -330,8 +331,9 @@ function buscarPlanilhaGoogle(url) {
         return finalizar(new Error(detalhe || "O Google não liberou os dados. Verifique o acesso de leitura do link."));
       }
       try {
-        const matriz = (resposta.table?.rows || []).map(linha => (linha.c || []).map(celula => celula ? (celula.f ?? celula.v ?? "") : ""));
-        finalizar(null, formatarMatrizPlanilha(matriz));
+        const tabela = resposta.table;
+        const matriz = (tabela?.rows || []).map(linha => (linha.c || []).map(celula => celula ? (celula.f ?? celula.v ?? "") : ""));
+        finalizar(null, { matriz, totalLinhas: tabela?.rows?.length || 0 });
       } catch (erro) { finalizar(erro); }
     };
     script.onerror = () => finalizar(new Error("Não foi possível consultar o Google Planilhas. Confirme que a fonte é nativa do Google e está compartilhada para leitura por link."));
@@ -343,6 +345,30 @@ function buscarPlanilhaGoogle(url) {
     script.src = `https://docs.google.com/spreadsheets/d/${encodeURIComponent(id)}/gviz/tq?${parametros.toString()}`;
     document.head.appendChild(script);
   });
+}
+
+async function buscarPlanilhaGoogle(url) {
+  const id = extrairIdPlanilhaGoogle(url);
+  if (!id) throw new Error("O link Google Planilhas não contém um ID válido.");
+  const gid = String(url).match(/[?&#]gid=(\d+)/)?.[1];
+  const matrizCompleta = [];
+  let offset = 0;
+  while (true) {
+    const pagina = await buscarPaginaPlanilhaGoogle(id, gid, offset);
+    if (!pagina.totalLinhas) break;
+    matrizCompleta.push(...pagina.matriz);
+    offset += pagina.totalLinhas;
+    const botao = document.getElementById('btn-sync');
+    if (botao) botao.textContent = `⏳ Lidas ${offset.toLocaleString('pt-BR')} linhas...`;
+    if (pagina.totalLinhas < GOOGLE_SHEETS_PAGE_SIZE) break;
+  }
+  if (!matrizCompleta.length) throw new Error('A planilha Google não retornou linhas. Confirme o ID, a aba e o compartilhamento de leitura.');
+  const resultado = formatarMatrizPlanilha(matrizCompleta);
+  resultado.totalLinhasOrigem = matrizCompleta.length;
+  if (matrizCompleta.length >= GOOGLE_SHEETS_PAGE_SIZE && offset === matrizCompleta.length) {
+    resultado.avisoLeitura = `A leitura paginada recuperou ${matrizCompleta.length.toLocaleString('pt-BR')} linhas da fonte.`;
+  }
+  return resultado;
 }
 
 async function lerArquivoPlanilhaLocal(file) {
@@ -459,6 +485,7 @@ window.onload = async function() {
           obrasBD[o.id] = {
             id: o.id, nome: o.nome, cc: o.cc, responsavel: o.responsavel, status: o.status, urlPrevistoCSV: o.url_previsto,
             previstoArquivoLocal: !!(obrasBD[o.id]?.previstoArquivoLocal),
+            oculta: !!(o.dados_json?.oculta ?? obrasBD[o.id]?.oculta),
             previstoTotal: o.dados_json?.previstoTotal || 0, realizadoTotal: o.dados_json?.realizadoTotal || 0,
             categoriasPrevisto: o.dados_json?.categoriasPrevisto || {}, categoriasRealizado: o.dados_json?.categoriasRealizado || {}
           };
@@ -674,7 +701,7 @@ function sincronizarFiltroDadosBaseComObra(){
   const candidatos=[obra.nome,obra.cc,obra.id].filter(Boolean).map(normalizarTextoUI);
   for(const planilha of (dadosBasePlanilhas||[]).filter(p=>p.tipo==='Realizado'||!p.tipo)){
     const header=(planilha.headers||[]).find(h=>{const n=normalizarTextoUI(h);return n.includes('obra')||n.includes('departamento')||n.includes('centro de custo');});
-    if(!header)continue;
+    if(!header){filtrosDadosBase.obra='';return;}
     const valor=(planilha.rows||[]).map(r=>String(r[header]||'').trim()).find(v=>candidatos.includes(normalizarTextoUI(v))||candidatos.some(c=>c&&normalizarTextoUI(v).includes(c)));
     if(valor){filtrosDadosBase.obra=valor;return;}
   }
@@ -718,7 +745,7 @@ function renderizarDadosBase() {
   const busca = norm(filtrosDadosBase.busca);
   const rowsFiltradas = rowsOriginais.filter(row => {
     const texto = !busca || ativa.headers.some(h => norm(row[h]).includes(busca));
-    const obraOk = obraHeader ? (!filtrosDadosBase.obra || norm(row[obraHeader]) === norm(filtrosDadosBase.obra)) : !obraAtivaID;
+    const obraOk = !obraHeader || !filtrosDadosBase.obra || norm(row[obraHeader]) === norm(filtrosDadosBase.obra);
     const catOk = !filtrosDadosBase.categoria || !categoriaHeader || norm(row[categoriaHeader]) === norm(filtrosDadosBase.categoria);
     const filtroBase=filtrosDashboard.base;
     const baseOk=!filtroBase || filtroBase.planilhaId!==ativa?.id || norm(row[filtroBase.header])===norm(filtroBase.value);
@@ -906,26 +933,19 @@ async function sincronizarTodasPlanilhas() {
       if (!extraido.rows.length) throw new Error(`A planilha "${fonte.nome}" não contém linhas de dados.`);
       let colunas = extraido.headers;
       let campos=obterCamposRealizado(colunas,extraido.rows,reutilizouCache?baseCache?.id:fonte.id);
-      if (!fonte.arquivoLocal && !reutilizouCache && baseCache && (!campos.obra || !campos.valor)) {
-        extraido={headers:baseCache.headers,rows:baseCache.rows}; colunas=extraido.headers;
-        campos=obterCamposRealizado(colunas,extraido.rows,baseCache.id); reutilizouCache=true;
-        fontesEmCache.push(`${baseCache.nome || fonte.nome} (${baseCache.atualizadoEm ? new Date(baseCache.atualizadoEm).toLocaleString('pt-BR') : 'data da importação indisponível'})`);
-      }
       const colunaObra = campos.obra;
       const deteccaoValor = campos.inferencia;
       const colunaValor = campos.valor;
-      if (!colunaObra) throw new Error(`Não identifiquei a coluna da obra/departamento na planilha "${fonte.nome}". Cabeçalhos encontrados: ${colunas.join(", ")}.`);
-      if (!colunaValor) {
-        const sugestoes = deteccaoValor.candidatos.map(item => `${item.header} [ex.: ${item.amostra.join(' / ')}]`).join('; ');
-        throw new Error(`Não consegui distinguir automaticamente o campo monetário da planilha "${fonte.nome}". ${sugestoes ? `Campos numéricos encontrados: ${sugestoes}. ` : ''}Em Configurações > Geral, preencha "Coluna de valor" com o cabeçalho exato da coluna que contém o custo/valor realizado. Cabeçalhos: ${colunas.join(", ")}.`);
-      }
       const base = reutilizouCache ? baseCache : { id: fonte.id || `realizado-${Date.now()}`, nome: fonte.nome || "Realizado", tipo: "Realizado", origem: fonte.arquivoLocal ? "arquivo-local" : "url", url: fonte.url || "", headers: extraido.headers, rows: extraido.rows, atualizadoEm: new Date().toISOString() };
       novasBases.push(base);
-      linhasRealizado.push({ fonte: base, rows: extraido.rows, colunaObra, colunaValor, colunaCategoria: encontrarColuna(colunas, "categoria") });
+      if (colunaObra && colunaValor) linhasRealizado.push({ fonte: base, rows: extraido.rows, colunaObra, colunaValor, colunaCategoria: encontrarColuna(colunas, "categoria") });
     }
     
-    Object.keys(obrasBD).forEach(k => {
+    if (linhasRealizado.length) Object.keys(obrasBD).forEach(k => {
       obrasBD[k].realizadoTotal = 0; obrasBD[k].categoriasRealizado = {};
+    });
+    const temFontePrevisto = Object.values(obrasBD).some(obra => obra.urlPrevistoCSV?.trim() || obra.previstoArquivoLocal);
+    if (temFontePrevisto) Object.keys(obrasBD).forEach(k => {
       obrasBD[k].previstoTotal = 0; obrasBD[k].categoriasPrevisto = {};
     });
 
@@ -1022,7 +1042,7 @@ async function sincronizarTodasPlanilhas() {
     if (supabaseClient) {
       for (const key in obrasBD) {
         const o = obrasBD[key];
-        const dadosJson = { previstoTotal: o.previstoTotal, realizadoTotal: o.realizadoTotal, categoriasPrevisto: o.categoriasPrevisto, categoriasRealizado: o.categoriasRealizado };
+        const dadosJson = { previstoTotal: o.previstoTotal, realizadoTotal: o.realizadoTotal, categoriasPrevisto: o.categoriasPrevisto, categoriasRealizado: o.categoriasRealizado, oculta: !!o.oculta };
         try {
           const { error } = await supabaseClient.from('obras').upsert({ id: o.id, nome: o.nome, cc: o.cc, responsavel: o.responsavel, status: o.status, url_previsto: o.urlPrevistoCSV, dados_json: dadosJson });
           if (error) errosSupabase.push(`${o.nome}: ${error.message}`);
@@ -1034,11 +1054,17 @@ async function sincronizarTodasPlanilhas() {
     atualizarDashboard();
     renderizarDadosBase();
     const totalRealizadoImportado = Object.values(obrasBD).reduce((soma, obra) => soma + Number(obra.realizadoTotal || 0), 0);
-    const detalheAssociacao = `${linhasRealizadoAssociadas} linha(s) de Realizado associadas; ${obrasCriadasNaImportacao.size} obra(s) nova(s) criada(s) por não encontrar correspondência pelo nome/CC.`;
+    const fontesSemCampos = novasBases.filter(base => base.tipo === 'Realizado' && !linhasRealizado.some(item => item.fonte.id === base.id));
+    const detalheCampos = fontesSemCampos.length ? ` Atenção: ${fontesSemCampos.map(base => {
+      const campos = obterCamposRealizado(base.headers || [], base.rows || [], base.id);
+      const ausentes = [!campos.obra && 'obra/departamento', !campos.valor && 'valor pago/realizado'].filter(Boolean);
+      return `${base.nome}: ${base.rows.length.toLocaleString('pt-BR')} linhas lidas e guardadas em Dados Base, mas faltam ${ausentes.join(' e ')}. Os resumos financeiros existentes foram preservados.`;
+    }).join(' ')}.` : '';
+    const detalheAssociacao = `${linhasRealizado.reduce((total, item) => total + item.rows.length, 0).toLocaleString('pt-BR')} linha(s) lidas de fontes com campos financeiros; ${linhasRealizadoAssociadas} associada(s) às obras; ${obrasCriadasNaImportacao.size} obra(s) nova(s) criada(s) por não encontrar correspondência pelo nome/CC.`;
     const avisoCache=fontesEmCache.length?`\nA fonte remota não atualizou; foram mantidos os dados Realizado já salvos: ${fontesEmCache.join('; ')}.`:'';
-    if (errosSupabase.length) alert(`Dados importados e análises atualizadas neste navegador. ${detalheAssociacao} Total realizado: ${totalRealizadoImportado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}. O Supabase recusou parte das gravações:\n${errosSupabase.slice(0, 5).join('\n')}${avisoCache}`);
-    else if (supabaseClient) alert(`Importação concluída: ${dadosBasePlanilhas.length} planilha(s). ${detalheAssociacao} Total realizado: ${totalRealizadoImportado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}. Resumos sincronizados com o Supabase.${avisoCache}`);
-    else alert(`Importação concluída: ${dadosBasePlanilhas.length} planilha(s). ${detalheAssociacao} Total realizado: ${totalRealizadoImportado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}. Dados salvos neste navegador; Supabase indisponível.${avisoCache}`);
+    if (errosSupabase.length) alert(`Dados importados e análises atualizadas neste navegador. ${detalheAssociacao} Total realizado: ${totalRealizadoImportado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}.${detalheCampos} O Supabase recusou parte das gravações:\n${errosSupabase.slice(0, 5).join('\n')}${avisoCache}`);
+    else if (supabaseClient) alert(`Importação concluída: ${dadosBasePlanilhas.length} planilha(s). ${detalheAssociacao} Total realizado: ${totalRealizadoImportado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}. Resumos sincronizados com o Supabase.${detalheCampos}${avisoCache}`);
+    else alert(`Importação concluída: ${dadosBasePlanilhas.length} planilha(s). ${detalheAssociacao} Total realizado: ${totalRealizadoImportado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}. Dados salvos neste navegador; Supabase indisponível.${detalheCampos}${avisoCache}`);
   } catch (error) {
     alert("Falha na sincronização dos dados.\nMotivo: " + (error.message || error));
   } finally {
@@ -1053,14 +1079,14 @@ function popularSeletorObras() {
   const seletor = document.getElementById('seletor-obra');
   seletor.innerHTML = '';
   const podeVerArquivadas = usuarioAutenticado?.perfil === 'Mestre';
-  const chaves = Object.keys(obrasBD).filter(k => podeVerArquivadas || obrasBD[k].status !== "Arquivada");
+  const chaves = Object.keys(obrasBD).filter(k => !obrasBD[k].oculta && (podeVerArquivadas || obrasBD[k].status !== "Arquivada"));
   if (chaves.length === 0) { obraAtivaID = null; seletor.innerHTML = '<option value="">Nenhuma obra ativa disponível</option>'; return; }
   chaves.forEach(k => { const opt=document.createElement('option'); opt.value=k; opt.textContent=obrasBD[k].nome+(obrasBD[k].status==='Arquivada'?' (Arquivada)':''); seletor.appendChild(opt); });
-  if (!obraAtivaID || !obrasBD[obraAtivaID] || (!podeVerArquivadas && obrasBD[obraAtivaID].status === "Arquivada")) obraAtivaID = chaves[0];
+  if (!obraAtivaID || !obrasBD[obraAtivaID] || obrasBD[obraAtivaID].oculta || (!podeVerArquivadas && obrasBD[obraAtivaID].status === "Arquivada")) obraAtivaID = chaves[0];
   seletor.value = obraAtivaID;
 }
 function alterarObraAtiva(id) {
-  if (!obrasBD[id] || (obrasBD[id].status === 'Arquivada' && usuarioAutenticado?.perfil !== 'Mestre')) return popularSeletorObras();
+  if (!obrasBD[id] || obrasBD[id].oculta || (obrasBD[id].status === 'Arquivada' && usuarioAutenticado?.perfil !== 'Mestre')) return popularSeletorObras();
   obraAtivaID = id;
   filtroObraDadosBaseManual=false; sincronizarFiltroDadosBaseComObra();
   atualizarDashboard();
@@ -1072,7 +1098,77 @@ function aplicarCenario(fator) { multiplicadorCenario = parseFloat(fator); atual
 
 function filtrarCategoriaDashboard(valor) { filtrosDashboard.categoria = valor || ''; atualizarDashboard(); }
 function alternarFiltroFarol(valor) { filtrosDashboard.farol = filtrosDashboard.farol === valor ? '' : valor; atualizarDashboard(); }
+function limparFiltroBaseDashboard() { filtrosDashboard.base = null; atualizarDashboard(); if (!document.getElementById('view-dados-base')?.classList.contains('hidden')) renderizarDadosBase(); }
 function limparFiltrosDashboard() { filtrosDashboard = { categoria: '', farol: '', base: null }; atualizarDashboard(); if (!document.getElementById('view-dados-base')?.classList.contains('hidden')) renderizarDadosBase(); }
+
+function aplicarFiltroCampoBaseDashboard(campo, valor) {
+  const texto = String(valor || '').trim();
+  const plano = dadosBasePlanilhas.find(item => item.tipo === 'Realizado' && (item.headers || []).includes(campo));
+  filtrosDashboard.base = texto && plano ? { planilhaId: plano.id, planilhaNome: plano.nome || 'Realizado', header: campo, value: texto } : null;
+  atualizarDashboard();
+  if (!document.getElementById('view-dados-base')?.classList.contains('hidden')) renderizarDadosBase();
+}
+
+function renderizarFiltrosBaseDashboard() {
+  const host = document.getElementById('dashboard-filtros-base');
+  const seletor = document.getElementById('dashboard-base-campo');
+  const valorInput = document.getElementById('dashboard-base-valor');
+  const lista = document.getElementById('dashboard-base-valores');
+  const aviso = document.getElementById('dashboard-base-filtro-aviso');
+  if (!host || !seletor || !valorInput || !lista) return;
+  const fontes = (dadosBasePlanilhas || []).filter(item => item.tipo === 'Realizado' && item.headers?.length && item.rows?.length);
+  if (!fontes.length) { host.classList.add('hidden'); return; }
+  const filtro = filtrosDashboard.base;
+  let fonte = fontes.find(item => item.id === filtro?.planilhaId) || fontes[0];
+  host.classList.remove('hidden');
+  const opcoes = fontes.flatMap(item => (item.headers || []).map(header => ({ value: `${item.id}\u001f${header}`, label: `${item.nome || 'Realizado'} • ${header}`, item, header })));
+  seletor.replaceChildren(...opcoes.map(op => new Option(op.label, op.value)));
+  const campoSalvo = filtro ? `${filtro.planilhaId}\u001f${filtro.header}` : campoBaseFiltroSelecionado;
+  const selecionada = opcoes.find(op => `${op.item.id}\u001f${op.header}` === campoSalvo) || opcoes[0];
+  seletor.value = selecionada?.value || '';
+  fonte = selecionada?.item || fonte;
+  const campo = selecionada?.header || '';
+  const distintos = [...new Set((fonte.rows || []).map(row => String(row[campo] ?? '').trim()).filter(Boolean))];
+  lista.replaceChildren(...distintos.slice(0, 300).map(item => { const option = document.createElement('option'); option.value = item; return option; }));
+  valorInput.value = filtro?.planilhaId === fonte.id && filtro?.header === campo ? filtro.value : '';
+  valorInput.onchange = () => aplicarFiltroCampoBaseDashboard(campo, valorInput.value);
+  valorInput.onkeydown = event => { if (event.key === 'Enter') { event.preventDefault(); aplicarFiltroCampoBaseDashboard(campo, valorInput.value); } };
+  seletor.onchange = () => {
+    const [idFonte, ...partesCampo] = seletor.value.split('\u001f');
+    const headerSelecionado = partesCampo.join('\u001f');
+    const origem = fontes.find(item => item.id === idFonte);
+    if (!origem || !headerSelecionado) return;
+    campoBaseFiltroSelecionado = seletor.value;
+    filtrosDashboard.base = null;
+    renderizarFiltrosBaseDashboard();
+    document.getElementById('dashboard-base-campo').value = campoBaseFiltroSelecionado;
+    const input = document.getElementById('dashboard-base-valor');
+    const field = headerSelecionado;
+    input.onchange = () => aplicarFiltroCampoBaseDashboard(field, input.value);
+    input.onkeydown = event => { if (event.key === 'Enter') { event.preventDefault(); aplicarFiltroCampoBaseDashboard(field, input.value); } };
+  };
+  const mapeamento = obterCamposRealizado(fonte.headers || [], fonte.rows || [], fonte.id);
+  if (!mapeamento.obra || !mapeamento.valor) aviso.textContent = `A fonte “${fonte.nome || 'Realizado'}” tem ${fonte.rows.length.toLocaleString('pt-BR')} registros, mas precisa de uma coluna de obra/departamento e uma coluna monetária para afetar os KPIs. Os campos ainda podem ser usados nos filtros e gráficos da base.`;
+  else aviso.textContent = `${fonte.rows.length.toLocaleString('pt-BR')} registros disponíveis. O filtro selecionado afeta os KPIs, o demonstrativo e os gráficos.`;
+}
+
+function obterRealizadoFiltradoDashboard(obra) {
+  const filtro = filtrosDashboard.base;
+  if (!filtro) return null;
+  const fonte = dadosBasePlanilhas.find(item => item.id === filtro.planilhaId);
+  if (!fonte || fonte.tipo !== 'Realizado') return null;
+  const campos = obterCamposRealizado(fonte.headers || [], fonte.rows || [], fonte.id);
+  if (!campos.obra || !campos.valor) return null;
+  const aliases = [obra.id, obra.cc, obra.nome].filter(Boolean).map(chaveComparacaoObra);
+  const grupos = {};
+  (fonte.rows || []).forEach(row => {
+    const chaveObra = chaveComparacaoObra(row[campos.obra]);
+    if (!aliases.includes(chaveObra) || normalizarTextoUI(row[filtro.header]) !== normalizarTextoUI(filtro.value)) return;
+    const categoria = String((campos.categoria && row[campos.categoria]) || 'Outros').trim() || 'Outros';
+    grupos[categoria] = (grupos[categoria] || 0) + parseMonetario(row[campos.valor]);
+  });
+  return grupos;
+}
 
 function classificarFarol(prev, real) {
   const uso = prev > 0 ? (real / prev) * 100 : (real > 0 ? 999 : 0);
@@ -1148,7 +1244,8 @@ function recalcularRealizadoDaBaseLocal() {
     const colunaValor = campos.valor;
     const colunaCategoria = campos.categoria;
     if (!colunaObra || !colunaValor) {
-      problemas.push(`${base.nome || 'Realizado'}: ${!colunaObra ? 'coluna de obra/departamento não identificada' : 'coluna de valor ambígua'}`);
+      const faltantes = [!colunaObra && 'coluna de obra/departamento', !colunaValor && 'coluna de valor pago/realizado'].filter(Boolean);
+      problemas.push(`${base.nome || 'Realizado'}: ${base.rows.length.toLocaleString('pt-BR')} registros guardados em Dados Base; falta identificar ${faltantes.join(' e ')}`);
       return;
     }
     fontesLidas++;
@@ -1183,6 +1280,7 @@ function recalcularRealizadoDaBaseLocal() {
 
 function atualizarDashboard() {
   recalcularRealizadoDaBaseLocal();
+  if (obraAtivaID && obrasBD[obraAtivaID]?.oculta) popularSeletorObras();
   if (obraAtivaID && obrasBD[obraAtivaID]?.status === 'Arquivada' && usuarioAutenticado?.perfil !== 'Mestre') popularSeletorObras();
   if (!obraAtivaID || !obrasBD[obraAtivaID]) {
     ['obra-titulo','obra-cc','obra-resp'].forEach(id => { const el=document.getElementById(id); if(el) el.textContent='—'; });
@@ -1204,10 +1302,12 @@ function atualizarDashboard() {
   badge.innerText = obra.status;
   badge.className = obra.status === "Ativa" ? "bg-emerald-100 text-emerald-800 text-xs font-bold px-2.5 py-0.5 rounded-full" : "bg-amber-100 text-amber-800 text-xs font-bold px-2.5 py-0.5 rounded-full";
 
-  const cats = Array.from(new Set([...Object.keys(obra.categoriasPrevisto || {}), ...Object.keys(obra.categoriasRealizado || {})]));
+  const realizadoBaseFiltrado = obterRealizadoFiltradoDashboard(obra);
+  const realizadoPorCategoria = realizadoBaseFiltrado || obra.categoriasRealizado || {};
+  const cats = Array.from(new Set([...Object.keys(obra.categoriasPrevisto || {}), ...Object.keys(realizadoPorCategoria)]));
   const linhas = cats.map(cat => {
     const previsto = ((obra.categoriasPrevisto && obra.categoriasPrevisto[cat]) || 0) * multiplicadorCenario;
-    const realizado = (obra.categoriasRealizado && obra.categoriasRealizado[cat]) || 0;
+    const realizado = realizadoPorCategoria[cat] || 0;
     return { cat, previsto, realizado, farol: classificarFarol(previsto, realizado) };
   });
   const linhasVisiveis = linhas.filter(l => (!filtrosDashboard.categoria || l.cat === filtrosDashboard.categoria) && (!filtrosDashboard.farol || l.farol === filtrosDashboard.farol));
@@ -1266,6 +1366,7 @@ function atualizarDashboard() {
   if (resumo) resumo.textContent = filtrosDashboard.base ? `Filtro da base ativo: ${filtrosDashboard.base.planilhaNome} • ${filtrosDashboard.base.header} = ${filtrosDashboard.base.value}. Gráficos da planilha e Dados Base estão conectados.` : (filtrosDashboard.categoria || filtrosDashboard.farol ? 'Filtros ativos — KPIs, demonstrativo e gráficos estão sincronizados.' : 'Selecione uma categoria, um farol ou um ponto de gráfico para filtrar a análise.');
   const statusBase = document.getElementById('dashboard-base-status');
   if (statusBase) statusBase.textContent = diagnosticoBaseAnaliseRealizado;
+  renderizarFiltrosBaseDashboard();
   renderizarGridGraficosDinamicos(obra, cats);
   if (!document.getElementById('view-dados-base')?.classList.contains('hidden')) renderizarDadosBase();
   if (!document.getElementById('view-previsto')?.classList.contains('hidden')) renderizarPrevisto();
@@ -1292,7 +1393,7 @@ function obterLinhasGrafico(cfg, obra, cats) {
     return [...grupos.values()].map(g=>({...g,valor:campoY?.tipo==='contagem'?g.contagem:g.valor})).sort((a,b)=>b.valor-a.valor).slice(0,100);
   }
   if (cfg.xField === 'obra') {
-    return Object.entries(obrasBD || {}).filter(([, o]) => o.status === 'Ativa' || usuarioAutenticado?.perfil === 'Mestre').map(([id, o]) => {
+    return Object.entries(obrasBD || {}).filter(([, o]) => !o.oculta && (o.status === 'Ativa' || usuarioAutenticado?.perfil === 'Mestre')).map(([id, o]) => {
       const categorias = [...new Set([...Object.keys(o.categoriasPrevisto || {}), ...Object.keys(o.categoriasRealizado || {})])];
       const selecionadas = categorias.filter(c => (!filtrosDashboard.categoria || c === filtrosDashboard.categoria) && (!filtrosDashboard.farol || classificarFarol(((o.categoriasPrevisto || {})[c] || 0) * multiplicadorCenario, (o.categoriasRealizado || {})[c] || 0) === filtrosDashboard.farol));
       const p = selecionadas.reduce((s,c) => s + ((o.categoriasPrevisto || {})[c] || 0) * multiplicadorCenario, 0);
@@ -1300,9 +1401,11 @@ function obterLinhasGrafico(cfg, obra, cats) {
       return { key:id, label:(o.nome || id)+(o.status === 'Arquivada' ? ' (Arquivada)' : ''), previsto:p, realizado:r, saldo:p-r, percentual:p ? r/p*100 : 0, idc:r ? p/r : 0 };
     });
   }
+  const baseFiltrada = obterRealizadoFiltradoDashboard(obra);
+  const realizadoPorCategoria = baseFiltrada || obra.categoriasRealizado || {};
   return cats.filter(c => (!filtrosDashboard.categoria || c === filtrosDashboard.categoria)).map(c => {
     const previsto = ((obra.categoriasPrevisto || {})[c] || 0) * multiplicadorCenario;
-    const realizado = (obra.categoriasRealizado || {})[c] || 0;
+    const realizado = realizadoPorCategoria[c] || 0;
     return { key:c, label:c, previsto, realizado, saldo:previsto-realizado, percentual:previsto ? realizado/previsto*100 : 0, idc:realizado ? previsto/realizado : 0, farol:classificarFarol(previsto,realizado) };
   }).filter(r => !filtrosDashboard.farol || r.farol === filtrosDashboard.farol);
 }
@@ -1402,6 +1505,8 @@ function renderizarTabelaGestaoObras() {
         <td class="p-2 min-w-52"><input type="url" value="${o.urlPrevistoCSV || ''}" onchange="atualizarCampoObra('${id}', 'urlPrevistoCSV', this.value)" class="border p-1 w-full text-[10px]" placeholder="Link Google Planilhas / CSV"><label class="block mt-1 text-[10px] text-gray-500">ou arquivo local (CSV, XLSX, XLS, ODS)<input type="file" accept=".csv,.tsv,.txt,.xlsx,.xls,.xlsm,.ods" onchange="importarArquivoPrevisto(this.files?.[0], '${id}')" class="block w-full text-[10px]"></label><small class="text-[9px] text-gray-500">${o.previstoArquivoLocal ? 'Arquivo local carregado neste navegador' : ''}</small></td>
         <td class="p-2 text-center">
           <button onclick="alternarStatusArquivado('${id}')" class="bg-amber-500 text-white px-2 py-1 rounded text-[10px] font-bold">${o.status === 'Ativa' ? 'Arquivar' : 'Reativar'}</button>
+          <button onclick="alternarObraOculta('${id}')" class="${o.oculta ? 'bg-emerald-700' : 'bg-slate-600'} text-white px-2 py-1 rounded text-[10px] font-bold ml-1">${o.oculta ? 'Reexibir nas pesquisas' : 'Ocultar das pesquisas'}</button>
+          ${o.oculta ? '<span class="block mt-1 text-[9px] text-amber-700 font-bold">Oculta dos usuários e seletores</span>' : ''}
         </td>
       </tr>
     `;
@@ -1434,6 +1539,31 @@ async function alternarStatusArquivado(id) {
     if(supabaseClient) { try { await supabaseClient.from('obras').update({ status: obrasBD[id].status }).eq('id', id); } catch(e){} }
     popularSeletorObras(); renderizarTabelaGestaoObras(); atualizarDashboard();
   }
+}
+
+async function alternarObraOculta(id) {
+  if (usuarioAutenticado?.perfil !== 'Mestre') return alert('Somente o Mestre pode ocultar ou reexibir obras.');
+  const obra = obrasBD[id];
+  if (!obra) return;
+  const anterior = !!obra.oculta;
+  obra.oculta = !anterior;
+  localStorage.setItem('obras_bp', JSON.stringify(obrasBD));
+  if (supabaseClient) {
+    try {
+      const { data, error: leituraErro } = await supabaseClient.from('obras').select('dados_json').eq('id', id).maybeSingle();
+      if (leituraErro) throw leituraErro;
+      const dadosJson = { ...(data?.dados_json || {}), oculta: obra.oculta };
+      const { error } = await supabaseClient.from('obras').update({ dados_json: dadosJson }).eq('id', id);
+      if (error) throw error;
+    } catch (erro) {
+      obra.oculta = anterior;
+      localStorage.setItem('obras_bp', JSON.stringify(obrasBD));
+      alert('Não foi possível salvar a visibilidade da obra no Supabase: ' + (erro.message || erro));
+    }
+  }
+  popularSeletorObras();
+  renderizarTabelaGestaoObras();
+  atualizarDashboard();
 }
 
 function chaveGraficosUsuario() {

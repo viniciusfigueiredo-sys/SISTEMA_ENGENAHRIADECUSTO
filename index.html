@@ -306,6 +306,15 @@
           <button type="button" onclick="limparFiltrosDashboard()" class="text-xs font-bold text-[#003399] underline">Limpar filtros</button>
           <div class="flex flex-col gap-1"><span id="dashboard-filtro-resumo" class="text-xs text-gray-500"></span><span id="dashboard-base-status" class="text-[11px] text-emerald-700" aria-live="polite"></span></div>
         </div>
+        <div id="dashboard-filtros-base" class="hidden flex flex-wrap items-center gap-2 rounded-lg border border-cyan-200 bg-cyan-50 px-3 py-2" aria-label="Filtros da base de dados">
+          <label for="dashboard-base-campo" class="text-xs font-bold text-gray-700">Filtrar por campo da base:</label>
+          <select id="dashboard-base-campo" class="max-w-full rounded border bg-white p-2 text-xs"></select>
+          <label for="dashboard-base-valor" class="sr-only">Valor do campo selecionado</label>
+          <input id="dashboard-base-valor" list="dashboard-base-valores" class="min-w-48 flex-1 rounded border bg-white p-2 text-xs" placeholder="Selecione ou digite um valor">
+          <datalist id="dashboard-base-valores"></datalist>
+          <button type="button" onclick="limparFiltroBaseDashboard()" class="text-xs font-bold text-[#003399] underline">Limpar filtro da base</button>
+          <span id="dashboard-base-filtro-aviso" class="w-full text-[11px] text-gray-600"></span>
+        </div>
         <div class="mb-3 flex flex-wrap gap-x-5 gap-y-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-700" role="note" aria-label="Legenda dos faróis">
           <span><strong class="text-emerald-700">🟢 Seguro:</strong> realizado abaixo de 85% do previsto.</span>
           <span><strong class="text-amber-700">🟡 Atenção:</strong> realizado entre 85% e 100% do previsto.</span>
