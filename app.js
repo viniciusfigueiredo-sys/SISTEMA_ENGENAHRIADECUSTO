@@ -196,7 +196,7 @@ function encontrarColuna(chaves, tipo) {
   const normalizadas = chaves.map(chave => ({ chave, nome: normalizarTexto(chave) }));
   const regras = {
     obra: [n => /(^|\b)(OBRA|PROJETO)(\b|$)/.test(n), n => n.includes("CENTRO DE CUSTO"), n => n.includes("DEPARTAMENTO"), n => n.includes("CODIGO DO CENTRO")],
-    categoria: [n => n.includes("CATEGORIA"), n => n.includes("NATUREZA"), n => n.includes("CLASSIFICACAO"), n => n.includes("RUBRICA"), n === "CONTA" || n.includes("GRUPO DE CUSTO")],
+    categoria: [n => n.includes("CATEGORIA"), n => n.includes("NATUREZA"), n => n.includes("CLASSIFICACAO"), n => n.includes("RUBRICA"), n => n === "CONTA" || n.includes("GRUPO DE CUSTO")],
     valor: [n => n.includes("VALOR LIQUIDO"), n => n.includes("VALOR PAGO"), n => n.includes("VALOR REALIZADO"), n => n.includes("TOTAL PAGO"), n => n.includes("VALOR DA CONTA"), n => n.includes("CUSTO TOTAL"), n => n.includes("VALOR TOTAL"), n => n.includes("VALOR DO DOCUMENTO"), n => n.includes("VALOR DA NOTA"), n => n === "VALOR", n => n.startsWith("VALOR ") || n.startsWith("CUSTO ")]
   };
   for (const regra of regras[tipo] || []) {
