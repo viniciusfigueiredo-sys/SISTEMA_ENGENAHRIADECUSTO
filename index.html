@@ -339,6 +339,7 @@
         </div>
       </section>
 
+      <section id="analise-velocimetros" aria-label="Velocímetros da Análise"></section>
       <section id="grid-graficos-dinamicos" class="grid grid-cols-1 lg:grid-cols-2 gap-6"></section>
       </div>
 
@@ -354,6 +355,7 @@
           <button id="btn-imprimir-relatorio-pesquisa" type="button" onclick="imprimirRelatorioPesquisa()" class="hidden px-4 py-2 rounded-lg text-sm font-bold bg-[#003399] text-white">🖨️ Imprimir relatório</button>
         </div>
         <div id="pesquisa-custos-resumo" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3"></div>
+        <section id="pesquisa-velocimetros" aria-label="Velocímetros da Pesquisa"></section>
         <div id="pesquisa-custos-leitura" class="hidden bg-white p-4 rounded-xl border border-gray-200 text-sm text-gray-700"></div>
         <section id="pesquisa-custos-grafico-card" class="hidden bg-white p-5 rounded-xl shadow-sm border border-gray-200">
           <h3 class="font-bold text-[#003399] mb-3">Previsto x realizado por categoria encontrada</h3>
@@ -388,6 +390,7 @@
         </div>
         <div id="dados-base-filtros" class="bg-white p-4 rounded-xl shadow-sm border border-gray-200 flex flex-wrap gap-3 items-center"></div>
         <div id="realizado-kpis" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3"></div>
+        <section id="realizado-velocimetros" aria-label="Velocímetros do Realizado"></section>
         <section class="bg-white p-5 rounded-xl shadow-sm border border-gray-200">
           <h3 class="font-bold text-[#003399] mb-3">Realizado por categoria na planilha selecionada</h3>
           <div class="relative h-72"><canvas id="realizado-chart" aria-label="Gráfico do realizado por categoria" role="img"></canvas></div>
@@ -516,6 +519,7 @@
       </div>
 
       <section id="editor-permissoes-perfis" class="bg-[#F4F6F9] p-4 rounded-xl space-y-3 text-xs border border-gray-200">
+        <label class="flex items-center gap-2 bg-white p-2 rounded border"><input id="perm-pesquisa" type="checkbox"> Consultar e pesquisar custos</label>
         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div><p class="font-bold text-[#003399] uppercase">Permissões por perfil</p><p class="text-gray-500 mt-1">Configure o que cada perfil pode visualizar ou executar neste navegador.</p></div>
           <label class="font-bold">Perfil
@@ -552,11 +556,12 @@
       </section>
 
       <div class="space-y-2 text-xs">
-        <p class="font-bold text-[#003399] uppercase">Usuários cadastrados / alterar perfil</p>
+        <p class="font-bold text-[#003399] uppercase">Usuários cadastrados / editar dados</p>
+        <p class="text-gray-500">O Mestre pode editar nome, e-mail, login e perfil. Para alterar a senha, informe uma nova senha e salve; deixe em branco para manter a atual.</p>
         <div class="overflow-auto max-h-64 border rounded-lg">
           <table class="w-full text-left min-w-max">
             <thead class="bg-gray-100 text-gray-600 font-bold uppercase text-[10px]">
-              <tr><th class="p-2">Nome</th><th class="p-2">Usuário</th><th class="p-2">Perfil / Alterar</th><th class="p-2 text-center">Status</th></tr>
+              <tr><th class="p-2">Nome</th><th class="p-2">E-mail</th><th class="p-2">Usuário</th><th class="p-2">Perfil</th><th class="p-2">Nova senha</th><th class="p-2 text-center">Salvar / Status</th></tr>
             </thead>
             <tbody id="tabela-usuarios-body" class="divide-y"></tbody>
           </table>
@@ -572,6 +577,6 @@
   <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   
-  <script src="app.js?v=fix-realizado-20261013b"></script>
+  <script src="app.js?v=pesquisa-usuarios-velocimetros-20261013"></script>
 </body>
 </html>

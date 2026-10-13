@@ -11,10 +11,10 @@ try {
 
 const MASTER_USER = { id: "local_master", nome: "Vinícius Souza (Mestre)", usuario: "vinicius_souzaf", email: "mestre@brasilpontes.com.br", senha: "741852963", perfil: "Mestre", status: "Aprovado" };
 const PERMISSOES_PADRAO = {
-  Mestre: { dashboard:true, dadosBase:true, sincronizar:true, configuracoes:true, usuarios:true, permissoes:true, graficos:true, relatorios:true },
-  Engenheiro: { dashboard:true, dadosBase:true, sincronizar:false, configuracoes:false, usuarios:false, permissoes:false, graficos:true, relatorios:true },
-  Orçamentista: { dashboard:true, dadosBase:true, sincronizar:true, configuracoes:false, usuarios:false, permissoes:false, graficos:true, relatorios:true },
-  Dono: { dashboard:true, dadosBase:true, sincronizar:false, configuracoes:false, usuarios:false, permissoes:false, graficos:true, relatorios:true }
+  Mestre: { dashboard:true, pesquisa:true, dadosBase:true, sincronizar:true, configuracoes:true, usuarios:true, permissoes:true, graficos:true, relatorios:true },
+  Engenheiro: { dashboard:true, pesquisa:true, dadosBase:true, sincronizar:false, configuracoes:false, usuarios:false, permissoes:false, graficos:true, relatorios:true },
+  Orçamentista: { dashboard:true, pesquisa:true, dadosBase:true, sincronizar:true, configuracoes:false, usuarios:false, permissoes:false, graficos:true, relatorios:true },
+  Dono: { dashboard:true, pesquisa:true, dadosBase:true, sincronizar:false, configuracoes:false, usuarios:false, permissoes:false, graficos:true, relatorios:true }
 };
 let permissoesPerfis = Object.fromEntries(Object.entries(PERMISSOES_PADRAO).map(([perfil, regras]) => [perfil, { ...regras }]));
 try {
@@ -106,6 +106,71 @@ try { const cfg = localStorage.getItem('config_bp'); if (cfg && cfg !== "undefin
 if (!Array.isArray(configGlobal.planilhasRealizado)) configGlobal.planilhasRealizado = [];
 
 let dadosBasePlanilhas = [];
+let consultaBaseEmAndamento = null;
+let erroConsultaBase = '';
+
+async function garantirBaseConsulta() {
+  const permissoes=obterPermissoesUsuario();
+  if (!usuarioAutenticado || (!permissoes.dadosBase && !permissoes.pesquisa)) return;
+  if (dadosBasePlanilhas.some(p => p.tipo === 'Realizado' && p.rows?.length)) return;
+  if (consultaBaseEmAndamento) return consultaBaseEmAndamento;
+  const botaoSync=document.getElementById('btn-sync');
+  const textoSync=botaoSync?.innerHTML;
+  if(botaoSync)botaoSync.disabled=true;
+  consultaBaseEmAndamento = (async () => {
+    const fontes = configGlobal.planilhasRealizado?.filter(f => f.url?.trim()) || [];
+    if (!fontes.length && configGlobal.urlRealizado) fontes.push({id:'realizado-principal',nome:'Realizado',url:configGlobal.urlRealizado});
+    if (!fontes.length) throw new Error('Não há fonte compartilhada de Realizado cadastrada.');
+    const bases = [];
+    for (const fonte of fontes) {
+      const dados = await buscarCSV(fonte.url);
+      bases.push({...dados,id:fonte.id || 'realizado-principal',nome:fonte.nome || 'Realizado',tipo:'Realizado',url:fonte.url,origem:'url',atualizadoEm:new Date().toISOString()});
+    }
+    dadosBasePlanilhas = [...dadosBasePlanilhas.filter(p => p.tipo !== 'Realizado'), ...bases];
+    try { await salvarDadosBaseArmazenados(dadosBasePlanilhas); } catch(e) { console.warn('Consulta carregada em memória; cache indisponível.',e); }
+    assinaturaBaseAnaliseRealizado = '';
+    erroConsultaBase = '';
+    atualizarDashboard();
+    renderizarDadosBase();
+  })().catch(erro => { erroConsultaBase = erro.message || String(erro); throw erro; }).finally(() => { consultaBaseEmAndamento = null;if(botaoSync){botaoSync.disabled=false;botaoSync.innerHTML=textoSync;} });
+  return consultaBaseEmAndamento;
+}
+
+function estadoVelocimetro(previsto, realizado) {
+  const uso = previsto > 0 ? realizado / previsto * 100 : null;
+  return {uso,cor:uso === null ? (realizado > 0 ? '#dc2626' : '#64748b') : uso > 100 ? '#dc2626' : uso >= 85 ? '#d97706' : '#059669',texto:uso === null ? (realizado > 0 ? 'N/P — Não previsto' : 'Sem orçamento previsto') : uso > 100 ? 'Acima do previsto' : uso >= 85 ? 'Atenção' : 'Dentro do previsto'};
+}
+
+function renderizarVelocimetros(id, total, detalhes = []) {
+  const host = document.getElementById(id); if (!host) return;
+  const antiga = host.querySelector('select')?.value;
+  host.replaceChildren();
+  host.className = 'bg-white p-5 rounded-xl border border-gray-200 shadow-sm space-y-3';
+  const titulo = document.createElement('h3'); titulo.className='font-bold text-[#003399]'; titulo.textContent='Velocímetro de consumo do previsto'; host.appendChild(titulo);
+  const grid=document.createElement('div');grid.className='grid grid-cols-1 sm:grid-cols-2 gap-4';host.appendChild(grid);
+  const criar = (parent, dado) => {
+    const box=document.createElement('div'); box.className='text-center border rounded-lg p-3';
+    const label=document.createElement('p');label.className='font-bold text-sm text-gray-700';label.textContent=dado.label;box.appendChild(label);
+    const estado=estadoVelocimetro(Number(dado.previsto)||0,Number(dado.realizado)||0);
+    const angle=Math.PI - Math.min(150,Math.max(0,estado.uso || 0))/150*Math.PI;
+    const nx=120+75*Math.cos(angle), ny=108-75*Math.sin(angle);
+    const arco=(start,end)=>{const p=n=>[120+90*Math.cos(Math.PI-n/150*Math.PI),108-90*Math.sin(Math.PI-n/150*Math.PI)];const a=p(start),b=p(end);return `M ${a[0]} ${a[1]} A 90 90 0 0 1 ${b[0]} ${b[1]}`;};
+    const graphic=document.createElement('div');
+    graphic.innerHTML=`<svg viewBox="0 0 240 135" style="width:100%;max-width:300px;display:block;margin:auto" role="img"><title>Consumo do previsto</title><path d="${arco(0,85)}" fill="none" stroke="#10b981" stroke-width="17"/><path d="${arco(85,100)}" fill="none" stroke="#f59e0b" stroke-width="17"/><path d="${arco(100,150)}" fill="none" stroke="#ef4444" stroke-width="17"/><text x="24" y="132" font-size="10">0%</text><text x="188" y="132" font-size="10">150%+</text>${estado.uso === null ? '' : `<line x1="120" y1="108" x2="${nx}" y2="${ny}" stroke="#0f172a" stroke-width="4"/><circle cx="120" cy="108" r="6" fill="#0f172a"/>`}</svg>`;
+    box.appendChild(graphic);
+    const valor=document.createElement('p');valor.style.color=estado.cor;valor.className='text-xl font-black';valor.textContent=estado.uso===null?'N/P':estado.uso.toLocaleString('pt-BR',{maximumFractionDigits:1})+'%';box.appendChild(valor);
+    const texto=document.createElement('p');texto.className='text-xs font-bold';texto.textContent=estado.texto;box.appendChild(texto);
+    const moeda=n=>Number(n||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+    const base=document.createElement('p');base.className='text-xs text-gray-500 mt-2';base.textContent=`Previsto: ${moeda(dado.previsto)} · Realizado: ${moeda(dado.realizado)}`;box.appendChild(base);
+    if (dado.nota) {const nota=document.createElement('p');nota.className='text-xs text-gray-500 mt-1';nota.textContent=dado.nota;box.appendChild(nota);}
+    parent.replaceChildren(box);
+  };
+  const global=document.createElement('div');grid.appendChild(global);criar(global,{...total,label:total.label || 'Total nos filtros atuais'});
+  const individual=document.createElement('div');grid.appendChild(individual);
+  if(detalhes.length){const select=document.createElement('select');select.className='border rounded p-2 text-sm w-full mb-2';select.setAttribute('aria-label','Selecionar categoria ou item do velocímetro');detalhes.forEach((d,i)=>select.appendChild(new Option(d.label,String(i))));if(detalhes[Number(antiga)])select.value=antiga;const card=document.createElement('div');individual.append(select,card);const draw=()=>criar(card,detalhes[Number(select.value)]);select.onchange=draw;draw();}
+  else criar(individual,{label:'Categoria ou item',previsto:0,realizado:0,nota:'Selecione uma obra ou pesquise itens com dados disponíveis.'});
+  const legenda=document.createElement('p');legenda.className='text-xs text-gray-600';legenda.textContent='Verde: abaixo de 85% · Amarelo: de 85% a 100% · Vermelho: acima de 100%. N/P: sem valor previsto para comparar. O ponteiro termina em 150%; o percentual exibe o valor integral.';host.appendChild(legenda);
+}
 let dadosBaseAtivo = null;
 let dadosBasePaginaAtual = 0;
 let assinaturaBaseAnaliseRealizado = '';
@@ -588,7 +653,8 @@ function abrirAbaSistema(aba) {
   const dashboard = chave === 'dashboard';
   const permissoes=obterPermissoesUsuario();
   if (dashboard && !permissoes.dashboard) return alert('Seu perfil não tem acesso às Análises.');
-  if (!dashboard && !permissoes.dadosBase) return alert('Seu perfil não tem acesso aos dados.');
+  if (chave === 'pesquisa' && !permissoes.pesquisa) return alert('Seu perfil não tem acesso à Pesquisa.');
+  if (!dashboard && chave !== 'pesquisa' && !permissoes.dadosBase) return alert('Seu perfil não tem acesso aos dados.');
   const views={dashboard:'view-dashboard',pesquisa:'view-pesquisa',realizado:'view-dados-base',previsto:'view-previsto'};
   Object.entries(views).forEach(([nome,id])=>document.getElementById(id)?.classList.toggle('hidden',nome!==chave));
   const navs={dashboard:'nav-dashboard',pesquisa:'nav-pesquisa',realizado:'nav-dados-base',previsto:'nav-previsto'};
@@ -597,6 +663,14 @@ function abrirAbaSistema(aba) {
   if(chave==='realizado') renderizarDadosBase();
   if(chave==='pesquisa') pesquisarCustos(filtrosPesquisaCustos);
   if(chave==='previsto') renderizarPrevisto();
+  if ((chave === 'pesquisa' || chave === 'realizado') && !dadosBasePlanilhas.some(p => p.tipo === 'Realizado' && p.rows?.length)) {
+    const status=document.getElementById(chave==='pesquisa'?'pesquisa-custos-aviso':'dados-base-status');
+    if(status) status.textContent='Carregando a planilha compartilhada para consulta. Você pode pesquisar enquanto os dados são lidos…';
+    garantirBaseConsulta().then(()=>{if(chave==='pesquisa')pesquisarCustos(filtrosPesquisaCustos);else renderizarDadosBase();}).catch(()=>{
+      if(chave==='pesquisa')pesquisarCustos(filtrosPesquisaCustos);
+      if(status)status.textContent=`Não consegui carregar o detalhamento: ${erroConsultaBase}. Os resumos por categoria permanecem disponíveis; reabra a aba para tentar novamente.`;
+    });
+  }
 }
 
 function renderizarPrevisto() {
@@ -645,6 +719,8 @@ function pesquisarCustos(termo) {
   if(!resumo||!aviso||!host)return;
   if(graficoPesquisaCustos){graficoPesquisaCustos.destroy();graficoPesquisaCustos=null;}
   resumo.replaceChildren();host.replaceChildren();if(leitura){leitura.replaceChildren();leitura.classList.add('hidden');}graficoCard?.classList.add('hidden');graficoVazio?.classList.add('hidden');
+  document.getElementById('pesquisa-velocimetros')?.replaceChildren();
+  document.getElementById('pesquisa-velocimetros')?.classList.add('hidden');
   const btnImprimir=document.getElementById('btn-imprimir-relatorio-pesquisa');btnImprimir?.classList.toggle('hidden',!query);
   if(!query){aviso.textContent='Digite uma categoria, item ou descrição para gerar o relatório da pesquisa.';return;}
   const obra=obrasBD[obraAtivaID];if(!obra){aviso.textContent='Selecione uma obra no cabeçalho antes de pesquisar.';return;}
@@ -663,6 +739,11 @@ function pesquisarCustos(termo) {
       dados.push({planilha:planilha.nome,categoria,item:itemHeader?row[itemHeader]:'',descricao:descricaoHeader?row[descricaoHeader]:'',valor:valorHeader?parseMonetario(row[valorHeader]):0,row});
     });
   });
+  const usandoResumo = !(dadosBasePlanilhas || []).some(p => (p.tipo === 'Realizado' || !p.tipo) && p.rows?.length);
+  if (usandoResumo) {
+    possuiFonteObra = true;
+    Object.entries(obra.categoriasRealizado || {}).filter(([categoria])=>norm(categoria).includes(query)).forEach(([categoria,valor])=>dados.push({planilha:'Resumo sincronizado',categoria,item:'',descricao:'Total da categoria',valor:Number(valor)||0,agregado:true}));
+  }
   const planilhaPrevisto=(dadosBasePlanilhas||[]).find(p=>p.tipo==='Previsto'&&p.id===`previsto-${obraAtivaID}`);const previstosDiretos=[];
   if(planilhaPrevisto){
     const headers=planilhaPrevisto.headers||[];const valorHeader=headers.find(h=>/custo total|valor total/.test(norm(h))||norm(h)==='valor')||col(headers,h=>h.includes('custo')||h.includes('valor'));
@@ -677,12 +758,19 @@ function pesquisarCustos(termo) {
   const previstoDireto=previstosDiretos.reduce((sum,x)=>sum+x.valor,0);const temPrevistoDireto=previstosDiretos.length>0;const previsto=temPrevistoDireto?previstoDireto:previstoCategorias;const temPrevisto=temPrevistoDireto||prevCats.length>0;
   const realizado=dados.reduce((sum,x)=>sum+x.valor,0);const saldo=temPrevisto?previsto-realizado:null;const uso=temPrevisto&&previsto>0?realizado/previsto*100:null;
   const moeda=n=>Number(n||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
-  const cards=[['Previsto da pesquisa',temPrevisto?moeda(previsto):'Sem correspondência'],['Realizado encontrado',moeda(realizado)],['Saldo previsto − realizado',saldo===null?'Sem previsto':moeda(saldo)],['Uso do previsto',uso===null?(temPrevisto?'N/P':'Sem previsto'):uso.toFixed(1)+'%'],['Registros realizados',String(dados.length)]];
+  const cards=[['Previsto da pesquisa',temPrevisto?moeda(previsto):'Sem correspondência'],['Realizado encontrado',moeda(realizado)],['Saldo previsto − realizado',saldo===null?'Sem previsto':moeda(saldo)],['Uso do previsto',uso===null?(temPrevisto?'N/P':'Sem previsto'):uso.toFixed(1)+'%'],[usandoResumo?'Categorias consolidadas':'Registros realizados',String(dados.length)]];
   cards.forEach(([label,value])=>{const card=document.createElement('article');card.className='bg-white p-4 rounded-xl border border-gray-200 shadow-sm';const l=document.createElement('p');l.className='text-xs font-bold text-gray-500';l.textContent=label;const v=document.createElement('p');v.className='text-lg font-black text-[#003399] mt-1';v.textContent=value;card.append(l,v);resumo.appendChild(card);});
   const grupos=new Map();const grupo=categoria=>{const key=norm(categoria)||'item';if(!grupos.has(key))grupos.set(key,{categoria:categoria||'Item encontrado',previsto:0,realizado:0});return grupos.get(key);};
   if(temPrevistoDireto)previstosDiretos.forEach(x=>grupo(x.categoria).previsto+=x.valor);else prevCats.forEach(c=>grupo(c).previsto+=(obra.categoriasPrevisto[c]||0)*multiplicadorCenario);
   dados.forEach(x=>grupo(x.categoria).realizado+=x.valor);
   const linhasGrafico=[...grupos.values()].sort((a,b)=>(b.previsto+b.realizado)-(a.previsto+a.realizado)).slice(0,12);
+  const detalhesVelocimetro=[...grupos.values()].map(g=>({label:'Categoria: '+g.categoria,previsto:g.previsto,realizado:g.realizado}));
+  const itens=new Map();
+  const itemChave=x=>String(x.item || x.descricao || '').trim();
+  [...previstosDiretos,...dados].forEach(x=>{const label=itemChave(x);if(label && !x.agregado && !itens.has(label))itens.set(label,{label:'Item: '+label,previsto:0,realizado:0});});
+  previstosDiretos.forEach(x=>{const item=itens.get(itemChave(x));if(item)item.previsto+=x.valor;});
+  dados.forEach(x=>{const item=itens.get(itemChave(x));if(item)item.realizado+=x.valor;});
+  renderizarVelocimetros('pesquisa-velocimetros',{label:'Total da pesquisa',previsto,realizado},[...detalhesVelocimetro,...itens.values()]);
   if(linhasGrafico.length&&canvas&&typeof Chart!=='undefined'){
     graficoCard?.classList.remove('hidden');graficoPesquisaCustos=new Chart(canvas.getContext('2d'),{type:'bar',data:{labels:linhasGrafico.map(x=>x.categoria),datasets:[{label:'Previsto',data:linhasGrafico.map(x=>x.previsto),backgroundColor:'#00CFFF',borderColor:'#009fc4',borderWidth:1},{label:'Realizado',data:linhasGrafico.map(x=>x.realizado),backgroundColor:'#003399',borderColor:'#002266',borderWidth:1}]},options:{responsive:true,maintainAspectRatio:false,indexAxis:linhasGrafico.length>7?'y':'x',plugins:{legend:{position:'bottom'},tooltip:{callbacks:{label:ctx=>ctx.dataset.label+': '+moeda(ctx.raw)}}},scales:{y:{beginAtZero:true,ticks:{callback:value=>Number(value).toLocaleString('pt-BR')}},x:{beginAtZero:true}}}});
   } else if(linhasGrafico.length&&graficoVazio){graficoCard?.classList.remove('hidden');graficoVazio.classList.remove('hidden');graficoVazio.textContent='Gráfico indisponível: biblioteca de gráficos não carregada.';}
@@ -691,6 +779,7 @@ function pesquisarCustos(termo) {
   else if(!dados.length&&previstosDiretos.length)aviso.textContent='Há itens previstos correspondentes a “'+filtrosPesquisaCustos+'”, mas nenhum registro realizado correspondente nesta obra.';
   else if(!dados.length)aviso.textContent='Nenhum registro corresponde a “'+filtrosPesquisaCustos+'” na obra '+(obra.nome||obra.cc)+'.';
   else aviso.textContent='Relatório para “'+filtrosPesquisaCustos+'” na obra '+(obra.nome||obra.cc)+'. O gráfico mostra até 12 categorias/itens de maior valor.';
+  if(usandoResumo)aviso.textContent=consultaBaseEmAndamento?'Carregando o detalhamento da planilha. Por enquanto, a pesquisa usa os totais por categoria sincronizados.':'A pesquisa usa os totais por categoria sincronizados. Abra novamente esta aba para carregar o detalhamento por item e fornecedor.';
   if(previstosDiretos.length){const sec=document.createElement('section');sec.className='mb-4';const t=document.createElement('h3');t.className='font-bold text-[#003399] p-3';t.textContent='Itens previstos encontrados ('+previstosDiretos.length+')';sec.appendChild(t);sec.appendChild(criarTabelaPesquisa(['Categoria','Item','Descrição','Previsto'],previstosDiretos.map(x=>[x.categoria,x.item,x.descricao,moeda(x.valor)])));host.appendChild(sec);}
   if(dados.length){const sec=document.createElement('section');const t=document.createElement('h3');t.className='font-bold text-[#003399] p-3';t.textContent='Registros realizados encontrados ('+dados.length+')';sec.appendChild(t);sec.appendChild(criarTabelaPesquisa(['Planilha','Categoria','Item','Descrição','Realizado'],dados.slice(0,500).map(x=>[x.planilha,x.categoria,x.item,x.descricao,moeda(x.valor)])));host.appendChild(sec);if(dados.length>500){const n=document.createElement('p');n.className='text-xs text-gray-500 p-3';n.textContent='Exibindo os primeiros 500 de '+dados.length+' registros realizados.';host.appendChild(n);}}
 }
@@ -833,6 +922,10 @@ function renderizarIndicadoresRealizado(planilha, linhas=[]) {
   else if(obra){Object.entries(obra.categoriasRealizado||{}).forEach(([categoria,valor])=>{grupos.set(categoria,valor);total+=valor;});}
   const fallback=!planilha;
   const cards=[[fallback?'Realizado consolidado da obra':'Realizado nos filtros atuais',moeda(total)],['Registros exibidos',fallback?'Resumo da obra':String(linhas.length)],['Categorias encontradas',String(grupos.size)],['Média por registro',!fallback&&linhas.length?moeda(total/linhas.length):'—']];
+  const detalhes=[...grupos.entries()].map(([label,realizado])=>({label,realizado,previsto:Number(obra?.categoriasPrevisto?.[label]||0)*multiplicadorCenario}));
+  const itemHeader=headers.find(h=>/^(item|codigo item)$|descri[cç][aã]o|hist[oó]rico/i.test(h));
+  if(itemHeader){const itens=new Map();linhas.forEach(row=>{const label=String(row[itemHeader]||'').trim();if(!label || label==='N/D')return;if(!itens.has(label))itens.set(label,{label:'Item: '+label,realizado:0,previsto:0,nota:'Sem previsto específico vinculado a este item; consulte também a categoria.'});itens.get(label).realizado+=valorHeader?parseMonetario(row[valorHeader]):0;});detalhes.push(...itens.values());}
+  renderizarVelocimetros('realizado-velocimetros',{previsto:detalhes.filter(d=>!d.label.startsWith('Item: ')).reduce((s,d)=>s+d.previsto,0),realizado:total,nota:'Previsto das categorias presentes nos filtros. Filtros de registros não fracionam o orçamento da categoria.'},detalhes);
   cards.forEach(([label,value])=>{const card=document.createElement('article');card.className='bg-white p-4 rounded-xl shadow-sm border border-gray-200';const l=document.createElement('p');l.className='text-xs font-bold text-gray-500 uppercase';l.textContent=label;const v=document.createElement('p');v.className='text-lg font-black text-[#003399] mt-1';v.textContent=value;card.append(l,v);host.appendChild(card);});
   const chartData=[...grupos.entries()].sort((a,b)=>b[1]-a[1]).slice(0,12);const canvas=document.getElementById('realizado-chart');
   if(chartData.length&&canvas&&typeof Chart!=='undefined'){graficoRealizadoCustos=new Chart(canvas.getContext('2d'),{type:'bar',data:{labels:chartData.map(x=>x[0]),datasets:[{label:'Realizado',data:chartData.map(x=>x[1]),backgroundColor:'#003399',borderColor:'#002266',borderWidth:1}]},options:{responsive:true,maintainAspectRatio:false,indexAxis:chartData.length>7?'y':'x',plugins:{legend:{position:'bottom'},tooltip:{callbacks:{label:ctx=>'Realizado: '+moeda(ctx.raw)}}},scales:{x:{beginAtZero:true},y:{beginAtZero:true}}}});}
@@ -840,6 +933,7 @@ function renderizarIndicadoresRealizado(planilha, linhas=[]) {
 }
 
 function renderizarControlesFiltroDadosBase(planilha, obraHeader, categoriaHeader) {
+  const norm = normalizarTextoUI;
   const host = document.getElementById('dados-base-filtros');
   if (!host) return;
   host.replaceChildren();
@@ -1303,6 +1397,7 @@ function atualizarDashboard() {
   if (obraAtivaID && obrasBD[obraAtivaID]?.oculta) popularSeletorObras();
   if (obraAtivaID && obrasBD[obraAtivaID]?.status === 'Arquivada' && usuarioAutenticado?.perfil !== 'Mestre') popularSeletorObras();
   if (!obraAtivaID || !obrasBD[obraAtivaID]) {
+    document.getElementById('analise-velocimetros')?.replaceChildren();
     ['obra-titulo','obra-cc','obra-resp'].forEach(id => { const el=document.getElementById(id); if(el) el.textContent='—'; });
     ['kpi-previsto','kpi-realizado','kpi-desvio'].forEach(id => { const el=document.getElementById(id); if(el) el.textContent='R$ 0,00'; });
     linhasDashboardVisiveis=[];
@@ -1342,6 +1437,7 @@ function atualizarDashboard() {
   document.getElementById('kpi-desvio').innerText = (dsv >= 0 ? "+ " : "") + dsv.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
   document.getElementById('kpi-idc').innerText = idc;
   renderizarInsightsDashboard(linhasVisiveis,pAj,realVisivel,dsv,idc);
+  renderizarVelocimetros('analise-velocimetros',{previsto:pAj,realizado:realVisivel},linhasVisiveis.map(l=>({label:l.cat,previsto:l.previsto,realizado:l.realizado})));
 
   const tbody = document.getElementById('tabela-dre-body');
   tbody.innerHTML = '';
@@ -1682,9 +1778,11 @@ function aplicarPermissoesPerfil() {
   const opcaoMestre=document.querySelector('#novo-usr-perfil option[value="Mestre"]');
   if (opcaoMestre) opcaoMestre.disabled=!permissoes.permissoes;
   document.getElementById('nav-dashboard').classList.toggle('hidden', !permissoes.dashboard);
-  ['nav-pesquisa','nav-dados-base','nav-previsto'].forEach(id=>document.getElementById(id)?.classList.toggle('hidden',!permissoes.dadosBase));
+  document.getElementById('nav-pesquisa')?.classList.toggle('hidden',!permissoes.pesquisa);
+  ['nav-dados-base','nav-previsto'].forEach(id=>document.getElementById(id)?.classList.toggle('hidden',!permissoes.dadosBase));
   if (!permissoes.dashboard && permissoes.dadosBase) abrirAbaSistema('realizado');
-  else if (!permissoes.dashboard && !permissoes.dadosBase) executarLogout();
+  else if (!permissoes.dashboard && permissoes.pesquisa) abrirAbaSistema('pesquisa');
+  else if (!permissoes.dashboard && !permissoes.dadosBase && !permissoes.pesquisa) executarLogout();
 }
 
 async function gerarRelatorioImprimir() {
@@ -1779,7 +1877,7 @@ function fecharModalUsuarios() { document.getElementById('modal-usuarios').class
 function renderizarEditorPermissoesPerfil() {
   const perfil=document.getElementById('permissoes-perfil-select')?.value || 'Engenheiro';
   const regras=perfil==='Mestre'?PERMISSOES_PADRAO.Mestre:(permissoesPerfis[perfil] || PERMISSOES_PADRAO.Engenheiro);
-  const nomes={dashboard:'perm-dashboard',dadosBase:'perm-dados-base',sincronizar:'perm-sincronizar',usuarios:'perm-usuarios',permissoes:'perm-permissoes',graficos:'perm-graficos',relatorios:'perm-relatorios'};
+  const nomes={dashboard:'perm-dashboard',pesquisa:'perm-pesquisa',dadosBase:'perm-dados-base',sincronizar:'perm-sincronizar',usuarios:'perm-usuarios',permissoes:'perm-permissoes',graficos:'perm-graficos',relatorios:'perm-relatorios'};
   const configCampo=document.getElementById('perm-configuracoes'); if(configCampo){configCampo.checked=perfil==='Mestre';configCampo.disabled=true;}
   const bloqueado=perfil==='Mestre';
   Object.entries(nomes).forEach(([chave,id])=>{const campo=document.getElementById(id); if(campo){campo.checked=!!regras[chave];campo.disabled=bloqueado;}});
@@ -1794,6 +1892,7 @@ function salvarPermissoesPerfil() {
   const perfil=document.getElementById('permissoes-perfil-select').value;
   if (perfil==='Mestre') return;
   permissoesPerfis[perfil]={
+    pesquisa:document.getElementById('perm-pesquisa').checked,
     dashboard:document.getElementById('perm-dashboard').checked,
     dadosBase:document.getElementById('perm-dados-base').checked,
     sincronizar:document.getElementById('perm-sincronizar').checked,
@@ -1878,6 +1977,29 @@ async function aprovarSolicitacao(id) {
   renderizarPainelUsuarios();
 }
 
+async function salvarDadosUsuario(id, campos, botao, aviso) {
+  if (usuarioAutenticado?.perfil !== 'Mestre') return alert('Somente o Mestre pode editar os dados dos usuários.');
+  const usuario=usuariosBD.find(u=>String(u.id)===String(id));
+  if(!usuario || String(id)==='local_master')return;
+  const dados={nome:campos.nome.value.trim(),email:campos.email.value.trim(),usuario:campos.usuario.value.trim(),perfil:campos.perfil.value};
+  if(!dados.nome || !dados.usuario) {aviso.textContent='Preencha nome e login.';return;}
+  if(dados.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(dados.email)){aviso.textContent='Informe um e-mail válido.';return;}
+  if(usuariosBD.some(u=>String(u.id)!==String(id) && (normalizarTexto(u.usuario)===normalizarTexto(dados.usuario) || (dados.email && normalizarTexto(u.email)===normalizarTexto(dados.email))))){aviso.textContent='Login ou e-mail já utilizado.';return;}
+  if(!['Mestre','Dono','Engenheiro','Orçamentista'].includes(dados.perfil)){aviso.textContent='Perfil inválido.';return;}
+  if(campos.senha.value) dados.senha=campos.senha.value;
+  botao.disabled=true;aviso.textContent='Salvando…';
+  try {
+    if(!supabaseClient)throw new Error('Conecte ao Supabase para salvar os dados do usuário.');
+    const {data,error}=await supabaseClient.from('usuarios').update(dados).eq('id',id).select('id,nome,email,usuario,perfil,status').single();
+    if(error)throw error;
+    if(!data)throw new Error('O banco não confirmou a alteração.');
+    Object.assign(usuario,dados,data);
+    if(String(usuarioAutenticado?.id)===String(id)){Object.assign(usuarioAutenticado,usuario);aplicarPermissoesPerfil();}
+    campos.senha.value='';aviso.textContent='Dados salvos no Supabase.';
+  }catch(e){aviso.textContent='Não foi possível salvar: '+(e.message||e);}
+  finally{botao.disabled=false;}
+}
+
 function renderizarPainelUsuarios() {
   const tbodyPend = document.getElementById('tabela-pendentes-body');
   document.getElementById('count-pendentes').innerText = solicitacoesPendentesBD.length;
@@ -1894,13 +2016,15 @@ function renderizarPainelUsuarios() {
   tbodyAtivos.replaceChildren();
   usuariosBD.forEach(u => {
     const tr=document.createElement('tr');
-    const nome=document.createElement('td');nome.className='p-2 font-bold';nome.textContent=u.nome || '';tr.appendChild(nome);
-    const login=document.createElement('td');login.className='p-2 text-gray-500';login.textContent=u.usuario || '';tr.appendChild(login);
+    const editavel=usuarioAutenticado?.perfil==='Mestre' && String(u.id)!=='local_master';
+    const campos={};
+    [['nome','Nome','text'],['email','E-mail','email'],['usuario','Login','text']].forEach(([key,label,type])=>{const td=document.createElement('td');td.className='p-2';const input=document.createElement('input');input.type=type;input.value=u[key]||'';input.disabled=!editavel;input.className='border rounded p-2 text-xs w-44';input.setAttribute('aria-label',`${label} de ${u.nome||u.usuario}`);td.appendChild(input);tr.appendChild(td);campos[key]=input;});
     const perfilTd=document.createElement('td');perfilTd.className='p-2';
     const perfil=document.createElement('select');perfil.className='border rounded p-1 text-xs';
     [['Engenheiro','Engenheiro'],['Orçamentista','Orçamentista'],['Dono','Dono / Diretoria'],['Mestre','Mestre']].forEach(([v,t])=>{const option=new Option(t,v);if(v==='Mestre'&&!obterPermissoesUsuario().permissoes)option.disabled=true;perfil.add(option);});
-    perfil.value=u.perfil || 'Engenheiro';perfil.disabled=String(u.id)==='local_master';perfil.setAttribute('aria-label',`Perfil de ${u.nome || u.usuario}`);perfil.onchange=()=>alterarPerfilUsuario(u.id,perfil.value);perfilTd.appendChild(perfil);tr.appendChild(perfilTd);
-    const status=document.createElement('td');status.className='p-2 text-center text-emerald-600 font-bold';status.textContent='● Ativo';tr.appendChild(status);
+    perfil.value=u.perfil || 'Engenheiro';perfil.disabled=!editavel;perfil.setAttribute('aria-label',`Perfil de ${u.nome || u.usuario}`);perfilTd.appendChild(perfil);tr.appendChild(perfilTd);campos.perfil=perfil;
+    const senhaTd=document.createElement('td');senhaTd.className='p-2';const senha=document.createElement('input');senha.type='password';senha.autocomplete='new-password';senha.placeholder='Nova senha (opcional)';senha.disabled=!editavel;senha.className='border rounded p-2 text-xs w-44';senha.setAttribute('aria-label',`Nova senha de ${u.nome||u.usuario}`);senhaTd.appendChild(senha);tr.appendChild(senhaTd);campos.senha=senha;
+    const status=document.createElement('td');status.className='p-2 min-w-44';const aviso=document.createElement('p');aviso.className='text-xs mt-1';aviso.setAttribute('aria-live','polite');if(editavel){const salvar=document.createElement('button');salvar.type='button';salvar.textContent='Salvar dados';salvar.className='bg-[#003399] text-white rounded px-3 py-2 text-xs font-bold';salvar.onclick=()=>salvarDadosUsuario(u.id,campos,salvar,aviso);status.appendChild(salvar);}else aviso.textContent=String(u.id)==='local_master'?'Conta principal':'Somente o Mestre pode editar.';status.appendChild(aviso);tr.appendChild(status);
     tbodyAtivos.appendChild(tr);
   });
   renderizarEditorPermissoesPerfil();
