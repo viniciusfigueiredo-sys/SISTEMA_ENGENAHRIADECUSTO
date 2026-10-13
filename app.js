@@ -97,7 +97,7 @@ function atualizarSeletoresNovoGrafico() {
   y.replaceChildren(...yOpts.map(([v,t])=>new Option(t,v)));
   y.value=yOpts.some(([v])=>v===oldY)?oldY:(yOpts[0]?.[0] || 'previsto');
   x.onchange=()=>{ atualizarSeletoresNovoGrafico(); };
-  renderizarColunasNovoGrafico();
+  renderizarColunasNovoGrafico();renderizarOpcoesNovoVelocimetro();
 }
 
 let configGlobal = { titulo: "Brasil Pontes", urlRealizado: "", planilhasRealizado: [] };
@@ -577,7 +577,7 @@ window.onload = async function() {
 
     if (supabaseClient) {
       const { data: config } = await supabaseClient.from('configuracoes').select('*').limit(1).single();
-      if (config) { configGlobal.titulo = config.titulo || "Brasil Pontes"; configGlobal.urlRealizado = config.url_realizado || "";configGlobal.idConfigSupabase=config.id;configGlobal.manutencao=!!config.perfis_json?.__sistema?.manutencao;configGlobal.assinaturaPerfis=JSON.stringify(config.perfis_json||{});carregarParametrosSistema(config.perfis_json?.__sistema);if(config.perfis_json && typeof config.perfis_json==='object'){Object.entries(config.perfis_json).filter(([p])=>!['__proto__','constructor','prototype','Mestre','__sistema'].includes(p)).forEach(([p,regras])=>{permissoesPerfis[p]={...(PERMISSOES_PADRAO[p]||PERMISSOES_PADRAO.Engenheiro),...regras};});localStorage.setItem('permissoes_bp',JSON.stringify(permissoesPerfis));} }
+      if (config) { configGlobal.titulo = config.titulo || "Brasil Pontes"; configGlobal.urlRealizado = config.url_realizado || "";configGlobal.idConfigSupabase=config.id;configGlobal.manutencao=!!config.perfis_json?.__sistema?.manutencao;configGlobal.assinaturaPerfis=JSON.stringify(config.perfis_json||{});carregarParametrosSistema(config.perfis_json?.__sistema);const revisaoPlanilhas=config.perfis_json?.__sistema?.revisaoPlanilhas;if(revisaoPlanilhas&&localStorage.getItem('revisao_planilhas_bp')!==revisaoPlanilhas){dadosBasePlanilhas=dadosBasePlanilhas.filter(p=>p.tipo==='Previsto'||p.origem==='arquivo-local');await salvarDadosBaseArmazenados(dadosBasePlanilhas);localStorage.setItem('revisao_planilhas_bp',revisaoPlanilhas);}if(config.perfis_json && typeof config.perfis_json==='object'){Object.entries(config.perfis_json).filter(([p])=>!['__proto__','constructor','prototype','Mestre','__sistema'].includes(p)).forEach(([p,regras])=>{permissoesPerfis[p]={...(PERMISSOES_PADRAO[p]||PERMISSOES_PADRAO.Engenheiro),...regras};});localStorage.setItem('permissoes_bp',JSON.stringify(permissoesPerfis));} }
       const linkRealizadoDesatualizado = ["1S41dXyTC2Y_SJjD3iw86WaUqi0OWNxyf", "1v3FrPW55ofd8j3-rOqyyZlw1HHMJuf6", "1wZQhhLXwcpToKGy26gW1rHooGwUuRQMJ"].some(id => String(config?.url_realizado || "").includes(id));
       if (migrarLinkPlanilhaRealizado() && linkRealizadoDesatualizado) {
         const { error } = await supabaseClient.from('configuracoes').update({ url_realizado: configGlobal.urlRealizado }).eq('id', config.id);
@@ -728,6 +728,7 @@ function renderizarPrevisto() {
   const categoriaHeader=headers.find(h=>/categoria|natureza/.test(normalizarTextoUI(tituloColunaBase(planilha,h))));
   const descricaoHeader=headers.find(h=>/descricao|servico|item/.test(normalizarTextoUI(h)));
   const valorHeader=headers.find(h=>/custo total|valor total/.test(normalizarTextoUI(h))||normalizarTextoUI(h)==='valor')||headers.find(h=>/custo|valor/.test(normalizarTextoUI(h)));
+  ordenarLinhasTela(rows,'previsto',categoriaHeader||descricaoHeader,valorHeader);
   const resumo=new Map();
   if(rows.length&&valorHeader){rows.forEach(row=>{const nome=String(row[categoriaHeader]||row[descricaoHeader]||'Item previsto').trim();resumo.set(nome,(resumo.get(nome)||0)+parseMonetario(row[valorHeader])*multiplicadorCenario);});}
   else categorias.forEach(c=>resumo.set(c,(obra.categoriasPrevisto?.[c]||0)*multiplicadorCenario));
@@ -791,6 +792,7 @@ function pesquisarCustos(termo) {
     const campos=headers.filter(h=>/categoria|natureza|item|descricao|servico|historico|fornecedor|produto|conta|codigo/.test(norm(h)));
     (planilhaPrevisto.rows||[]).forEach(row=>{if(!linhaPassaFiltroInterativo(planilhaPrevisto,row,categoriaHeader))return;if((campos.length?campos:headers).some(header=>norm(row[header]).includes(query)))previstosDiretos.push({categoria:String((categoriaHeader&&row[categoriaHeader])||'Item encontrado').trim(),item:itemHeader?row[itemHeader]:'',descricao:descricaoHeader?row[descricaoHeader]:'',valor:(valorHeader?parseMonetario(row[valorHeader]):0)*multiplicadorCenario});});
   }
+  ordenarObjetosTela(dados,'pesquisa',x=>x.valor,x=>x.categoria||x.item);ordenarObjetosTela(previstosDiretos,'pesquisa',x=>x.valor,x=>x.categoria||x.item);
   const cats=[...new Set(dados.map(x=>x.categoria))];const prevCats=Object.keys(obra.categoriasPrevisto||{}).filter(c=>cats.some(x=>norm(x)===norm(c)));
   const previstoCategorias=prevCats.reduce((sum,c)=>sum+(obra.categoriasPrevisto[c]||0)*multiplicadorCenario,0);
   const previstoDireto=previstosDiretos.reduce((sum,x)=>sum+x.valor,0);const temPrevistoDireto=previstosDiretos.length>0;const previsto=temPrevistoDireto?previstoDireto:previstoCategorias;const temPrevisto=temPrevistoDireto||prevCats.length>0;
@@ -902,6 +904,7 @@ function renderizarDadosBase() {
     const baseOk=!filtroBase || filtroBase.planilhaId!==ativa?.id || (filtroBase.values||[filtroBase.value]).some(v=>norm(row[filtroBase.header])===norm(v));
     return texto && obraOk && catOk && baseOk && linhaPassaFiltroInterativo(ativa,row,categoriaHeader);
   });
+  ordenarLinhasTela(rowsFiltradas,'realizado',categoriaHeader,obterCamposRealizado(ativa?.headers||[],rowsFiltradas,ativa?.id).valor);
   renderizarControlesFiltroDadosBase(ativa, obraHeader, categoriaHeader);
   renderizarIndicadoresRealizado(ativa, rowsFiltradas);
   const totalLinhas = rowsFiltradas.length;
@@ -1542,7 +1545,7 @@ function atualizarDashboard() {
   if (statusBase) statusBase.textContent = diagnosticoBaseAnaliseRealizado;
   renderizarFiltrosBaseDashboard();
   aplicarParametrosDemonstrativo();
-  renderizarGridGraficosDinamicos(obra, cats);
+  renderizarGridGraficosDinamicos(obra, cats);aplicarConfiguracoesTelas();
   if(!document.getElementById('view-custos-fixos')?.classList.contains('hidden'))renderizarCustosFixos();
   if(!document.getElementById('view-recorrentes')?.classList.contains('hidden'))renderizarPagamentosRecorrentes();
   if (!document.getElementById('view-dados-base')?.classList.contains('hidden')) renderizarDadosBase();
@@ -1611,6 +1614,7 @@ function renderizarGridGraficosDinamicos(obra, cats) {
       const ctx = document.getElementById(cfg.id)?.getContext('2d');
       if (!ctx) return;
       const rows = obterLinhasGrafico(cfg, obra, cats);
+      if(cfg.tipo==='gauge'){renderizarVelocimetroPersonalizado(cfg,rows,document.getElementById(cfg.id));return;}
       if(cfg.tipo==='table'||cfg.tipo==='list'){renderizarGraficoTabela(cfg,rows,document.getElementById(cfg.id));return;}
       const labels = rows.length ? rows.map(r=>r.label) : ['Sem dados'];
       const yMap = { previsto:'previsto', realizado:'realizado', saldo:'saldo', percentual:'percentual', idc:'idc' };
@@ -1659,7 +1663,7 @@ function abrirModalConfiguracoes() {
   }
   renderizarFontesRealizado();
   renderizarTabelaGestaoObras();
-  renderizarConfiguracoesParametros();aplicarAcessoConfiguracoes();document.getElementById('modal-configuracoes').classList.remove('hidden');
+  renderizarConfiguracoesParametros();organizarConfiguracoesPorTela();aplicarAcessoConfiguracoes();document.getElementById('modal-configuracoes').classList.remove('hidden');
 }
 
 function fecharModalConfiguracoes() { document.getElementById('modal-configuracoes').classList.add('hidden'); }
@@ -1756,7 +1760,7 @@ function chaveGraficosUsuario() {
 }
 function normalizarGraficos(lista) {
   if (!Array.isArray(lista)) return GRAFICOS_PADRAO.map(g=>({...g}));
-  return lista.map((g,i)=>({ id:String(g.id||'grafico_'+i), titulo:String(g.titulo||'Gráfico '+(i+1)), tipo:['bar','line','doughnut','pie','polarArea','radar','table','list'].includes(g.tipo)?g.tipo:'bar', colunas:Array.isArray(g.colunas)?g.colunas:[],tabelaFonte:g.tabelaFonte||'', xField:g.xField||'categoria', yField:g.yField||'comparativo', horizontal:!!g.horizontal }));
+  return lista.map((g,i)=>({ id:String(g.id||'grafico_'+i), titulo:String(g.titulo||'Gráfico '+(i+1)), tipo:['bar','line','doughnut','pie','polarArea','radar','table','list','gauge'].includes(g.tipo)?g.tipo:'bar', velocimetro:g.velocimetro||{},colunas:Array.isArray(g.colunas)?g.colunas:[],tabelaFonte:g.tabelaFonte||'', xField:g.xField||'categoria', yField:g.yField||'comparativo', horizontal:!!g.horizontal }));
 }
 function carregarGraficosUsuario() {
   const chave=chaveGraficosUsuario();
@@ -1776,7 +1780,7 @@ function adicionarNovoGrafico() {
   const xField = document.getElementById('novo-chart-x').value;
   const yField = document.getElementById('novo-chart-y').value;
   if (!titulo) return alert("Digite o título.");
-  graficosConfig.push({ colunas:[...colunasNovoGrafico],tabelaFonte:fonteTabelaNovoGrafico,id: `chart_custom_${Date.now()}`, titulo, tipo, xField, yField, horizontal: tipo === 'bar' && document.getElementById('novo-chart-horizontal').checked });
+  graficosConfig.push({ velocimetro:{...velocimetroNovoGrafico},colunas:[...colunasNovoGrafico],tabelaFonte:fonteTabelaNovoGrafico,id: `chart_custom_${Date.now()}`, titulo, tipo, xField, yField, horizontal: tipo === 'bar' && document.getElementById('novo-chart-horizontal').checked });
   document.getElementById('novo-chart-titulo').value = '';
   persistirGraficosConfig(); renderizarListaGraficosConfig(); atualizarDashboard();
 }
@@ -1794,7 +1798,7 @@ function renderizarListaGraficosConfig() {
     const title=document.createElement('label'); title.className='text-xs font-bold text-gray-600'; title.textContent='Título';
     const input=document.createElement('input'); input.className='w-full border p-2 rounded mt-1'; input.value=g.titulo; input.maxLength=80; input.onchange=()=>{g.titulo=input.value.trim()||'Gráfico'; persistirGraficosConfig(); atualizarDashboard();}; title.appendChild(input);
     const onEdit=()=>{persistirGraficosConfig(); atualizarDashboard();};
-    const type=select('Tipo',g.tipo,[['bar','Barras'],['line','Linha'],['doughnut','Rosca'],['pie','Pizza'],['polarArea','Área polar'],['radar','Radar'],['table','Tabela'],['list','Lista']],e=>{g.tipo=e.target.value;onEdit();renderizarListaGraficosConfig();});
+    const type=select('Tipo',g.tipo,[['bar','Barras'],['line','Linha'],['doughnut','Rosca'],['pie','Pizza'],['polarArea','Área polar'],['radar','Radar'],['table','Tabela'],['list','Lista'],['gauge','Velocímetro']],e=>{g.tipo=e.target.value;onEdit();renderizarListaGraficosConfig();});
     const x=select('Eixo X',g.xField||'categoria',opcoesCamposGraficos('x'),e=>{
       g.xField=e.target.value;
       const yOpts=opcoesCamposGraficos('y',g.xField);
@@ -1806,7 +1810,7 @@ function renderizarListaGraficosConfig() {
     const horizontal=document.createElement('label'); horizontal.className='flex items-center gap-1 text-xs';
     const check=document.createElement('input'); check.type='checkbox'; check.checked=!!g.horizontal; check.disabled=g.tipo!=='bar'; check.onchange=()=>{g.horizontal=check.checked;onEdit();}; horizontal.append(check,document.createTextNode('Horizontal'));
     const remove=document.createElement('button'); remove.type='button'; remove.textContent='Remover'; remove.className='text-red-700 font-bold'; remove.onclick=()=>removerGrafico(g.id);
-    action.append(horizontal,remove); row.append(title,type,x,y,action); div.appendChild(row);if(g.tipo==='table'||g.tipo==='list')div.appendChild(criarSeletorColunasTabela(g,()=>{persistirGraficosConfig();atualizarDashboard();}));
+    action.append(horizontal,remove); row.append(title,type,x,y,action); div.appendChild(row);if(g.tipo==='gauge')div.appendChild(criarOpcoesVelocimetro(g,()=>{persistirGraficosConfig();atualizarDashboard();}));if(g.tipo==='table'||g.tipo==='list')div.appendChild(criarSeletorColunasTabela(g,()=>{persistirGraficosConfig();atualizarDashboard();}));
   });
 }
 

@@ -91,7 +91,7 @@ async function persistirCustosFixos(obraId,custos){
   if(!obterPermissoesUsuario().dadosBase)throw new Error('Seu perfil não pode editar custos fixos.');
   if(supabaseClient){const {data,error}=await supabaseClient.from('obras').select('dados_json').eq('id',obraId).single();if(error)throw error;
     const {data:salvo,error:erro}=await supabaseClient.from('obras').update({dados_json:{...data.dados_json,custosFixos:custos}}).eq('id',obraId).select('id').single();if(erro||!salvo)throw erro||new Error('O servidor não confirmou o cadastro.');}
-  obra.custosFixos=custos;localStorage.setItem('obras_bp',JSON.stringify(obrasBD));
+  obra.custosFixos=custos;localStorage.setItem('obras_bp',JSON.stringify(obrasBD));await sinalizarAlteracaoCompartilhada();
 }
 async function salvarCustoFixo(event){
   event.preventDefault();const form=event.target,status=document.getElementById('fixos-status'),obraId=obraAtivaID;const campos=new FormData(form);
@@ -111,7 +111,7 @@ function renderizarCustosFixos(){
  const {inicio,fim}=periodoCustosAtual(),resumo=resumoParametrosFixos(obra,inicio,fim);renderizarCardsCustos(document.getElementById('fixos-kpis'),[['Parâmetros ativos',String(resumo.custos.length)],['Custo fixo parametrizado no período',brl(resumo.parametro)],['Previsto das categorias vinculadas',brl(resumo.previsto)],['Saldo previsto − parâmetro',brl(resumo.previsto-resumo.parametro)],['Parâmetro / previsto',resumo.previsto?(resumo.parametro/resumo.previsto*100).toFixed(1)+'%':'N/P']]);
  document.getElementById('fixos-periodo').textContent='Parâmetros editáveis de análise de '+inicio+' a '+fim+'. Comparação com o orçamento integral das categorias, sem rateio por período. Não são pagamentos nem alteram o Previsto ou o Realizado.';
  host.replaceChildren();const table=document.createElement('table');table.className='min-w-full text-sm';const head=document.createElement('tr');['Custo','Fornecedor','Categoria','Valor unitário','Quantidade','Recorrência','Parâmetro no período','Ações'].forEach(t=>head.append(criarCelulaCusto('th',t)));table.append(head);
- (obra.custosFixos||[]).filter(c=>categoriaEstaSelecionada(c.categoria)).forEach(c=>{const tr=document.createElement('tr');[c.nome+(c.ativo?'':' (inativo)'),c.fornecedor,c.categoria,brl(c.valor),c.quantidade,'A cada '+c.intervalo+' '+c.unidade,brl(c.ativo?ocorrenciasCusto(c,inicio,fim)*c.valor*c.quantidade:0)].forEach(v=>tr.append(criarCelulaCusto('td',v)));const td=document.createElement('td');if(obterPermissoesUsuario().dadosBase)[['Editar',()=>preencherCustoFixo(c)],[c.ativo?'Desativar':'Reativar',()=>alternarCustoFixo(c.id)]].forEach(([t,fn])=>{const btn=document.createElement('button');btn.className='border rounded px-2 py-1 m-1';btn.textContent=t;btn.onclick=fn;td.append(btn);});tr.append(td);table.append(tr);});host.append(table);document.getElementById('fixos-historico')?.remove();if(graficoCustosFixos){graficoCustosFixos.destroy();graficoCustosFixos=null;}renderizarControlesAvancados();
+ ordenarObjetosTela([...(obra.custosFixos||[])],'fixos',c=>c.valor*c.quantidade,c=>c.nome).filter(c=>categoriaEstaSelecionada(c.categoria)).forEach(c=>{const tr=document.createElement('tr');[c.nome+(c.ativo?'':' (inativo)'),c.fornecedor,c.categoria,brl(c.valor),c.quantidade,'A cada '+c.intervalo+' '+c.unidade,brl(c.ativo?ocorrenciasCusto(c,inicio,fim)*c.valor*c.quantidade:0)].forEach(v=>tr.append(criarCelulaCusto('td',v)));const td=document.createElement('td');if(obterPermissoesUsuario().dadosBase)[['Editar',()=>preencherCustoFixo(c)],[c.ativo?'Desativar':'Reativar',()=>alternarCustoFixo(c.id)]].forEach(([t,fn])=>{const btn=document.createElement('button');btn.className='border rounded px-2 py-1 m-1';btn.textContent=t;btn.onclick=fn;td.append(btn);});tr.append(td);table.append(tr);});host.append(table);document.getElementById('fixos-historico')?.remove();if(graficoCustosFixos){graficoCustosFixos.destroy();graficoCustosFixos=null;}renderizarControlesAvancados();
 }
 
 let graficoCustosFixos = null;
@@ -130,7 +130,7 @@ function linhasGraficoPorCampos(cfg,obra){
     else if(y?.tipo==='contagem')g.valor++;
     else{const header=campos.valor||encontrarColuna(p.headers,'valor');g.valor+=header?parseMonetario(row[header]):0;}
   });});
-  return [...grupos.values()].map(g=>({...g,valor:y?.tipo==='coluna'&&!numeric?g.valores.size:g.valor,texto:[...g.valores].join(', '),numerico:numeric||y?.tipo!=='coluna'})).sort((a,b)=>b.valor-a.valor).slice(0,parametrosSistema.maxGruposGrafico);
+  return [...grupos.values()].map(g=>({...g,valor:y?.tipo==='coluna'&&!numeric?g.valores.size:g.valor,texto:[...g.valores].join(', '),numerico:numeric||y?.tipo!=='coluna'})).sort((a,b)=>b.valor-a.valor).slice(0,cfg.tipo==='gauge'?Infinity:parametrosSistema.maxGruposGrafico);
 }
 function renderizarGraficoTabela(cfg,rows,canvas){
   if(!canvas)return;if(cfg.colunas?.length){renderizarTabelaColunas(cfg,canvas);return;}const box=canvas.parentElement;box.className='relative max-h-80 overflow-auto';canvas.remove();
@@ -144,7 +144,7 @@ function renderizarGraficoTabela(cfg,rows,canvas){
 
 // Preserva os tipos de gráfico existentes e agrega todos os títulos, inclusive campos textuais no eixo Y.
 const obterLinhasGraficoOriginal = obterLinhasGrafico;
-obterLinhasGrafico = function(cfg,obra,cats){return lerCampoBaseId(cfg.yField)||lerCampoBaseId(cfg.xField)?linhasGraficoPorCampos(cfg,obra):obterLinhasGraficoOriginal(cfg,obra,cats);};
+obterLinhasGrafico = function(cfg,obra,cats){const rows=lerCampoBaseId(cfg.yField)||lerCampoBaseId(cfg.xField)?linhasGraficoPorCampos(cfg,obra):obterLinhasGraficoOriginal(cfg,obra,cats);return ordenarObjetosTela(rows,'dashboard',r=>Number(r.valor??r[cfg.yField==='comparativo'?'realizado':cfg.yField]??r.realizado)||0,r=>r.label);};
 
 function resumoRecorrentes(obra){
  const registros=pagamentosDaObra(obra),padroes=detectarCustosRecorrentes(registros).filter(g=>categoriaEstaSelecionada(g.categoria));
@@ -153,7 +153,7 @@ function resumoRecorrentes(obra){
 }
 let graficoRecorrentes = null;
 function renderizarPagamentosRecorrentes(){
- const obra=obrasBD[obraAtivaID],host=document.getElementById('recorrentes-tabela');if(!obra||!host)return;const resumo=resumoRecorrentes(obra);document.getElementById('recorrentes-obra').textContent=obra.nome;
+ const obra=obrasBD[obraAtivaID],host=document.getElementById('recorrentes-tabela');if(!obra||!host)return;const resumo=resumoRecorrentes(obra);ordenarObjetosTela(resumo.linhas,'recorrentes',g=>g.pago,g=>g.fornecedor);document.getElementById('recorrentes-obra').textContent=obra.nome;
  renderizarCardsCustos(document.getElementById('recorrentes-kpis'),[['Padrões recorrentes',String(resumo.linhas.length)],['Pago recorrente nos filtros',brl(resumo.pago)],['Registros de pagamento',String(resumo.registros)],['Previsto das categorias vinculadas',brl(resumo.previsto)],['Saldo previsto − recorrente',brl(resumo.previsto-resumo.pago)],['Uso do previsto',resumo.previsto?(resumo.pago/resumo.previsto*100).toFixed(1)+'%':'N/P']]);
  document.getElementById('recorrentes-status').textContent='A recorrência é identificada no histórico completo. O total pago respeita os filtros de data e seleção. O orçamento integral de cada categoria é contado uma única vez; ele também cobre pagamentos não recorrentes. Registros sem data válida não entram.';
  host.replaceChildren();const table=document.createElement('table');table.className='min-w-full text-sm';const head=document.createElement('tr');['Fornecedor','Categoria','Meses no histórico','Média mensal histórica','Pago nos filtros','Pagamentos'].forEach(t=>head.append(criarCelulaCusto('th',t)));table.append(head);
@@ -178,3 +178,11 @@ async function alternarManutencao(){
 }
 setInterval(consultarManutencao,15000);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)consultarManutencao();});
+
+const pesquisaAntesTelas=pesquisarCustos;pesquisarCustos=function(termo){pesquisaAntesTelas(termo);graficoPesquisaCustos=aplicarGraficoFixo(graficoPesquisaCustos,'pesquisa');aplicarConfiguracoesTelas();};window.pesquisarCustos=pesquisarCustos;
+const previstoAntesTelas=renderizarPrevisto;renderizarPrevisto=function(){previstoAntesTelas();graficoPrevistoCustos=aplicarGraficoFixo(graficoPrevistoCustos,'previsto');aplicarConfiguracoesTelas();};
+const realizadoAntesTelas=renderizarDadosBase;renderizarDadosBase=function(){realizadoAntesTelas();graficoRealizadoCustos=aplicarGraficoFixo(graficoRealizadoCustos,'realizado');aplicarConfiguracoesTelas();};
+const fixosAntesTelas=renderizarCustosFixos;renderizarCustosFixos=function(){fixosAntesTelas();aplicarConfiguracoesTelas();};
+const recorrentesAntesTelas=renderizarPagamentosRecorrentes;renderizarPagamentosRecorrentes=function(){recorrentesAntesTelas();graficoRecorrentes=aplicarGraficoFixo(graficoRecorrentes,'recorrentes');aplicarConfiguracoesTelas();};
+
+for(const nome of ['sincronizarTodasPlanilhas','atualizarCampoObra','alternarStatusArquivado','alternarObraOculta','salvarConfiguracoesGerais','alterarPerfilUsuario','criarUsuarioDireto','aprovarSolicitacao','salvarDadosUsuario']){const original=window[nome];if(typeof original==='function')window[nome]=async function(...args){const resultado=await original(...args);await sinalizarAlteracaoCompartilhada(nome==='sincronizarTodasPlanilhas'?'planilhas':'parametros');return resultado;};}
