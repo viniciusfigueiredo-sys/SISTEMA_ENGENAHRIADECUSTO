@@ -248,7 +248,7 @@ const buscarCSV = (url) => new Promise((resolve, reject) => {
       if (res.errors?.length) return reject(res.errors.map(err => err.message).join("; "));
       if (data.length === 0) return resolve({ headers: [], rows: [] });
       if (data[0] && typeof data[0][0] === 'string' && /<!doctype html|<html/i.test(data[0][0])) {
-        return reject("O link não está público. Publique na Web como CSV.");
+        return reject("A resposta do Google não é um CSV legível. Confirme que a fonte é uma planilha nativa do Google Planilhas e que o link permite leitura pelo sistema.");
       }
 
       // Procura a linha que tem o cabeçalho real (ignora as linhas de título do ERP)
@@ -276,7 +276,13 @@ const buscarCSV = (url) => new Promise((resolve, reject) => {
       }
       resolve({ headers, rows: formatado });
     },
-    error: (err) => reject(err.message || "Erro ao baixar arquivo.")
+    error: (err) => {
+      const idPlanilhaRealizado = "1wZQhhLXwcpToKGy26gW1rHooGwUuRQMJ";
+      if (String(url).includes(idPlanilhaRealizado)) {
+        return reject("A fonte de Realizado está em formato Microsoft Excel (.XLSX), e a exportação CSV do sistema não consegue convertê-la. No Google Planilhas, use Arquivo > Salvar como Google Planilhas; depois cadastre aqui o link novo da cópia criada.");
+      }
+      reject(`Falha ao baixar o CSV. Verifique o link, o acesso de leitura e se o arquivo está no formato Google Planilhas. Detalhe: ${err.message || "erro de rede"}`);
+    }
   });
 });
 
