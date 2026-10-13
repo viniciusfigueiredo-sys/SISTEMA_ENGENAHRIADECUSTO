@@ -4,16 +4,20 @@ let selecaoMultipla = false;
 let periodoPagamento = { inicio:'', fim:'' };
 const cachePagamentosObra = new WeakMap();
 const brl = valor => Number(valor || 0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
-function dataPagamentoISO(valor) {
+function dataPagamentoISO(valor,ordem='br') {
   if(valor instanceof Date && !Number.isNaN(valor.valueOf()))return `${valor.getFullYear()}-${String(valor.getMonth()+1).padStart(2,'0')}-${String(valor.getDate()).padStart(2,'0')}`;
   const s=String(valor??'').trim();let m=s.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if(!m){const br=s.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})/);if(br)m=[br[0],br[3],br[2].padStart(2,'0'),br[1].padStart(2,'0')];}
+  if(!m){const br=s.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})/);if(br){const us=ordem==='us'||Number(br[2])>12&&Number(br[1])<=12;m=[br[0],br[3],(us?br[1]:br[2]).padStart(2,'0'),(us?br[2]:br[1]).padStart(2,'0')];}}
+  if(!m && /[A-Za-z]{3}/.test(s)){const date=new Date(s);if(!Number.isNaN(date.valueOf()))return dataPagamentoISO(date);}
   if(!m && /^\d{5}(\.\d+)?$/.test(s)){const d=new Date(Date.UTC(1899,11,30)+Math.floor(Number(s))*86400000);return d.toISOString().slice(0,10);}
   if(!m)return '';const date=new Date(Number(m[1]),Number(m[2])-1,Number(m[3]));
   if(date.getFullYear()!==Number(m[1])||date.getMonth()+1!==Number(m[2])||date.getDate()!==Number(m[3]))return '';
   return `${m[1]}-${m[2]}-${m[3]}`;
 }
 function colunaPagamento(planilha){return planilha?.headers?.find(h=>/data.*(pagamento|credito|debito)|pagamento.*data|data.*baixa/.test(normalizarTextoUI(tituloColunaBase(planilha,h))));}
+const cacheOrdemData = new WeakMap();
+function ordemDataPlanilha(planilha,header){let mapa=cacheOrdemData.get(planilha);if(!mapa){mapa=new Map();cacheOrdemData.set(planilha,mapa);}if(mapa.has(header))return mapa.get(header);let br=0,us=0;for(const row of (planilha.rows||[]).slice(0,1000)){const m=String(row[header]||'').match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);if(m){if(Number(m[1])>12)br++;if(Number(m[2])>12)us++;}}const ordem=us>br?'us':'br';mapa.set(header,ordem);return ordem;}
+function dataPagamentoLinha(planilha,row){const header=colunaPagamento(planilha);return header?dataPagamentoISO(row[header],ordemDataPlanilha(planilha,header)):'';}
 function categoriaEstaSelecionada(cat){const valores=categoriasSelecionadas.length?categoriasSelecionadas:filtrosDashboard.categoria?[filtrosDashboard.categoria]:[];return !valores.length||valores.some(c=>normalizarTextoUI(c)===normalizarTextoUI(cat));}
 function selecionarCampoGrafico(planilha,header,valor,forcarMultipla=false){
   if(!planilha)return;const filtro=filtrosDashboard.base;let values=[];
@@ -28,7 +32,7 @@ function alternarCategoriaAcumulada(cat,forcarMultipla=false){
 }
 function passaPeriodoPagamento(planilha,row){
   if(!periodoPagamento.inicio&&!periodoPagamento.fim || planilha?.tipo==='Previsto')return true;
-  const header=colunaPagamento(planilha),data=header?dataPagamentoISO(row[header]):'';
+  const data=dataPagamentoLinha(planilha,row);
   return !!data&&(!periodoPagamento.inicio||data>=periodoPagamento.inicio)&&(!periodoPagamento.fim||data<=periodoPagamento.fim);
 }
 function aplicarPeriodoPagamento(inicio,fim){if(inicio&&fim&&inicio>fim)return alert('A data inicial deve ser anterior à final.');periodoPagamento={inicio,fim};dadosBasePaginaAtual=0;atualizarDashboard();}
@@ -66,7 +70,7 @@ function pagamentosDaObra(obra){
   const registros=[];dadosBasePlanilhas.filter(p=>p.tipo==='Realizado').forEach(p=>{
     let cache=cachePagamentosObra.get(p);if(!cache){cache=new Map();cachePagamentosObra.set(p,cache);}const key=obra.id||obra.cc||obra.nome;
     if(!cache.has(key)){const campos=obterCamposRealizado(p.headers,p.rows,p.id),data=colunaPagamento(p),fornecedor=p.headers.find(h=>/^(fornecedor|razao social)$/.test(normalizarTextoUI(tituloColunaBase(p,h))));
-      cache.set(key,linhasDaObra(p,obra).map(row=>({planilha:p,row,data:data?dataPagamentoISO(row[data]):'',categoria:String(row[campos.categoria]||'Outros').trim(),fornecedor:String(row[fornecedor]||'Não informado').trim(),valor:campos.valor?parseMonetario(row[campos.valor]):0})));}
+      cache.set(key,linhasDaObra(p,obra).map(row=>({planilha:p,row,data:data?dataPagamentoLinha(p,row):'',categoria:String(row[campos.categoria]||'Outros').trim(),fornecedor:String(row[fornecedor]||'Não informado').trim(),valor:campos.valor?parseMonetario(row[campos.valor]):0})));}
     registros.push(...cache.get(key));
   });return registros;
 }

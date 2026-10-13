@@ -364,7 +364,7 @@ function parseMonetario(valorStr) {
 }
 
 function formatarMatrizPlanilha(matriz) {
-  const dados = (matriz || []).map(linha => Array.isArray(linha) ? linha.map(celula => celula == null ? "" : String(celula).trim()) : []);
+  const dados = (matriz || []).map(linha => Array.isArray(linha) ? linha.map(celula => celula == null ? "" : celula instanceof Date ? `${celula.getFullYear()}-${String(celula.getMonth()+1).padStart(2,'0')}-${String(celula.getDate()).padStart(2,'0')}` : String(celula).trim()) : []);
   if (!dados.length) return { headers: [], rows: [] };
   let headerIndex = -1;
   let melhorPontuacao = 0;
@@ -418,7 +418,7 @@ function buscarPaginaPlanilhaGoogle(id, gid, offset, limite = GOOGLE_SHEETS_PAGE
       }
       try {
         const tabela = resposta.table;
-        const matriz = (tabela?.rows || []).map(linha => (linha.c || []).map(celula => celula ? (celula.f ?? celula.v ?? "") : ""));
+        const matriz = (tabela?.rows || []).map(linha => (linha.c || []).map(celula => {if(!celula)return '';const match=String(celula.v??'').match(/^Date\((\d+),(\d+),(\d+)/);return match?`${match[1]}-${String(Number(match[2])+1).padStart(2,'0')}-${String(match[3]).padStart(2,'0')}`:(celula.f??celula.v??'');}));
         finalizar(null, { matriz, totalLinhas: tabela?.rows?.length || 0 });
       } catch (erro) { finalizar(erro); }
     };
