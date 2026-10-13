@@ -1635,7 +1635,8 @@ function renderizarGridGraficosDinamicos(obra, cats) {
       graficosInstancias[cfg.id] = new Chart(ctx, {
         type: cfg.tipo,
         data: { labels, datasets },
-        options: { responsive: true, maintainAspectRatio: false, indexAxis: cfg.tipo === 'bar' && cfg.horizontal ? 'y' : 'x', onClick: (event, elements) => {
+        options: { responsive: true, maintainAspectRatio: false, indexAxis: cfg.tipo === 'bar' && cfg.horizontal ? 'y' : 'x', interaction:{mode:'nearest',intersect:false}, onClick: (event, elements, chart) => {
+          if(!elements?.length)elements=chart.getElementsAtEventForMode(event,'nearest',{intersect:false},true);
           if (!elements?.length || !rows.length) return;
           const index=elements[0].index, selected=rows[index]; if (!selected) return;
           const campoX=lerCampoBaseId(cfg.xField);
