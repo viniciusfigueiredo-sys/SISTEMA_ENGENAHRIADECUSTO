@@ -806,6 +806,9 @@ function renderizarControlesFiltroDadosBase(planilha, obraHeader, categoriaHeade
 function renderizarFontesRealizado() {
   const container = document.getElementById('fontes-realizado-config');
   if (!container) return;
+  if (!configGlobal.planilhasRealizado.length && configGlobal.urlRealizado) {
+    configGlobal.planilhasRealizado.push({ id: 'realizado-principal', nome: 'Realizado', url: configGlobal.urlRealizado, colunaValor: configGlobal.colunaValorRealizado || '' });
+  }
   container.replaceChildren();
   configGlobal.planilhasRealizado.forEach((fonte, indice) => {
     const linha = document.createElement('div');
