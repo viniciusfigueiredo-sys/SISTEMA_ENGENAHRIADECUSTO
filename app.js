@@ -97,6 +97,7 @@ function atualizarSeletoresNovoGrafico() {
   y.replaceChildren(...yOpts.map(([v,t])=>new Option(t,v)));
   y.value=yOpts.some(([v])=>v===oldY)?oldY:(yOpts[0]?.[0] || 'previsto');
   x.onchange=()=>{ atualizarSeletoresNovoGrafico(); };
+  renderizarColunasNovoGrafico();
 }
 
 let configGlobal = { titulo: "Brasil Pontes", urlRealizado: "", planilhasRealizado: [] };
@@ -136,7 +137,7 @@ async function garantirBaseConsulta() {
 
 function estadoVelocimetro(previsto, realizado) {
   const uso = previsto > 0 ? realizado / previsto * 100 : null;
-  return {uso,cor:uso === null ? (realizado > 0 ? '#dc2626' : '#64748b') : uso > 100 ? '#dc2626' : uso >= 85 ? '#d97706' : '#059669',texto:uso === null ? (realizado > 0 ? 'N/P — Não previsto' : 'Sem orçamento previsto') : uso > 100 ? 'Acima do previsto' : uso >= 85 ? 'Atenção' : 'Dentro do previsto'};
+  return {uso,cor:uso === null ? (realizado > 0 ? '#dc2626' : '#64748b') : uso > parametrosSistema.farolVermelho ? '#dc2626' : uso >= parametrosSistema.farolAmarelo ? '#d97706' : '#059669',texto:uso === null ? (realizado > 0 ? 'N/P — Não previsto' : 'Sem orçamento previsto') : uso > parametrosSistema.farolVermelho ? 'Acima do previsto' : uso >= parametrosSistema.farolAmarelo ? 'Atenção' : 'Dentro do previsto'};
 }
 
 function renderizarVelocimetros(id, total, detalhes = []) {
@@ -150,12 +151,12 @@ function renderizarVelocimetros(id, total, detalhes = []) {
     const box=document.createElement('div'); box.className='text-center border rounded-lg p-3';
     const label=document.createElement('p');label.className='font-bold text-sm text-gray-700';label.textContent=dado.label;box.appendChild(label);
     const estado=estadoVelocimetro(Number(dado.previsto)||0,Number(dado.realizado)||0);
-  const ponteiro=estado.uso===null?(Number(dado.realizado)>0?125:0):estado.uso;
-  const angle=Math.PI - Math.min(150,Math.max(0,ponteiro))/150*Math.PI;
+  const ponteiro=estado.uso===null?(Number(dado.realizado)>0?(parametrosSistema.farolVermelho+parametrosSistema.velocimetroMax)/2:0):estado.uso;
+  const angle=Math.PI - Math.min(parametrosSistema.velocimetroMax,Math.max(0,ponteiro))/parametrosSistema.velocimetroMax*Math.PI;
     const nx=120+75*Math.cos(angle), ny=108-75*Math.sin(angle);
-    const arco=(start,end)=>{const p=n=>[120+90*Math.cos(Math.PI-n/150*Math.PI),108-90*Math.sin(Math.PI-n/150*Math.PI)];const a=p(start),b=p(end);return `M ${a[0]} ${a[1]} A 90 90 0 0 1 ${b[0]} ${b[1]}`;};
+    const arco=(start,end)=>{const p=n=>[120+90*Math.cos(Math.PI-n/parametrosSistema.velocimetroMax*Math.PI),108-90*Math.sin(Math.PI-n/parametrosSistema.velocimetroMax*Math.PI)];const a=p(start),b=p(end);return `M ${a[0]} ${a[1]} A 90 90 0 0 1 ${b[0]} ${b[1]}`;};
     const graphic=document.createElement('div');
-    graphic.innerHTML=`<svg viewBox="0 0 240 135" style="width:100%;max-width:300px;display:block;margin:auto" role="img"><title>Consumo do previsto</title><path d="${arco(0,85)}" fill="none" stroke="#10b981" stroke-width="17"/><path d="${arco(85,100)}" fill="none" stroke="#f59e0b" stroke-width="17"/><path d="${arco(100,150)}" fill="none" stroke="#ef4444" stroke-width="17"/><text x="24" y="132" font-size="10">0%</text><text x="188" y="132" font-size="10">150%+</text><line x1="120" y1="108" x2="${nx}" y2="${ny}" stroke="#0f172a" stroke-width="5"/><circle cx="120" cy="108" r="7" fill="#0f172a"/></svg>`;
+    graphic.innerHTML=`<svg viewBox="0 0 240 135" style="width:100%;max-width:300px;display:block;margin:auto" role="img"><title>Consumo do previsto</title><path d="${arco(0,parametrosSistema.farolAmarelo)}" fill="none" stroke="#10b981" stroke-width="17"/><path d="${arco(parametrosSistema.farolAmarelo,parametrosSistema.farolVermelho)}" fill="none" stroke="#f59e0b" stroke-width="17"/><path d="${arco(parametrosSistema.farolVermelho,parametrosSistema.velocimetroMax)}" fill="none" stroke="#ef4444" stroke-width="17"/><text x="24" y="132" font-size="10">0%</text><text x="188" y="132" font-size="10">${parametrosSistema.velocimetroMax}%+</text><line x1="120" y1="108" x2="${nx}" y2="${ny}" stroke="#0f172a" stroke-width="5"/><circle cx="120" cy="108" r="7" fill="#0f172a"/></svg>`;
     box.appendChild(graphic);
     const valor=document.createElement('p');valor.style.color=estado.cor;valor.className='text-xl font-black';valor.textContent=estado.uso===null?'N/P':estado.uso.toLocaleString('pt-BR',{maximumFractionDigits:1})+'%';box.appendChild(valor);
     const texto=document.createElement('p');texto.className='text-xs font-bold';texto.textContent=estado.texto;box.appendChild(texto);
@@ -168,13 +169,13 @@ function renderizarVelocimetros(id, total, detalhes = []) {
   const individual=document.createElement('div');grid.appendChild(individual);
   if(detalhes.length){const select=document.createElement('select');select.className='border rounded p-2 text-sm w-full mb-2';select.setAttribute('aria-label','Selecionar categoria ou item do velocímetro');detalhes.forEach((d,i)=>select.appendChild(new Option(d.label,String(i))));if(detalhes[Number(antiga)])select.value=antiga;const card=document.createElement('div');individual.append(select,card);const draw=()=>criar(card,detalhes[Number(select.value)]);select.onchange=draw;draw();}
   else criar(individual,{label:'Categoria ou item',previsto:0,realizado:0,nota:'Selecione uma obra ou pesquise itens com dados disponíveis.'});
-  const legenda=document.createElement('p');legenda.className='text-xs text-gray-600';legenda.textContent='Verde: abaixo de 85% · Amarelo: de 85% a 100% · Vermelho: acima de 100%. N/P: realizado sem orçamento; o ponteiro indica a faixa vermelha, sem percentual calculável. O ponteiro termina em 150%; o percentual exibe o valor integral.';host.appendChild(legenda);
+  const legenda=document.createElement('p');legenda.className='text-xs text-gray-600';legenda.textContent=legendaFarol()+' Ponteiro limitado a '+parametrosSistema.velocimetroMax+'%; percentual integral exibido.';host.appendChild(legenda);
 }
 let dadosBaseAtivo = null;
 let dadosBasePaginaAtual = 0;
 let assinaturaBaseAnaliseRealizado = '';
 let diagnosticoBaseAnaliseRealizado = '';
-const DADOS_BASE_PAGINA_TAMANHO = 100;
+let DADOS_BASE_PAGINA_TAMANHO = 100;
 const BASE_DB_NAME = 'sistema_bp_dados';
 const BASE_STORE_NAME = 'planilhas';
 
@@ -576,7 +577,7 @@ window.onload = async function() {
 
     if (supabaseClient) {
       const { data: config } = await supabaseClient.from('configuracoes').select('*').limit(1).single();
-      if (config) { configGlobal.titulo = config.titulo || "Brasil Pontes"; configGlobal.urlRealizado = config.url_realizado || "";configGlobal.idConfigSupabase=config.id;configGlobal.manutencao=!!config.perfis_json?.__sistema?.manutencao;if(config.perfis_json && typeof config.perfis_json==='object'){Object.entries(config.perfis_json).filter(([p])=>!['__proto__','constructor','prototype','Mestre','__sistema'].includes(p)).forEach(([p,regras])=>{permissoesPerfis[p]={...(PERMISSOES_PADRAO[p]||PERMISSOES_PADRAO.Engenheiro),...regras,configuracoes:false};});localStorage.setItem('permissoes_bp',JSON.stringify(permissoesPerfis));} }
+      if (config) { configGlobal.titulo = config.titulo || "Brasil Pontes"; configGlobal.urlRealizado = config.url_realizado || "";configGlobal.idConfigSupabase=config.id;configGlobal.manutencao=!!config.perfis_json?.__sistema?.manutencao;configGlobal.assinaturaPerfis=JSON.stringify(config.perfis_json||{});carregarParametrosSistema(config.perfis_json?.__sistema);if(config.perfis_json && typeof config.perfis_json==='object'){Object.entries(config.perfis_json).filter(([p])=>!['__proto__','constructor','prototype','Mestre','__sistema'].includes(p)).forEach(([p,regras])=>{permissoesPerfis[p]={...(PERMISSOES_PADRAO[p]||PERMISSOES_PADRAO.Engenheiro),...regras};});localStorage.setItem('permissoes_bp',JSON.stringify(permissoesPerfis));} }
       const linkRealizadoDesatualizado = ["1S41dXyTC2Y_SJjD3iw86WaUqi0OWNxyf", "1v3FrPW55ofd8j3-rOqyyZlw1HHMJuf6", "1wZQhhLXwcpToKGy26gW1rHooGwUuRQMJ"].some(id => String(config?.url_realizado || "").includes(id));
       if (migrarLinkPlanilhaRealizado() && linkRealizadoDesatualizado) {
         const { error } = await supabaseClient.from('configuracoes').update({ url_realizado: configGlobal.urlRealizado }).eq('id', config.id);
@@ -734,7 +735,7 @@ function renderizarPrevisto() {
   if(kpis.children[0]?.children[1])kpis.children[0].children[1].textContent=moeda(totalFiltrado);
   if(kpis.children[1]?.children[1])kpis.children[1].children[1].textContent=String(resumo.size);
   if(kpis.children[2]?.children[1])kpis.children[2].children[1].textContent=String(rows.length);
-  const chartData=[...resumo.entries()].sort((a,b)=>b[1]-a[1]).slice(0,12);const canvas=document.getElementById('previsto-chart');
+  const chartData=[...resumo.entries()].sort((a,b)=>b[1]-a[1]).slice(0,parametrosSistema.maxCategoriasGrafico);const canvas=document.getElementById('previsto-chart');
   if(chartData.length&&canvas&&typeof Chart!=='undefined'){graficoPrevistoCustos=new Chart(canvas.getContext('2d'),{type:'bar',data:{labels:chartData.map(x=>x[0]),datasets:[{label:'Previsto',data:chartData.map(x=>x[1]),backgroundColor:'#00CFFF',borderColor:'#009fc4',borderWidth:1}]},options:{responsive:true,maintainAspectRatio:false,onClick:(event,elements,chart)=>{const pontos=elements?.length?elements:chart.getElementsAtEventForMode(event,'nearest',{intersect:false},true);const label=chartData[pontos?.[0]?.index]?.[0];if(label===undefined)return;if(categoriaHeader||!planilha)selecionarCategoriaGrafico(label);else{const header=descricaoHeader;const atual=filtrosDashboard.base;filtrosDashboard.base=atual?.planilhaId===planilha.id&&atual.header===header&&atual.value===label?null:{planilhaId:planilha.id,planilhaNome:planilha.nome,header,value:label};atualizarDashboard();}},interaction:{mode:'nearest',intersect:false},indexAxis:chartData.length>7?'y':'x',plugins:{legend:{position:'bottom'},tooltip:{callbacks:{label:ctx=>'Previsto: '+moeda(ctx.raw)}}},scales:{x:{beginAtZero:true},y:{beginAtZero:true}}}});}
   else {const vazio=document.getElementById('previsto-chart-vazio');if(vazio){vazio.textContent=chartData.length?'Gráfico indisponível: biblioteca de gráficos não carregada.':'Não há categorias previstas para desenhar o gráfico.';vazio.classList.remove('hidden');}}
   if(!planilha){const vazio=document.createElement('div');vazio.className='p-8 text-center text-gray-500';vazio.textContent='Não há planilha de Previsto importada para esta obra. Cadastre a planilha nas configurações da obra e sincronize os dados.';host.appendChild(vazio);return;}
@@ -800,7 +801,7 @@ function pesquisarCustos(termo) {
   const grupos=new Map();const grupo=categoria=>{const key=norm(categoria)||'item';if(!grupos.has(key))grupos.set(key,{categoria:categoria||'Item encontrado',previsto:0,realizado:0});return grupos.get(key);};
   if(temPrevistoDireto)previstosDiretos.forEach(x=>grupo(x.categoria).previsto+=x.valor);else prevCats.forEach(c=>grupo(c).previsto+=(obra.categoriasPrevisto[c]||0)*multiplicadorCenario);
   dados.forEach(x=>grupo(x.categoria).realizado+=x.valor);
-  const linhasGrafico=[...grupos.values()].sort((a,b)=>(b.previsto+b.realizado)-(a.previsto+a.realizado)).slice(0,12);
+  const linhasGrafico=[...grupos.values()].sort((a,b)=>(b.previsto+b.realizado)-(a.previsto+a.realizado)).slice(0,parametrosSistema.maxCategoriasGrafico);
   const detalhesVelocimetro=[...grupos.values()].map(g=>({label:'Categoria: '+g.categoria,previsto:g.previsto,realizado:g.realizado}));
   const itens=new Map();
   const itemChave=x=>{const value=normalizarTexto(x.item || x.descricao || '');return ['N/D','N/A','0',''].includes(value)?'':value;};
@@ -819,7 +820,7 @@ function pesquisarCustos(termo) {
   if(usandoResumo && (periodoPagamento.inicio||periodoPagamento.fim))aviso.textContent='Carregue o detalhamento do Realizado para filtrar pagamentos por data. Os resumos por categoria não contêm datas.';
   else if(usandoResumo)aviso.textContent=consultaBaseEmAndamento?'Carregando o detalhamento da planilha. Por enquanto, a pesquisa usa os totais por categoria sincronizados.':'A pesquisa usa os totais por categoria sincronizados. Abra novamente esta aba para carregar o detalhamento por item e fornecedor.';
   if(previstosDiretos.length){const sec=document.createElement('section');sec.className='mb-4';const t=document.createElement('h3');t.className='font-bold text-[#003399] p-3';t.textContent='Itens previstos encontrados ('+previstosDiretos.length+')';sec.appendChild(t);sec.appendChild(criarTabelaPesquisa(['Categoria','Item','Descrição','Previsto'],previstosDiretos.map(x=>[x.categoria,x.item,x.descricao,moeda(x.valor)])));host.appendChild(sec);}
-  if(dados.length){const sec=document.createElement('section');const t=document.createElement('h3');t.className='font-bold text-[#003399] p-3';t.textContent='Registros realizados encontrados ('+dados.length+')';sec.appendChild(t);sec.appendChild(criarTabelaPesquisa(['Planilha','Categoria','Item','Descrição','Realizado'],dados.slice(0,500).map(x=>[x.planilha,x.categoria,x.item,x.descricao,moeda(x.valor)])));host.appendChild(sec);if(dados.length>500){const n=document.createElement('p');n.className='text-xs text-gray-500 p-3';n.textContent='Exibindo os primeiros 500 de '+dados.length+' registros realizados.';host.appendChild(n);}}
+  if(dados.length){const sec=document.createElement('section');const t=document.createElement('h3');t.className='font-bold text-[#003399] p-3';t.textContent='Registros realizados encontrados ('+dados.length+')';sec.appendChild(t);sec.appendChild(criarTabelaPesquisa(['Planilha','Categoria','Item','Descrição','Realizado'],dados.slice(0,parametrosSistema.maxRegistrosPesquisa).map(x=>[x.planilha,x.categoria,x.item,x.descricao,moeda(x.valor)])));host.appendChild(sec);if(dados.length>parametrosSistema.maxRegistrosPesquisa){const n=document.createElement('p');n.className='text-xs text-gray-500 p-3';n.textContent='Exibindo os primeiros '+parametrosSistema.maxRegistrosPesquisa+' de '+dados.length+' registros realizados.';host.appendChild(n);}}
 }
 async function imprimirRelatorioPesquisa(){
   if(!obterPermissoesUsuario().relatorios)return alert('Seu perfil não pode imprimir relatórios.');
@@ -973,7 +974,7 @@ function renderizarIndicadoresRealizado(planilha, linhas=[]) {
   }
   renderizarVelocimetros('realizado-velocimetros',{previsto:detalhes.filter(d=>!d.label.startsWith('Item: ')).reduce((s,d)=>s+d.previsto,0),realizado:total,nota:'Previsto das categorias presentes nos filtros. Filtros de registros não fracionam o orçamento da categoria.'},detalhes);
   cards.forEach(([label,value])=>{const card=document.createElement('article');card.className='bg-white p-4 rounded-xl shadow-sm border border-gray-200';const l=document.createElement('p');l.className='text-xs font-bold text-gray-500 uppercase';l.textContent=label;const v=document.createElement('p');v.className='text-lg font-black text-[#003399] mt-1';v.textContent=value;card.append(l,v);host.appendChild(card);});
-  const chartData=[...grupos.entries()].sort((a,b)=>b[1]-a[1]).slice(0,12);const canvas=document.getElementById('realizado-chart');
+  const chartData=[...grupos.entries()].sort((a,b)=>b[1]-a[1]).slice(0,parametrosSistema.maxCategoriasGrafico);const canvas=document.getElementById('realizado-chart');
   if(chartData.length&&canvas&&typeof Chart!=='undefined'){graficoRealizadoCustos=new Chart(canvas.getContext('2d'),{type:'bar',data:{labels:chartData.map(x=>x[0]),datasets:[{label:'Realizado',data:chartData.map(x=>x[1]),backgroundColor:'#003399',borderColor:'#002266',borderWidth:1}]},options:{responsive:true,maintainAspectRatio:false,onClick:cliqueCategoriaGrafico(chartData.map(x=>x[0])),interaction:{mode:'nearest',intersect:false},indexAxis:chartData.length>7?'y':'x',plugins:{legend:{position:'bottom'},tooltip:{callbacks:{label:ctx=>'Realizado: '+moeda(ctx.raw)}}},scales:{x:{beginAtZero:true},y:{beginAtZero:true}}}});}
   else {const vazio=document.getElementById('realizado-chart-vazio');if(vazio){vazio.textContent=chartData.length?'Gráfico indisponível: biblioteca de gráficos não carregada.':'Não há dados realizados desta obra para desenhar o gráfico.';vazio.classList.remove('hidden');}}
 }
@@ -1341,7 +1342,7 @@ function obterRealizadoFiltradoDashboard(obra) {
 
 function classificarFarol(prev, real) {
   const uso = prev > 0 ? (real / prev) * 100 : (real > 0 ? 999 : 0);
-  return uso > 100 || (prev === 0 && real > 0) ? 'red' : uso >= 85 ? 'amber' : 'green';
+  return uso > parametrosSistema.farolVermelho || (prev === 0 && real > 0) ? 'red' : uso >= parametrosSistema.farolAmarelo ? 'amber' : 'green';
 }
 
 function renderizarInsightsDashboard(linhas, totalPrevisto, totalRealizado, saldo, idc) {
@@ -1366,9 +1367,9 @@ function renderizarInsightsDashboard(linhas, totalPrevisto, totalRealizado, sald
 
   const pressionadas=linhas.filter(l=>l.previsto>0).sort((a,b)=>uso(b)-uso(a));
   const pressao=criarCard('4. Categorias mais pressionadas');
-  const alta=pressionadas.filter(l=>uso(l)>=85).slice(0,5);
+  const alta=pressionadas.filter(l=>uso(l)>=parametrosSistema.farolAmarelo).slice(0,5);
   if(alta.length) lista(pressao,alta,l=>l.cat+': '+pct(uso(l))+' do previsto usado · saldo '+moeda(l.previsto-l.realizado));
-  else {const pmsg=document.createElement('p');pmsg.className='text-xs text-emerald-800';pmsg.textContent=pressionadas.length?'Nenhuma categoria atingiu 85% do previsto. Mais próxima do limite: '+pressionadas[0].cat+' ('+pct(uso(pressionadas[0]))+').':'Não há valores previstos para calcular o comprometimento.';pressao.appendChild(pmsg);}
+  else {const pmsg=document.createElement('p');pmsg.className='text-xs text-emerald-800';pmsg.textContent=pressionadas.length?'Nenhuma categoria atingiu '+parametrosSistema.farolAmarelo+'% do previsto. Mais próxima do limite: '+pressionadas[0].cat+' ('+pct(uso(pressionadas[0]))+').':'Não há valores previstos para calcular o comprometimento.';pressao.appendChild(pmsg);}
 
   const cobertura=criarCard('5. Cobertura e qualidade da base');
   const semPrevisto=linhas.filter(l=>l.previsto===0&&l.realizado>0), semRealizado=linhas.filter(l=>l.previsto>0&&l.realizado===0);
@@ -1378,7 +1379,7 @@ function renderizarInsightsDashboard(linhas, totalPrevisto, totalRealizado, sald
 
   const observacoes=[];
   if(alertas.length)observacoes.push(alertas.length+' categoria(s) precisam de conferência por atenção ou estouro.');
-  else observacoes.push('Nenhuma categoria atingiu 85% do previsto nos filtros atuais.');
+  else observacoes.push('Nenhuma categoria atingiu '+parametrosSistema.farolAmarelo+'% do previsto nos filtros atuais.');
   if(custos.length&&totalRealizado>0){const top3=custos.slice(0,3).reduce((acc,l)=>acc+l.realizado,0);observacoes.push('As três maiores categorias concentram '+pct(top3/totalRealizado*100)+' do realizado.');}
   if(semPrevisto.length)observacoes.push('Confira as categorias N/P e complete o orçamento previsto, se aplicável.');
   const leitura=document.createElement('div'); leitura.className='mt-2 border-t border-slate-200 pt-2';
@@ -1481,6 +1482,7 @@ function atualizarDashboard() {
     return { cat, previsto, realizado, farol: classificarFarol(previsto, realizado) };
   });
   const linhasVisiveis = linhas.filter(l => categoriaEstaSelecionada(l.cat) && (!filtrosDashboard.farol || l.farol === filtrosDashboard.farol));
+  ordenarDemonstrativo(linhasVisiveis);
   linhasDashboardVisiveis = linhasVisiveis;
   renderizarSelecaoInterativa();renderizarControlesAvancados();
   const pAj = linhasVisiveis.reduce((s, l) => s + l.previsto, 0);
@@ -1505,8 +1507,8 @@ function atualizarDashboard() {
     const percUso = prev > 0 ? (real / prev) * 100 : (real > 0 ? 999 : 0);
 
     let cls = ''; let txt = ''; let icn = ''; let cor = '';
-    if (percUso > 100 || (prev === 0 && real > 0)) { cls = 'bg-red-100 text-red-800 border border-red-200'; txt = prev === 0 ? 'N/P' : 'ESTOURADO'; icn = '🔴'; cor = 'text-red-600'; }
-    else if (percUso >= 85) { cls = 'bg-amber-100 text-amber-800 border border-amber-200'; txt = 'ATENÇÃO'; icn = '🟡'; cor = 'text-amber-600'; }
+    if (percUso > parametrosSistema.farolVermelho || (prev === 0 && real > 0)) { cls = 'bg-red-100 text-red-800 border border-red-200'; txt = prev === 0 ? 'N/P' : 'ESTOURADO'; icn = '🔴'; cor = 'text-red-600'; }
+    else if (percUso >= parametrosSistema.farolAmarelo) { cls = 'bg-amber-100 text-amber-800 border border-amber-200'; txt = 'ATENÇÃO'; icn = '🟡'; cor = 'text-amber-600'; }
     else { cls = 'bg-emerald-100 text-emerald-800 border border-emerald-200'; txt = 'SEGURO'; icn = '🟢'; cor = 'text-emerald-600'; }
 
     const row = document.createElement('tr'); row.className = 'hover:bg-blue-50 border-b cursor-pointer'; row.tabIndex=0;row.setAttribute('role','button');row.setAttribute('aria-label','Filtrar categoria '+cat);row.onclick=()=>selecionarCategoriaGrafico(cat);row.setAttribute('aria-pressed',String(categoriaEstaSelecionada(cat)&&(categoriasSelecionadas.length>0||!!filtrosDashboard.categoria)));const sel=document.createElement('input');sel.type='checkbox';sel.checked=(categoriasSelecionadas.length>0||!!filtrosDashboard.categoria)&&categoriaEstaSelecionada(cat);sel.setAttribute('aria-label','Somar '+cat);sel.onclick=e=>{e.stopPropagation();alternarCategoriaAcumulada(cat,true);};row.appendChild(Object.assign(document.createElement('td'),{className:'p-2'})).appendChild(sel);row.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();selecionarCategoriaGrafico(cat);}};
@@ -1539,6 +1541,7 @@ function atualizarDashboard() {
   const statusBase = document.getElementById('dashboard-base-status');
   if (statusBase) statusBase.textContent = diagnosticoBaseAnaliseRealizado;
   renderizarFiltrosBaseDashboard();
+  aplicarParametrosDemonstrativo();
   renderizarGridGraficosDinamicos(obra, cats);
   if(!document.getElementById('view-custos-fixos')?.classList.contains('hidden'))renderizarCustosFixos();
   if(!document.getElementById('view-recorrentes')?.classList.contains('hidden'))renderizarPagamentosRecorrentes();
@@ -1565,7 +1568,7 @@ function obterLinhasGrafico(cfg, obra, cats) {
       const grupo=grupos.get(label); grupo.contagem++;
       if (campoY?.tipo==='coluna' && campoY.planilhaId===planilha.id) grupo.valor+=parseMonetario(r[campoY.header]);
     });
-    return [...grupos.values()].map(g=>({...g,valor:campoY?.tipo==='contagem'?g.contagem:g.valor})).sort((a,b)=>b.valor-a.valor).slice(0,100);
+    return [...grupos.values()].map(g=>({...g,valor:campoY?.tipo==='contagem'?g.contagem:g.valor})).sort((a,b)=>b.valor-a.valor).slice(0,parametrosSistema.maxGruposGrafico);
   }
   if (cfg.xField === 'obra') {
     return Object.entries(obrasBD || {}).filter(([, o]) => !o.oculta && (o.status === 'Ativa' || usuarioAutenticado?.perfil === 'Mestre')).map(([id, o]) => {
@@ -1649,14 +1652,14 @@ function abrirModalMeusGraficos() {
 }
 function fecharModalMeusGraficos() { document.getElementById('modal-meus-graficos').classList.add('hidden'); }
 function abrirModalConfiguracoes() {
-  if (!obterPermissoesUsuario().configuracoes) return alert('Seu perfil não tem permissão para alterar as configurações.');
+  if (!podeAbrirConfiguracoes()) return alert('Seu perfil não tem permissão para alterar as configurações.');
   document.getElementById('config-app-title').value = configGlobal.titulo || "";
   if (!configGlobal.planilhasRealizado.length && configGlobal.urlRealizado) {
     configGlobal.planilhasRealizado = [{ id: 'realizado-principal', nome: 'Realizado', url: configGlobal.urlRealizado }];
   }
   renderizarFontesRealizado();
   renderizarTabelaGestaoObras();
-  document.getElementById('modal-configuracoes').classList.remove('hidden');
+  renderizarConfiguracoesParametros();aplicarAcessoConfiguracoes();document.getElementById('modal-configuracoes').classList.remove('hidden');
 }
 
 function fecharModalConfiguracoes() { document.getElementById('modal-configuracoes').classList.add('hidden'); }
@@ -1668,7 +1671,7 @@ function trocarAbaConfig(aba) {
   });
   document.getElementById(`cfg-aba-${aba}`).classList.remove('hidden');
   document.getElementById(`tab-btn-${aba}`).className = "pb-2 border-b-2 border-[#003399] text-[#003399] font-bold";
-  if (aba === 'obras') renderizarTabelaGestaoObras();
+  if (aba === 'obras') renderizarTabelaGestaoObras();aplicarAcessoConfiguracoes();
 }
 
 function renderizarTabelaGestaoObras() {
@@ -1693,6 +1696,7 @@ function renderizarTabelaGestaoObras() {
 }
 
 async function atualizarCampoObra(id, campo, valor) {
+  if(!podeConfigurar('obras'))return alert('Sem permissão para gerir obras.');
   const obra=obrasBD[id]; if (!obra) return;
   const anterior=obra[campo]; obra[campo]=String(valor ?? '').trim();
   if (campo==='urlPrevistoCSV' && obra[campo]) obra.previstoArquivoLocal=false;
@@ -1712,6 +1716,7 @@ async function atualizarCampoObra(id, campo, valor) {
 }
 
 async function alternarStatusArquivado(id) {
+ if(!podeConfigurar('obras'))return alert('Sem permissão para gerir obras.');
   if (obrasBD[id]) {
     obrasBD[id].status = obrasBD[id].status === 'Ativa' ? 'Arquivada' : 'Ativa';
     localStorage.setItem('obras_bp', JSON.stringify(obrasBD));
@@ -1721,7 +1726,7 @@ async function alternarStatusArquivado(id) {
 }
 
 async function alternarObraOculta(id) {
-  if (usuarioAutenticado?.perfil !== 'Mestre') return alert('Somente o Mestre pode ocultar ou reexibir obras.');
+  if (!podeConfigurar('obras')) return alert('Sem permissão para gerir obras.');
   const obra = obrasBD[id];
   if (!obra) return;
   const anterior = !!obra.oculta;
@@ -1751,7 +1756,7 @@ function chaveGraficosUsuario() {
 }
 function normalizarGraficos(lista) {
   if (!Array.isArray(lista)) return GRAFICOS_PADRAO.map(g=>({...g}));
-  return lista.map((g,i)=>({ id:String(g.id||'grafico_'+i), titulo:String(g.titulo||'Gráfico '+(i+1)), tipo:['bar','line','doughnut','pie','polarArea','radar','table','list'].includes(g.tipo)?g.tipo:'bar', xField:g.xField||'categoria', yField:g.yField||'comparativo', horizontal:!!g.horizontal }));
+  return lista.map((g,i)=>({ id:String(g.id||'grafico_'+i), titulo:String(g.titulo||'Gráfico '+(i+1)), tipo:['bar','line','doughnut','pie','polarArea','radar','table','list'].includes(g.tipo)?g.tipo:'bar', colunas:Array.isArray(g.colunas)?g.colunas:[],tabelaFonte:g.tabelaFonte||'', xField:g.xField||'categoria', yField:g.yField||'comparativo', horizontal:!!g.horizontal }));
 }
 function carregarGraficosUsuario() {
   const chave=chaveGraficosUsuario();
@@ -1771,7 +1776,7 @@ function adicionarNovoGrafico() {
   const xField = document.getElementById('novo-chart-x').value;
   const yField = document.getElementById('novo-chart-y').value;
   if (!titulo) return alert("Digite o título.");
-  graficosConfig.push({ id: `chart_custom_${Date.now()}`, titulo, tipo, xField, yField, horizontal: tipo === 'bar' && document.getElementById('novo-chart-horizontal').checked });
+  graficosConfig.push({ colunas:[...colunasNovoGrafico],tabelaFonte:fonteTabelaNovoGrafico,id: `chart_custom_${Date.now()}`, titulo, tipo, xField, yField, horizontal: tipo === 'bar' && document.getElementById('novo-chart-horizontal').checked });
   document.getElementById('novo-chart-titulo').value = '';
   persistirGraficosConfig(); renderizarListaGraficosConfig(); atualizarDashboard();
 }
@@ -1789,7 +1794,7 @@ function renderizarListaGraficosConfig() {
     const title=document.createElement('label'); title.className='text-xs font-bold text-gray-600'; title.textContent='Título';
     const input=document.createElement('input'); input.className='w-full border p-2 rounded mt-1'; input.value=g.titulo; input.maxLength=80; input.onchange=()=>{g.titulo=input.value.trim()||'Gráfico'; persistirGraficosConfig(); atualizarDashboard();}; title.appendChild(input);
     const onEdit=()=>{persistirGraficosConfig(); atualizarDashboard();};
-    const type=select('Tipo',g.tipo,[['bar','Barras'],['line','Linha'],['doughnut','Rosca'],['pie','Pizza'],['polarArea','Área polar'],['radar','Radar'],['table','Tabela'],['list','Lista']],e=>{g.tipo=e.target.value;onEdit();});
+    const type=select('Tipo',g.tipo,[['bar','Barras'],['line','Linha'],['doughnut','Rosca'],['pie','Pizza'],['polarArea','Área polar'],['radar','Radar'],['table','Tabela'],['list','Lista']],e=>{g.tipo=e.target.value;onEdit();renderizarListaGraficosConfig();});
     const x=select('Eixo X',g.xField||'categoria',opcoesCamposGraficos('x'),e=>{
       g.xField=e.target.value;
       const yOpts=opcoesCamposGraficos('y',g.xField);
@@ -1801,12 +1806,12 @@ function renderizarListaGraficosConfig() {
     const horizontal=document.createElement('label'); horizontal.className='flex items-center gap-1 text-xs';
     const check=document.createElement('input'); check.type='checkbox'; check.checked=!!g.horizontal; check.disabled=g.tipo!=='bar'; check.onchange=()=>{g.horizontal=check.checked;onEdit();}; horizontal.append(check,document.createTextNode('Horizontal'));
     const remove=document.createElement('button'); remove.type='button'; remove.textContent='Remover'; remove.className='text-red-700 font-bold'; remove.onclick=()=>removerGrafico(g.id);
-    action.append(horizontal,remove); row.append(title,type,x,y,action); div.appendChild(row);
+    action.append(horizontal,remove); row.append(title,type,x,y,action); div.appendChild(row);if(g.tipo==='table'||g.tipo==='list')div.appendChild(criarSeletorColunasTabela(g,()=>{persistirGraficosConfig();atualizarDashboard();}));
   });
 }
 
 async function salvarConfiguracoesGerais() {
-  if (!obterPermissoesUsuario().configuracoes) return alert('Seu perfil não pode alterar as configurações do sistema.');
+  if (!podeConfigurar('geral')) return alert('Seu perfil não pode alterar as configurações do sistema.');
   configGlobal.titulo = document.getElementById('config-app-title').value.trim();
   configGlobal.planilhasRealizado = configGlobal.planilhasRealizado.filter(f => f.nome?.trim() && (f.url?.trim() || f.arquivoLocal)).map(f => ({ ...f, nome: f.nome.trim(), url: (f.url || '').trim() }));
   configGlobal.urlRealizado = configGlobal.planilhasRealizado[0]?.url || '';
@@ -1833,7 +1838,7 @@ function aplicarPermissoesPerfil() {
   document.getElementById('user-display-name').innerText = usuarioAutenticado.nome;
   document.getElementById('user-display-role').innerText = usuarioAutenticado.perfil;
   document.getElementById('btn-gestao-usuarios').style.display = permissoes.usuarios ? 'inline-flex' : 'none';
-  document.getElementById('btn-configuracoes').style.display = permissoes.configuracoes ? 'inline-flex' : 'none';
+  document.getElementById('btn-configuracoes').style.display = podeAbrirConfiguracoes() ? 'inline-flex' : 'none';
   document.getElementById('btn-sync').style.display = permissoes.sincronizar ? 'inline-flex' : 'none';
   document.getElementById('btn-meus-graficos').style.display = permissoes.graficos ? 'inline-flex' : 'none';
   document.getElementById('btn-relatorio').style.display = permissoes.relatorios ? 'inline-flex' : 'none';
@@ -1898,7 +1903,7 @@ async function gerarRelatorioImprimir() {
   const tabela=el('table','report-table');const thead=el('thead'),trh=el('tr');['Categoria / Natureza','Previsto','Realizado','Uso do previsto','Saldo','Farol'].forEach(t=>trh.appendChild(el('th','',t)));thead.appendChild(trh);tabela.appendChild(thead);
   const tbody=el('tbody');linhasDashboardVisiveis.forEach(l=>{const row=el('tr');const values=[l.cat,moeda(l.previsto),moeda(l.realizado),percentual(l.realizado,l.previsto),moeda(l.previsto-l.realizado),l.farol==='red'?(l.previsto===0&&l.realizado>0?'N/P — Não previsto':'Estourado'):l.farol==='amber'?'Atenção':'Seguro'];values.forEach((v,i)=>row.appendChild(el(i===0?'th':'td',i===5?'report-status-'+l.farol:'',v)));tbody.appendChild(row);});
   const total=el('tr','report-total-row');['TOTAL',moeda(previsto),moeda(realizado),percentual(realizado,previsto),moeda(saldo),alertas.length+' alertas'].forEach(v=>total.appendChild(el('td','',v)));tbody.appendChild(total);tabela.appendChild(tbody);root.appendChild(tabela);
-  const nota=el('p','report-methodology','Critérios do farol: Seguro abaixo de 85% do previsto; Atenção entre 85% e 100%; Estourado acima de 100%. N/P = Não previsto: há realizado, mas o previsto é R$ 0,00, portanto não é possível calcular o percentual.');root.appendChild(nota);
+  const nota=el('p','report-methodology',legendaFarol());root.appendChild(nota);
 
   const fontes=(dadosBasePlanilhas||[]).map(p=>p.nome).filter(Boolean);
   root.appendChild(heading('Fontes de dados','Planilhas carregadas na base utilizada pelo sistema.'));
@@ -1938,7 +1943,7 @@ async function criarPerfilPersonalizado(){
 function obterPermissoesUsuario(usuario = usuarioAutenticado) {
   if (usuario?.perfil === 'Mestre') return { ...PERMISSOES_PADRAO.Mestre };
   if (!usuario) return { ...PERMISSOES_PADRAO.Engenheiro, configuracoes:false, graficos:false, relatorios:false };
-  return { ...Object.fromEntries(Object.keys(PERMISSOES_PADRAO.Mestre).map(k=>[k,false])),...PERMISSOES_PADRAO[usuario.perfil], ...permissoesPerfis[usuario.perfil], configuracoes:false };
+  return { ...Object.fromEntries(Object.keys(PERMISSOES_PADRAO.Mestre).map(k=>[k,false])),...PERMISSOES_PADRAO[usuario.perfil], ...permissoesPerfis[usuario.perfil] };
 }
 
 async function abrirModalUsuarios() {
@@ -1963,7 +1968,7 @@ function renderizarEditorPermissoesPerfil() {
   const perfil=document.getElementById('permissoes-perfil-select')?.value || 'Engenheiro';
   const regras=perfil==='Mestre'?PERMISSOES_PADRAO.Mestre:(permissoesPerfis[perfil] || PERMISSOES_PADRAO.Engenheiro);
   const nomes={dashboard:'perm-dashboard',pesquisa:'perm-pesquisa',dadosBase:'perm-dados-base',sincronizar:'perm-sincronizar',usuarios:'perm-usuarios',permissoes:'perm-permissoes',graficos:'perm-graficos',relatorios:'perm-relatorios'};
-  const configCampo=document.getElementById('perm-configuracoes'); if(configCampo){configCampo.checked=perfil==='Mestre';configCampo.disabled=true;}
+  const configCampo=document.getElementById('perm-configuracoes'); if(configCampo){configCampo.checked=perfil==='Mestre'||!!regras.configuracoes;configCampo.disabled=perfil==='Mestre';}
   const bloqueado=perfil==='Mestre';
   Object.entries(nomes).forEach(([chave,id])=>{const campo=document.getElementById(id); if(campo){campo.checked=!!regras[chave];campo.disabled=bloqueado;}});
   document.getElementById('btn-salvar-permissoes').disabled=bloqueado;
@@ -1982,7 +1987,7 @@ async function salvarPermissoesPerfil() {
     dashboard:document.getElementById('perm-dashboard').checked,
     dadosBase:document.getElementById('perm-dados-base').checked,
     sincronizar:document.getElementById('perm-sincronizar').checked,
-    configuracoes:false,
+    configuracoes:document.getElementById('perm-configuracoes').checked,
     usuarios:document.getElementById('perm-usuarios').checked,
     permissoes:document.getElementById('perm-permissoes').checked,
     graficos:document.getElementById('perm-graficos').checked,
