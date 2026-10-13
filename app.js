@@ -170,6 +170,9 @@ if (!obrasBD || typeof obrasBD !== 'object') obrasBD = {};
 // ==========================================
 function obterLinkCSV(url) {
   if (!url) return "";
+  if (/drive\.google\.com\/drive\/folders\//i.test(url)) {
+    throw new Error("O link informado é de uma pasta do Google Drive. Cadastre o link de uma planilha específica (Google Sheets), não o link da pasta.");
+  }
   if (url.includes("/pub?output=csv")) return url;
   if (url.includes("/edit") || url.includes("usp=")) {
     const match = url.match(/\/d\/([a-zA-Z0-9-_]+)/);
@@ -187,6 +190,33 @@ function obterLinkCSV(url) {
 
 function normalizarTexto(valor) {
   return String(valor || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ").trim().toUpperCase();
+}
+
+function encontrarColuna(chaves, tipo) {
+  const normalizadas = chaves.map(chave => ({ chave, nome: normalizarTexto(chave) }));
+  const regras = {
+    obra: [n => /(^|\b)(OBRA|PROJETO)(\b|$)/.test(n), n => n.includes("CENTRO DE CUSTO"), n => n.includes("DEPARTAMENTO"), n => n.includes("CODIGO DO CENTRO")],
+    categoria: [n => n.includes("CATEGORIA"), n => n.includes("NATUREZA"), n => n.includes("CLASSIFICACAO"), n => n.includes("RUBRICA"), n === "CONTA" || n.includes("GRUPO DE CUSTO")],
+    valor: [n => n.includes("VALOR LIQUIDO"), n => n.includes("VALOR PAGO"), n => n.includes("VALOR REALIZADO"), n => n.includes("TOTAL PAGO"), n => n.includes("VALOR DA CONTA"), n => n.includes("CUSTO TOTAL"), n => n.includes("VALOR TOTAL"), n => n.includes("VALOR DO DOCUMENTO"), n => n.includes("VALOR DA NOTA"), n => n === "VALOR", n => n.startsWith("VALOR ") || n.startsWith("CUSTO ")]
+  };
+  for (const regra of regras[tipo] || []) {
+    const encontrado = normalizadas.find(item => regra(item.nome));
+    if (encontrado) return encontrado.chave;
+  }
+  return null;
+}
+
+function migrarLinkPlanilhaRealizado() {
+  const idAtual = "1wZQhhLXwcpToKGy26gW1rHooGwUuRQMJ";
+  const idsAntigos = ["1S41dXyTC2Y_SJjD3iw86WaUqi0OWNxyf", "1v3FrPW55ofd8j3-rOqyyZlw1HHMJuf6"];
+  const linkAtual = `https://docs.google.com/spreadsheets/d/${idAtual}/edit?gid=1037311119`;
+  let alterou = false;
+  if (idsAntigos.some(id => String(configGlobal.urlRealizado || "").includes(id))) { configGlobal.urlRealizado = linkAtual; alterou = true; }
+  (configGlobal.planilhasRealizado || []).forEach(fonte => {
+    if (idsAntigos.some(id => String(fonte.url || "").includes(id))) { fonte.url = linkAtual; alterou = true; }
+  });
+  if (alterou) localStorage.setItem("config_bp", JSON.stringify(configGlobal));
+  return alterou;
 }
 
 // FORMATADOR UNIVERSAL DE DINHEIRO (Aceita US e BR)
@@ -224,8 +254,12 @@ const buscarCSV = (url) => new Promise((resolve, reject) => {
       // Procura a linha que tem o cabeçalho real (ignora as linhas de título do ERP)
       let headerIndex = 0;
       for (let i = 0; i < Math.min(15, data.length); i++) {
-        const rowStr = normalizarTexto(data[i].join(" "));
-        if (rowStr.includes("DEPARTAMENTO") || rowStr.includes("CENTRO DE CUSTO") || rowStr.includes("CATEGORIA") || rowStr.includes("VALOR")) {
+        const row = data[i].map(c => String(c || "").trim());
+        const rowStr = normalizarTexto(row.join(" "));
+        const campos = row.map(normalizarTexto);
+        const temValor = campos.some(n => n === "VALOR" || n.includes("VALOR ") || n.includes("CUSTO"));
+        const temDimensao = campos.some(n => n.includes("DEPARTAMENTO") || n.includes("CENTRO DE CUSTO") || n === "OBRA" || n === "PROJETO" || n.includes("CATEGORIA") || n.includes("NATUREZA"));
+        if (temValor && temDimensao || rowStr.includes("VALOR REALIZADO") && temDimensao) {
           headerIndex = i;
           break;
         }
@@ -259,6 +293,11 @@ window.onload = async function() {
     if (supabaseClient) {
       const { data: config } = await supabaseClient.from('configuracoes').select('*').limit(1).single();
       if (config) { configGlobal.titulo = config.titulo || "Brasil Pontes"; configGlobal.urlRealizado = config.url_realizado || ""; }
+      const linkRealizadoDesatualizado = ["1S41dXyTC2Y_SJjD3iw86WaUqi0OWNxyf", "1v3FrPW55ofd8j3-rOqyyZlw1HHMJuf6"].some(id => String(config?.url_realizado || "").includes(id));
+      if (migrarLinkPlanilhaRealizado() && linkRealizadoDesatualizado) {
+        const { error } = await supabaseClient.from('configuracoes').update({ url_realizado: configGlobal.urlRealizado }).eq('id', config.id);
+        if (error) console.warn('Não foi possível salvar a nova fonte Realizado no Supabase:', error.message);
+      }
       
       const { data: users } = await supabaseClient.from('usuarios').select('*');
       if (users && Array.isArray(users)) {
@@ -687,9 +726,14 @@ async function sincronizarTodasPlanilhas() {
     for (const fonte of fontesRealizado) {
       const extraido = await buscarCSV(fonte.url);
       if (!extraido.rows.length) throw new Error(`A planilha "${fonte.nome}" não contém linhas de dados.`);
+      const colunas = extraido.headers;
+      const colunaObra = encontrarColuna(colunas, "obra");
+      const colunaValor = encontrarColuna(colunas, "valor");
+      if (!colunaObra) throw new Error(`Não identifiquei a coluna da obra/departamento na planilha "${fonte.nome}". Cabeçalhos encontrados: ${colunas.join(", ")}.`);
+      if (!colunaValor) throw new Error(`Não identifiquei a coluna monetária na planilha "${fonte.nome}". Cabeçalhos encontrados: ${colunas.join(", ")}.`);
       const base = { id: fonte.id || `realizado-${Date.now()}`, nome: fonte.nome || "Realizado", tipo: "Realizado", url: fonte.url, headers: extraido.headers, rows: extraido.rows, atualizadoEm: new Date().toISOString() };
       novasBases.push(base);
-      linhasRealizado.push({ fonte: base, rows: extraido.rows });
+      linhasRealizado.push({ fonte: base, rows: extraido.rows, colunaObra, colunaValor, colunaCategoria: encontrarColuna(colunas, "categoria") });
     }
     
     Object.keys(obrasBD).forEach(k => {
@@ -702,9 +746,9 @@ async function sincronizarTodasPlanilhas() {
       if (obra.cc) chaveObraPorDepartamento.set(normalizarTexto(obra.cc), key);
       if (obra.nome) chaveObraPorDepartamento.set(normalizarTexto(obra.nome), key);
     });
-    linhasRealizado.forEach(({ fonte, rows }) => rows.forEach(linha => {
+    linhasRealizado.forEach(({ fonte, rows, colunaObra, colunaValor, colunaCategoria }) => rows.forEach(linha => {
       const chaves = Object.keys(linha);
-      const chvDepto = chaves.find(k => { const n = normalizarTexto(k); return n.includes("DEPARTAMENTO") || n.includes("CENTRO DE CUSTO") || n === "OBRA"; });
+      const chvDepto = colunaObra || encontrarColuna(chaves, "obra");
       const deptoOriginal = chvDepto ? (linha[chvDepto] || "").trim() : "";
       
       if (!deptoOriginal || deptoOriginal === "N/D" || deptoOriginal === "0.0") return;
@@ -717,12 +761,11 @@ async function sincronizarTodasPlanilhas() {
         chaveObraPorDepartamento.set(deptoID, chaveObra);
       }
 
-      const chvVal = chaves.find(k => { const n = normalizarTexto(k); return n.includes("VALOR LIQUIDO") || n.includes("VALOR DA CONTA") || n.includes("VALOR TOTAL") || n.includes("VALOR PAGO") || n.includes("CUSTO TOTAL") || n === "VALOR"; })
-        || chaves.find(k => normalizarTexto(k).includes("VALOR"));
+      const chvVal = colunaValor || encontrarColuna(chaves, "valor");
       if (!chvVal) throw new Error(`Não encontrei uma coluna de valor na planilha "${fonte.nome}".`);
       const valor = parseMonetario(linha[chvVal]);
 
-      const chvCat = chaves.find(k => normalizarTexto(k).includes("CATEGORIA"));
+      const chvCat = colunaCategoria || encontrarColuna(chaves, "categoria");
       const categoria = chvCat ? (linha[chvCat] || "Outros").trim() : "Outros";
 
       if (obrasBD[chaveObra].status !== "Arquivada") {
@@ -739,10 +782,10 @@ async function sincronizarTodasPlanilhas() {
           const idBase = `previsto-${key}`;
           novasBases.push({ id: idBase, nome: obra.nome || `Previsto - ${key}`, tipo: "Previsto", url: obra.urlPrevistoCSV, headers: basePrevisto.headers, rows: basePrevisto.rows, atualizadoEm: new Date().toISOString() });
           basePrevisto.rows.forEach(linha => {
-            const chvCat = Object.keys(linha).find(k => normalizarTexto(k).includes("CATEGORIA"));
+            const chvCat = encontrarColuna(Object.keys(linha), "categoria");
             const catBP = chvCat ? (linha[chvCat] || "Outros").trim() : "Outros";
             
-            const chvCst = Object.keys(linha).find(k => { const n = normalizarTexto(k); return n.includes("CUSTO TOTAL") || n.includes("VALOR TOTAL") || n === "VALOR"; }) || Object.keys(linha).find(k => normalizarTexto(k).includes("CUSTO") || normalizarTexto(k).includes("VALOR"));
+            const chvCst = encontrarColuna(Object.keys(linha), "valor");
             if (!chvCst) throw new Error("Não encontrei a coluna de custo/valor.");
             let custo = parseMonetario(linha[chvCst]);
             
