@@ -222,6 +222,7 @@
         <button id="nav-dashboard" type="button" onclick="abrirAbaSistema('dashboard')" class="px-4 py-3 border-b-2 border-[#003399] text-[#003399] font-bold text-sm whitespace-nowrap">📊 Análises</button>
         <button id="nav-pesquisa" type="button" onclick="abrirAbaSistema('pesquisa')" class="px-4 py-3 text-gray-500 font-bold text-sm hover:text-[#003399] whitespace-nowrap">🔎 Pesquisa</button>
         <button id="nav-dados-base" type="button" onclick="abrirAbaSistema('realizado')" class="px-4 py-3 text-gray-500 font-bold text-sm hover:text-[#003399] whitespace-nowrap">📥 Realizado</button>
+        <button id="nav-recorrentes" type="button" onclick="abrirAbaSistema('recorrentes')" class="px-4 py-3 text-gray-500 font-bold text-sm whitespace-nowrap">🔄 Pagamentos Recorrentes</button>
         <button id="nav-custos-fixos" type="button" onclick="abrirAbaSistema('fixos')" class="px-4 py-3 text-gray-500 font-bold text-sm whitespace-nowrap">🔁 Custos fixos</button>
         <button id="nav-previsto" type="button" onclick="abrirAbaSistema('previsto')" class="px-4 py-3 text-gray-500 font-bold text-sm hover:text-[#003399] whitespace-nowrap">📄 Previsto</button>
       </nav>
@@ -421,9 +422,10 @@
        </form>
        <div id="fixos-kpis" class="grid grid-cols-1 sm:grid-cols-3 gap-3"></div>
        <div id="fixos-cadastrados" class="bg-white border rounded-xl overflow-auto max-h-[60vh]"></div>
-       <section class="bg-white border rounded-xl p-5"><h3 class="font-bold text-[#003399]">Sugestões de custos recorrentes</h3><p class="text-xs text-gray-600 my-2">Fornecedor e categoria com pagamentos em pelo menos dois meses distintos. A média mensal é uma sugestão; revise antes de cadastrar. O histórico não comprova uma obrigação fixa.</p><div id="fixos-recorrentes" class="space-y-2 max-h-[60vh] overflow-auto"></div></section>
+
       </section>
 
+      <section id="view-recorrentes" class="hidden space-y-5"><div class="bg-white border rounded-xl p-5"><h2 class="text-xl font-black text-[#003399]">Pagamentos Recorrentes · <span id="recorrentes-obra"></span></h2><p class="text-sm text-gray-600 mt-2">Padrões identificados exclusivamente no Realizado: mesmo fornecedor e categoria pagos em dois ou mais meses. Não criam custos fixos ou alteram o orçamento.</p><p id="recorrentes-status" class="text-sm mt-2"></p></div><div id="recorrentes-kpis" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3"></div><div id="recorrentes-tabela" class="bg-white border rounded-xl overflow-auto max-h-[65vh]"></div><div id="recorrentes-grafico" class="bg-white border rounded-xl p-5"></div></section>
     </main>
   </div>
 
@@ -486,6 +488,7 @@
       </div>
 
       <div class="flex justify-end border-t pt-3">
+        <div id="controle-manutencao" class="border rounded-lg p-4"><h3 class="font-bold text-blue-800">Manutenção do sistema</h3><p class="text-sm">Durante a manutenção, somente a conta principal do Mestre acessa o sistema.</p><button id="btn-manutencao" type="button" onclick="alternarManutencao()" class="mt-2 bg-amber-600 text-white rounded p-2 font-bold">Ativar manutenção</button><p id="manutencao-status" aria-live="polite" class="text-sm mt-2"></p></div>
         <button type="button" onclick="salvarConfiguracoesGerais()" id="btn-salvar-configuracoes" class="bg-emerald-600 text-white font-bold px-6 py-2 rounded-lg shadow-md">Salvar Alterações</button>
       </div>
     </div>
@@ -600,8 +603,8 @@
   <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   
-  <script src="app.js?v=custos-fixos-periodos-20261013c"></script>
-<script src="analise-avancada.js?v=custos-fixos-periodos-20261013c"></script>
+  <script src="app.js?v=fixos-recorrentes-manutencao-20261014"></script>
+<script src="analise-avancada.js?v=fixos-recorrentes-manutencao-20261014"></script>
 </body>
 </html>
 

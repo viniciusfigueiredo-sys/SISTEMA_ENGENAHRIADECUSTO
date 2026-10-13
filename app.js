@@ -19,7 +19,7 @@ const PERMISSOES_PADRAO = {
 let permissoesPerfis = Object.fromEntries(Object.entries(PERMISSOES_PADRAO).map(([perfil, regras]) => [perfil, { ...regras }]));
 try {
   const salvas=JSON.parse(localStorage.getItem('permissoes_bp') || 'null');
-    if (salvas && typeof salvas === 'object') Object.keys(salvas).filter(p=>!['__proto__','constructor','prototype'].includes(p)).forEach(perfil => {
+    if (salvas && typeof salvas === 'object') Object.keys(salvas).filter(p=>!['__proto__','constructor','prototype','__sistema'].includes(p)).forEach(perfil => {
     if (salvas[perfil] && typeof salvas[perfil] === 'object') permissoesPerfis[perfil] = { ...PERMISSOES_PADRAO[perfil], ...salvas[perfil] };
   });
 } catch(e) { console.warn('Permissões locais inválidas; usando os padrões.', e); }
@@ -576,7 +576,7 @@ window.onload = async function() {
 
     if (supabaseClient) {
       const { data: config } = await supabaseClient.from('configuracoes').select('*').limit(1).single();
-      if (config) { configGlobal.titulo = config.titulo || "Brasil Pontes"; configGlobal.urlRealizado = config.url_realizado || "";configGlobal.idConfigSupabase=config.id;if(config.perfis_json && typeof config.perfis_json==='object'){Object.entries(config.perfis_json).filter(([p])=>!['__proto__','constructor','prototype','Mestre'].includes(p)).forEach(([p,regras])=>{permissoesPerfis[p]={...(PERMISSOES_PADRAO[p]||PERMISSOES_PADRAO.Engenheiro),...regras,configuracoes:false};});localStorage.setItem('permissoes_bp',JSON.stringify(permissoesPerfis));} }
+      if (config) { configGlobal.titulo = config.titulo || "Brasil Pontes"; configGlobal.urlRealizado = config.url_realizado || "";configGlobal.idConfigSupabase=config.id;configGlobal.manutencao=!!config.perfis_json?.__sistema?.manutencao;if(config.perfis_json && typeof config.perfis_json==='object'){Object.entries(config.perfis_json).filter(([p])=>!['__proto__','constructor','prototype','Mestre','__sistema'].includes(p)).forEach(([p,regras])=>{permissoesPerfis[p]={...(PERMISSOES_PADRAO[p]||PERMISSOES_PADRAO.Engenheiro),...regras,configuracoes:false};});localStorage.setItem('permissoes_bp',JSON.stringify(permissoesPerfis));} }
       const linkRealizadoDesatualizado = ["1S41dXyTC2Y_SJjD3iw86WaUqi0OWNxyf", "1v3FrPW55ofd8j3-rOqyyZlw1HHMJuf6", "1wZQhhLXwcpToKGy26gW1rHooGwUuRQMJ"].some(id => String(config?.url_realizado || "").includes(id));
       if (migrarLinkPlanilhaRealizado() && linkRealizadoDesatualizado) {
         const { error } = await supabaseClient.from('configuracoes').update({ url_realizado: configGlobal.urlRealizado }).eq('id', config.id);
@@ -617,6 +617,8 @@ window.onload = async function() {
 
 function verificarSessao() {
   atualizarSeletoresPerfis();
+  aplicarEstadoManutencao();
+  if(usuarioAutenticado&&!acessoLiberadoManutencao())return;
   if (!usuarioAutenticado) {
     document.getElementById('screen-login').classList.remove('hidden');
     document.getElementById('app-container').classList.add('hidden');
@@ -676,20 +678,22 @@ function exibirFormLogin() { document.getElementById('box-solicitacao').classLis
 window.abrirAbaSistema = abrirAbaSistema;
 
 function abrirAbaSistema(aba) {
+  if(!acessoLiberadoManutencao())return;
   const chave = aba === 'dados-base' ? 'realizado' : aba;
   const dashboard = chave === 'dashboard';
   const permissoes=obterPermissoesUsuario();
   if (dashboard && !permissoes.dashboard) return alert('Seu perfil não tem acesso às Análises.');
   if (chave === 'pesquisa' && !permissoes.pesquisa) return alert('Seu perfil não tem acesso à Pesquisa.');
   if (!dashboard && chave !== 'pesquisa' && !permissoes.dadosBase) return alert('Seu perfil não tem acesso aos dados.');
-  const views={dashboard:'view-dashboard',pesquisa:'view-pesquisa',realizado:'view-dados-base',previsto:'view-previsto',fixos:'view-custos-fixos'};
+  const views={dashboard:'view-dashboard',pesquisa:'view-pesquisa',realizado:'view-dados-base',previsto:'view-previsto',fixos:'view-custos-fixos',recorrentes:'view-recorrentes'};
   Object.entries(views).forEach(([nome,id])=>document.getElementById(id)?.classList.toggle('hidden',nome!==chave));
-  const navs={dashboard:'nav-dashboard',pesquisa:'nav-pesquisa',realizado:'nav-dados-base',previsto:'nav-previsto',fixos:'nav-custos-fixos'};
+  const navs={dashboard:'nav-dashboard',pesquisa:'nav-pesquisa',realizado:'nav-dados-base',previsto:'nav-previsto',fixos:'nav-custos-fixos',recorrentes:'nav-recorrentes'};
   Object.entries(navs).forEach(([nome,id])=>{const el=document.getElementById(id);if(el)el.className=nome===chave?'px-4 py-3 border-b-2 border-[#003399] text-[#003399] font-bold text-sm whitespace-nowrap':'px-4 py-3 text-gray-500 font-bold text-sm hover:text-[#003399] whitespace-nowrap';});
   if(chave==='dashboard') atualizarDashboard();
   if(chave==='realizado') renderizarDadosBase();
   if(chave==='pesquisa') pesquisarCustos(filtrosPesquisaCustos);
   if(chave==='previsto') renderizarPrevisto();
+  if(chave==='recorrentes'){renderizarPagamentosRecorrentes();if(!dadosBasePlanilhas.some(p=>p.tipo==='Realizado'&&p.rows?.length))garantirBaseConsulta().then(renderizarPagamentosRecorrentes).catch(e=>{document.getElementById('recorrentes-status').textContent=e.message;});}
   if(chave==='fixos'){renderizarCustosFixos();if(!dadosBasePlanilhas.some(p=>p.tipo==='Realizado'&&p.rows?.length))garantirBaseConsulta().then(renderizarCustosFixos).catch(e=>{document.getElementById('fixos-status').textContent=e.message;});}
   renderizarControlesAvancados();
   if ((chave === 'pesquisa' || chave === 'realizado') && !dadosBasePlanilhas.some(p => p.tipo === 'Realizado' && p.rows?.length)) {
@@ -1537,6 +1541,7 @@ function atualizarDashboard() {
   renderizarFiltrosBaseDashboard();
   renderizarGridGraficosDinamicos(obra, cats);
   if(!document.getElementById('view-custos-fixos')?.classList.contains('hidden'))renderizarCustosFixos();
+  if(!document.getElementById('view-recorrentes')?.classList.contains('hidden'))renderizarPagamentosRecorrentes();
   if (!document.getElementById('view-dados-base')?.classList.contains('hidden')) renderizarDadosBase();
   if (!document.getElementById('view-previsto')?.classList.contains('hidden')) renderizarPrevisto();
   if (!document.getElementById('view-pesquisa')?.classList.contains('hidden')) pesquisarCustos(filtrosPesquisaCustos);
@@ -1837,7 +1842,7 @@ function aplicarPermissoesPerfil() {
   if (opcaoMestre) opcaoMestre.disabled=!permissoes.permissoes;
   document.getElementById('nav-dashboard').classList.toggle('hidden', !permissoes.dashboard);
   document.getElementById('nav-pesquisa')?.classList.toggle('hidden',!permissoes.pesquisa);
-  ['nav-dados-base','nav-previsto','nav-custos-fixos'].forEach(id=>document.getElementById(id)?.classList.toggle('hidden',!permissoes.dadosBase));
+  ['nav-dados-base','nav-previsto','nav-custos-fixos','nav-recorrentes'].forEach(id=>document.getElementById(id)?.classList.toggle('hidden',!permissoes.dadosBase));
   if (!permissoes.dashboard && permissoes.dadosBase) abrirAbaSistema('realizado');
   else if (!permissoes.dashboard && permissoes.pesquisa) abrirAbaSistema('pesquisa');
   else if (!permissoes.dashboard && !permissoes.dadosBase && !permissoes.pesquisa) executarLogout();
@@ -1910,18 +1915,19 @@ async function gerarRelatorioImprimir() {
   await Promise.allSettled(Array.from(root.querySelectorAll("img")).map(img=>img.decode?img.decode():Promise.resolve()));
   window.print();
 }
-function opcoesPerfisUsuario(){return Object.keys(permissoesPerfis).map(p=>[p,p==='Dono'?'Dono / Diretoria':p]);}
+function opcoesPerfisUsuario(){return Object.keys(permissoesPerfis).filter(p=>p!=='__sistema').map(p=>[p,p==='Dono'?'Dono / Diretoria':p]);}
 function atualizarSeletoresPerfis(){['novo-usr-perfil','permissoes-perfil-select'].forEach(id=>{const select=document.getElementById(id);if(!select)return;const valor=select.value;select.replaceChildren(...opcoesPerfisUsuario().map(([v,t])=>new Option(t,v)));select.value=Object.hasOwn(permissoesPerfis,valor)?valor:'Engenheiro';});}
 async function persistirPerfisCompartilhados(perfis){
   if(!supabaseClient)throw new Error('Conecte ao Supabase para salvar perfis compartilhados.');
-  const {data,error}=await supabaseClient.from('configuracoes').update({perfis_json:perfis}).eq('id',configGlobal.idConfigSupabase||1).select('id').single();
+  const {data:atual,error:leituraErro}=await supabaseClient.from('configuracoes').select('perfis_json').eq('id',configGlobal.idConfigSupabase||1).single();if(leituraErro)throw leituraErro;
+  const {data,error}=await supabaseClient.from('configuracoes').update({perfis_json:{...perfis,__sistema:atual?.perfis_json?.__sistema||{manutencao:false}}}).eq('id',configGlobal.idConfigSupabase||1).select('id').single();
   if(error)throw error;if(!data)throw new Error('O banco não confirmou o salvamento.');
   localStorage.setItem('permissoes_bp',JSON.stringify(perfis));
 }
 async function criarPerfilPersonalizado(){
   if(usuarioAutenticado?.perfil!=='Mestre')return alert('Somente o Mestre pode criar perfis.');
   const input=document.getElementById('novo-perfil-nome'),status=document.getElementById('novo-perfil-status');const nome=input.value.trim();
-  if(!/^[\p{L}\p{N} _-]{2,40}$/u.test(nome)||['__proto__','constructor','prototype'].includes(nome.toLowerCase())){status.textContent='Use um nome de 2 a 40 letras, números ou espaços.';return;}
+  if(!/^[\p{L}\p{N} _-]{2,40}$/u.test(nome)||['__proto__','constructor','prototype','__sistema'].includes(nome.toLowerCase())){status.textContent='Use um nome de 2 a 40 letras, números ou espaços.';return;}
   if(Object.keys(permissoesPerfis).some(p=>normalizarTexto(p)===normalizarTexto(nome))){status.textContent='Este perfil já existe.';return;}
   const novos={...permissoesPerfis,[nome]:{...PERMISSOES_PADRAO.Engenheiro}};
   const btn=document.getElementById('btn-criar-perfil');btn.disabled=true;status.textContent='Salvando…';
