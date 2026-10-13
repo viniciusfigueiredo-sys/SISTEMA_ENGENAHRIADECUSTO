@@ -722,19 +722,23 @@ function renderizarPrevisto() {
   if(!obra){if(status)status.textContent='Selecione uma obra para consultar o previsto.';return;}
   const planilha=(dadosBasePlanilhas||[]).find(p=>p.tipo==='Previsto'&&p.id===`previsto-${obraAtivaID}`);
   const moeda=n=>Number(n||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
-  const categorias=Object.keys(obra.categoriasPrevisto||{});
-  const previsto=Number(obra.previstoTotal||categorias.reduce((s,c)=>s+(obra.categoriasPrevisto?.[c]||0),0))*multiplicadorCenario;
+  const categorias=Object.keys(obra.categoriasPrevisto||{}).filter(c=>!filtrosDashboard.categoria||normalizarTextoUI(c)===normalizarTextoUI(filtrosDashboard.categoria));
+  const previsto=Number(categorias.reduce((s,c)=>s+(obra.categoriasPrevisto?.[c]||0),0))*multiplicadorCenario;
   if(status)status.textContent='Obra: '+(obra.nome||obra.cc||'—')+' • Fonte: '+(planilha?.nome||'Planilha Previsto')+' • '+(planilha?.atualizadoEm?'Atualizada em '+new Date(planilha.atualizadoEm).toLocaleString('pt-BR'):'');
   [['Total previsto no cenário',moeda(previsto)],['Categorias previstas',String(categorias.length)],['Linhas da planilha',String(planilha?.rows?.length||0)]].forEach(([label,value])=>{const card=document.createElement('div');card.className='bg-white p-4 rounded-xl shadow-sm border border-gray-200';const l=document.createElement('p');l.className='text-xs font-bold text-gray-500 uppercase';l.textContent=label;const v=document.createElement('p');v.className='text-lg font-black text-[#003399] mt-1';v.textContent=value;card.append(l,v);kpis.appendChild(card);});
-  const headers=planilha?.headers||[],rows=planilha?.rows||[];
-  const categoriaHeader=headers.find(h=>/categoria|natureza/.test(normalizarTextoUI(h)));
+  const headers=planilha?.headers||[];const rows=(planilha?.rows||[]).filter(row=>linhaPassaFiltroInterativo(planilha,row,headers.find(h=>/categoria|natureza/.test(normalizarTextoUI(tituloColunaBase(planilha,h))))));
+  const categoriaHeader=headers.find(h=>/categoria|natureza/.test(normalizarTextoUI(tituloColunaBase(planilha,h))));
   const descricaoHeader=headers.find(h=>/descricao|servico|item/.test(normalizarTextoUI(h)));
   const valorHeader=headers.find(h=>/custo total|valor total/.test(normalizarTextoUI(h))||normalizarTextoUI(h)==='valor')||headers.find(h=>/custo|valor/.test(normalizarTextoUI(h)));
   const resumo=new Map();
   if(rows.length&&valorHeader){rows.forEach(row=>{const nome=String(row[categoriaHeader]||row[descricaoHeader]||'Item previsto').trim();resumo.set(nome,(resumo.get(nome)||0)+parseMonetario(row[valorHeader])*multiplicadorCenario);});}
   else categorias.forEach(c=>resumo.set(c,(obra.categoriasPrevisto?.[c]||0)*multiplicadorCenario));
+  const totalFiltrado=[...resumo.values()].reduce((sum,value)=>sum+value,0);
+  if(kpis.children[0]?.children[1])kpis.children[0].children[1].textContent=moeda(totalFiltrado);
+  if(kpis.children[1]?.children[1])kpis.children[1].children[1].textContent=String(resumo.size);
+  if(kpis.children[2]?.children[1])kpis.children[2].children[1].textContent=String(rows.length);
   const chartData=[...resumo.entries()].sort((a,b)=>b[1]-a[1]).slice(0,12);const canvas=document.getElementById('previsto-chart');
-  if(chartData.length&&canvas&&typeof Chart!=='undefined'){graficoPrevistoCustos=new Chart(canvas.getContext('2d'),{type:'bar',data:{labels:chartData.map(x=>x[0]),datasets:[{label:'Previsto',data:chartData.map(x=>x[1]),backgroundColor:'#00CFFF',borderColor:'#009fc4',borderWidth:1}]},options:{responsive:true,maintainAspectRatio:false,indexAxis:chartData.length>7?'y':'x',plugins:{legend:{position:'bottom'},tooltip:{callbacks:{label:ctx=>'Previsto: '+moeda(ctx.raw)}}},scales:{x:{beginAtZero:true},y:{beginAtZero:true}}}});}
+  if(chartData.length&&canvas&&typeof Chart!=='undefined'){graficoPrevistoCustos=new Chart(canvas.getContext('2d'),{type:'bar',data:{labels:chartData.map(x=>x[0]),datasets:[{label:'Previsto',data:chartData.map(x=>x[1]),backgroundColor:'#00CFFF',borderColor:'#009fc4',borderWidth:1}]},options:{responsive:true,maintainAspectRatio:false,onClick:(event,elements,chart)=>{const pontos=elements?.length?elements:chart.getElementsAtEventForMode(event,'nearest',{intersect:false},true);const label=chartData[pontos?.[0]?.index]?.[0];if(label===undefined)return;if(categoriaHeader||!planilha)selecionarCategoriaGrafico(label);else{const header=descricaoHeader;const atual=filtrosDashboard.base;filtrosDashboard.base=atual?.planilhaId===planilha.id&&atual.header===header&&atual.value===label?null:{planilhaId:planilha.id,planilhaNome:planilha.nome,header,value:label};atualizarDashboard();}},interaction:{mode:'nearest',intersect:false},indexAxis:chartData.length>7?'y':'x',plugins:{legend:{position:'bottom'},tooltip:{callbacks:{label:ctx=>'Previsto: '+moeda(ctx.raw)}}},scales:{x:{beginAtZero:true},y:{beginAtZero:true}}}});}
   else {const vazio=document.getElementById('previsto-chart-vazio');if(vazio){vazio.textContent=chartData.length?'Gráfico indisponível: biblioteca de gráficos não carregada.':'Não há categorias previstas para desenhar o gráfico.';vazio.classList.remove('hidden');}}
   if(!planilha){const vazio=document.createElement('div');vazio.className='p-8 text-center text-gray-500';vazio.textContent='Não há planilha de Previsto importada para esta obra. Cadastre a planilha nas configurações da obra e sincronize os dados.';host.appendChild(vazio);return;}
   if(!headers.length){const vazio=document.createElement('div');vazio.className='p-8 text-center text-gray-500';vazio.textContent='A planilha de Previsto não possui dados para exibir.';host.appendChild(vazio);return;}
@@ -770,7 +774,7 @@ function pesquisarCustos(termo) {
     const camposBusca=headers.filter(header=>/categoria|natureza|item|descricao|servico|historico|fornecedor|produto|conta|codigo/.test(norm(header)));
     linhasDaObra(planilha,obra).forEach(row=>{
       const obraLinha=norm(row[obraHeader]);const obraOk=obraLinha===norm(obra.nome)||obraLinha===norm(obra.cc)||obraLinha===norm(obra.id)||((obra.cc||'').trim()&&obraLinha.includes(norm(obra.cc)));
-      if(!obraOk)return;possuiFonteObra=true;if(!(camposBusca.length?camposBusca:headers).some(header=>norm(row[header]).includes(query)))return;
+      if(!obraOk)return;possuiFonteObra=true;if(!linhaPassaFiltroInterativo(planilha,row,categoriaHeader))return;if(!(camposBusca.length?camposBusca:headers).some(header=>norm(row[header]).includes(query)))return;
       const categoria=String((categoriaHeader&&row[categoriaHeader])||'Outros').trim()||'Outros';
       dados.push({planilha:planilha.nome,categoria,item:itemHeader?row[itemHeader]:'',descricao:descricaoHeader?row[descricaoHeader]:'',valor:valorHeader?parseMonetario(row[valorHeader]):0,row});
     });
@@ -778,7 +782,7 @@ function pesquisarCustos(termo) {
   const usandoResumo = !(dadosBasePlanilhas || []).some(p => (p.tipo === 'Realizado' || !p.tipo) && p.rows?.length);
   if (usandoResumo) {
     possuiFonteObra = true;
-    Object.entries(obra.categoriasRealizado || {}).filter(([categoria])=>norm(categoria).includes(query)).forEach(([categoria,valor])=>dados.push({planilha:'Resumo sincronizado',categoria,item:'',descricao:'Total da categoria',valor:Number(valor)||0,agregado:true}));
+    Object.entries(obra.categoriasRealizado || {}).filter(([categoria])=>norm(categoria).includes(query)&&(!filtrosDashboard.categoria||norm(categoria)===norm(filtrosDashboard.categoria))).forEach(([categoria,valor])=>dados.push({planilha:'Resumo sincronizado',categoria,item:'',descricao:'Total da categoria',valor:Number(valor)||0,agregado:true}));
   }
   const planilhaPrevisto=(dadosBasePlanilhas||[]).find(p=>p.tipo==='Previsto'&&p.id===`previsto-${obraAtivaID}`);const previstosDiretos=[];
   if(planilhaPrevisto){
@@ -787,7 +791,7 @@ function pesquisarCustos(termo) {
     const itemHeader=col(headers,h=>h==='item'||h.includes('item ')||h.includes('codigo item')||h.includes('codigo'));
     const descricaoHeader=col(headers,h=>h.includes('descricao')||h.includes('servico')||h.includes('historico')||h.includes('especificacao'));
     const campos=headers.filter(h=>/categoria|natureza|item|descricao|servico|historico|fornecedor|produto|conta|codigo/.test(norm(h)));
-    (planilhaPrevisto.rows||[]).forEach(row=>{if((campos.length?campos:headers).some(header=>norm(row[header]).includes(query)))previstosDiretos.push({categoria:String((categoriaHeader&&row[categoriaHeader])||'Item encontrado').trim(),item:itemHeader?row[itemHeader]:'',descricao:descricaoHeader?row[descricaoHeader]:'',valor:(valorHeader?parseMonetario(row[valorHeader]):0)*multiplicadorCenario});});
+    (planilhaPrevisto.rows||[]).forEach(row=>{if(!linhaPassaFiltroInterativo(planilhaPrevisto,row,categoriaHeader))return;if((campos.length?campos:headers).some(header=>norm(row[header]).includes(query)))previstosDiretos.push({categoria:String((categoriaHeader&&row[categoriaHeader])||'Item encontrado').trim(),item:itemHeader?row[itemHeader]:'',descricao:descricaoHeader?row[descricaoHeader]:'',valor:(valorHeader?parseMonetario(row[valorHeader]):0)*multiplicadorCenario});});
   }
   const cats=[...new Set(dados.map(x=>x.categoria))];const prevCats=Object.keys(obra.categoriasPrevisto||{}).filter(c=>cats.some(x=>norm(x)===norm(c)));
   const previstoCategorias=prevCats.reduce((sum,c)=>sum+(obra.categoriasPrevisto[c]||0)*multiplicadorCenario,0);
@@ -808,7 +812,7 @@ function pesquisarCustos(termo) {
   dados.forEach(x=>{const item=itens.get(itemChave(x));if(item)item.realizado+=x.valor;});
   renderizarVelocimetros('pesquisa-velocimetros',{label:'Total da pesquisa',previsto,realizado},[...detalhesVelocimetro,...itens.values()]);
   if(linhasGrafico.length&&canvas&&typeof Chart!=='undefined'){
-    graficoCard?.classList.remove('hidden');graficoPesquisaCustos=new Chart(canvas.getContext('2d'),{type:'bar',data:{labels:linhasGrafico.map(x=>x.categoria),datasets:[{label:'Previsto',data:linhasGrafico.map(x=>x.previsto),backgroundColor:'#00CFFF',borderColor:'#009fc4',borderWidth:1},{label:'Realizado',data:linhasGrafico.map(x=>x.realizado),backgroundColor:'#003399',borderColor:'#002266',borderWidth:1}]},options:{responsive:true,maintainAspectRatio:false,indexAxis:linhasGrafico.length>7?'y':'x',plugins:{legend:{position:'bottom'},tooltip:{callbacks:{label:ctx=>ctx.dataset.label+': '+moeda(ctx.raw)}}},scales:{y:{beginAtZero:true,ticks:{callback:value=>Number(value).toLocaleString('pt-BR')}},x:{beginAtZero:true}}}});
+    graficoCard?.classList.remove('hidden');graficoPesquisaCustos=new Chart(canvas.getContext('2d'),{type:'bar',data:{labels:linhasGrafico.map(x=>x.categoria),datasets:[{label:'Previsto',data:linhasGrafico.map(x=>x.previsto),backgroundColor:'#00CFFF',borderColor:'#009fc4',borderWidth:1},{label:'Realizado',data:linhasGrafico.map(x=>x.realizado),backgroundColor:'#003399',borderColor:'#002266',borderWidth:1}]},options:{responsive:true,maintainAspectRatio:false,onClick:cliqueCategoriaGrafico(linhasGrafico.map(x=>x.categoria)),interaction:{mode:'nearest',intersect:false},indexAxis:linhasGrafico.length>7?'y':'x',plugins:{legend:{position:'bottom'},tooltip:{callbacks:{label:ctx=>ctx.dataset.label+': '+moeda(ctx.raw)}}},scales:{y:{beginAtZero:true,ticks:{callback:value=>Number(value).toLocaleString('pt-BR')}},x:{beginAtZero:true}}}});
   } else if(linhasGrafico.length&&graficoVazio){graficoCard?.classList.remove('hidden');graficoVazio.classList.remove('hidden');graficoVazio.textContent='Gráfico indisponível: biblioteca de gráficos não carregada.';}
   if(leitura){leitura.classList.remove('hidden');leitura.className='bg-white p-4 rounded-xl border border-gray-200 text-sm text-gray-700';const title=document.createElement('h3');title.className='font-bold text-[#003399] mb-1';title.textContent='Leitura da pesquisa';const p=document.createElement('p');p.textContent=temPrevistoDireto?'O previsto foi calculado a partir dos itens correspondentes encontrados na planilha da obra.':temPrevisto?'Não houve correspondência direta de item no Previsto; foi usado o total previsto das categorias presentes nos registros realizados.':'Não foi localizada previsão compatível com o termo pesquisado.';leitura.append(title,p);}
   if(!possuiFonteObra)aviso.textContent='Não encontrei uma coluna que identifique a obra nas planilhas importadas; não somei dados de outras obras.';
@@ -897,7 +901,7 @@ function renderizarDadosBase() {
     const catOk = !filtrosDadosBase.categoria || !categoriaHeader || norm(row[categoriaHeader]) === norm(filtrosDadosBase.categoria);
     const filtroBase=filtrosDashboard.base;
     const baseOk=!filtroBase || filtroBase.planilhaId!==ativa?.id || norm(row[filtroBase.header])===norm(filtroBase.value);
-    return texto && obraOk && catOk && baseOk;
+    return texto && obraOk && catOk && baseOk && linhaPassaFiltroInterativo(ativa,row,categoriaHeader);
   });
   renderizarControlesFiltroDadosBase(ativa, obraHeader, categoriaHeader);
   renderizarIndicadoresRealizado(ativa, rowsFiltradas);
@@ -972,7 +976,7 @@ function renderizarIndicadoresRealizado(planilha, linhas=[]) {
   renderizarVelocimetros('realizado-velocimetros',{previsto:detalhes.filter(d=>!d.label.startsWith('Item: ')).reduce((s,d)=>s+d.previsto,0),realizado:total,nota:'Previsto das categorias presentes nos filtros. Filtros de registros não fracionam o orçamento da categoria.'},detalhes);
   cards.forEach(([label,value])=>{const card=document.createElement('article');card.className='bg-white p-4 rounded-xl shadow-sm border border-gray-200';const l=document.createElement('p');l.className='text-xs font-bold text-gray-500 uppercase';l.textContent=label;const v=document.createElement('p');v.className='text-lg font-black text-[#003399] mt-1';v.textContent=value;card.append(l,v);host.appendChild(card);});
   const chartData=[...grupos.entries()].sort((a,b)=>b[1]-a[1]).slice(0,12);const canvas=document.getElementById('realizado-chart');
-  if(chartData.length&&canvas&&typeof Chart!=='undefined'){graficoRealizadoCustos=new Chart(canvas.getContext('2d'),{type:'bar',data:{labels:chartData.map(x=>x[0]),datasets:[{label:'Realizado',data:chartData.map(x=>x[1]),backgroundColor:'#003399',borderColor:'#002266',borderWidth:1}]},options:{responsive:true,maintainAspectRatio:false,indexAxis:chartData.length>7?'y':'x',plugins:{legend:{position:'bottom'},tooltip:{callbacks:{label:ctx=>'Realizado: '+moeda(ctx.raw)}}},scales:{x:{beginAtZero:true},y:{beginAtZero:true}}}});}
+  if(chartData.length&&canvas&&typeof Chart!=='undefined'){graficoRealizadoCustos=new Chart(canvas.getContext('2d'),{type:'bar',data:{labels:chartData.map(x=>x[0]),datasets:[{label:'Realizado',data:chartData.map(x=>x[1]),backgroundColor:'#003399',borderColor:'#002266',borderWidth:1}]},options:{responsive:true,maintainAspectRatio:false,onClick:cliqueCategoriaGrafico(chartData.map(x=>x[0])),interaction:{mode:'nearest',intersect:false},indexAxis:chartData.length>7?'y':'x',plugins:{legend:{position:'bottom'},tooltip:{callbacks:{label:ctx=>'Realizado: '+moeda(ctx.raw)}}},scales:{x:{beginAtZero:true},y:{beginAtZero:true}}}});}
   else {const vazio=document.getElementById('realizado-chart-vazio');if(vazio){vazio.textContent=chartData.length?'Gráfico indisponível: biblioteca de gráficos não carregada.':'Não há dados realizados desta obra para desenhar o gráfico.';vazio.classList.remove('hidden');}}
 }
 
@@ -1246,6 +1250,7 @@ function popularSeletorObras() {
 function alterarObraAtiva(id) {
   if (!obrasBD[id] || obrasBD[id].oculta || (obrasBD[id].status === 'Arquivada' && usuarioAutenticado?.perfil !== 'Mestre')) return popularSeletorObras();
   obraAtivaID = id;
+  filtrosDashboard = {categoria:"",farol:"",base:null};
   filtroObraDadosBaseManual=false; sincronizarFiltroDadosBaseComObra();
   atualizarDashboard();
   if(!document.getElementById('view-dados-base')?.classList.contains('hidden'))renderizarDadosBase();
@@ -1253,6 +1258,28 @@ function alterarObraAtiva(id) {
   if(!document.getElementById('view-pesquisa')?.classList.contains('hidden'))pesquisarCustos(filtrosPesquisaCustos);
 }
 function aplicarCenario(fator) { multiplicadorCenario = parseFloat(fator); atualizarDashboard(); }
+
+function selecionarCategoriaGrafico(valor) {
+ filtrosDashboard.categoria=normalizarTextoUI(filtrosDashboard.categoria)===normalizarTextoUI(valor)?'':String(valor||'');
+ dadosBasePaginaAtual=0;previstoPaginaAtual=0;atualizarDashboard();
+}
+function linhaPassaFiltroInterativo(planilha,row,categoriaHeader){
+ const norm=normalizarTextoUI;
+ if(filtrosDashboard.categoria && categoriaHeader && norm(row[categoriaHeader])!==norm(filtrosDashboard.categoria))return false;
+ const filtro=filtrosDashboard.base;
+ if(filtro?.planilhaId===planilha?.id && norm(row[filtro.header])!==norm(filtro.value))return false;
+ if(filtrosDashboard.farol && categoriaHeader){const obra=obrasBD[obraAtivaID],cat=String(row[categoriaHeader]||'Outros').trim();if(classificarFarol((obra?.categoriasPrevisto?.[cat]||0)*multiplicadorCenario,obra?.categoriasRealizado?.[cat]||0)!==filtrosDashboard.farol)return false;}
+ return true;
+}
+function cliqueCategoriaGrafico(labels){return(event,elements,chart)=>{const pontos=elements?.length?elements:chart?.getElementsAtEventForMode(event,'nearest',{intersect:false},true);if(pontos?.length && labels[pontos[0].index]!==undefined)selecionarCategoriaGrafico(labels[pontos[0].index]);};}
+function renderizarSelecaoInterativa(){
+ ['view-dashboard','view-pesquisa','view-dados-base','view-previsto'].forEach(id=>{
+ const view=document.getElementById(id);if(!view)return;let host=document.getElementById(id+'-selecao');
+ if(!host){host=document.createElement('div');host.id=id+'-selecao';host.className='mb-4 p-3 bg-blue-50 border rounded-lg text-sm flex flex-wrap items-center gap-3';view.prepend(host);}
+ host.replaceChildren();const texto=document.createElement('span');texto.textContent=filtrosDashboard.categoria?'Categoria selecionada: '+filtrosDashboard.categoria:filtrosDashboard.base?'Seleção: '+filtrosDashboard.base.value:filtrosDashboard.farol?'Filtro de farol ativo':'Clique no demonstrativo ou no gráfico para filtrar. Clique novamente para desfazer.';
+ const btn=document.createElement('button');btn.type='button';btn.className='font-bold text-blue-800 underline';btn.textContent='Limpar seleção';btn.onclick=limparFiltrosDashboard;host.append(texto,btn);
+ });
+}
 
 function filtrarCategoriaDashboard(valor) { filtrosDashboard.categoria = valor || ''; atualizarDashboard(); }
 function alternarFiltroFarol(valor) { filtrosDashboard.farol = filtrosDashboard.farol === valor ? '' : valor; atualizarDashboard(); }
@@ -1471,6 +1498,7 @@ function atualizarDashboard() {
   });
   const linhasVisiveis = linhas.filter(l => (!filtrosDashboard.categoria || l.cat === filtrosDashboard.categoria) && (!filtrosDashboard.farol || l.farol === filtrosDashboard.farol));
   linhasDashboardVisiveis = linhasVisiveis;
+  renderizarSelecaoInterativa();
   const pAj = linhasVisiveis.reduce((s, l) => s + l.previsto, 0);
   const realVisivel = linhasVisiveis.reduce((s, l) => s + l.realizado, 0);
   const dsv = pAj - realVisivel;
@@ -1497,7 +1525,7 @@ function atualizarDashboard() {
     else if (percUso >= 85) { cls = 'bg-amber-100 text-amber-800 border border-amber-200'; txt = 'ATENÇÃO'; icn = '🟡'; cor = 'text-amber-600'; }
     else { cls = 'bg-emerald-100 text-emerald-800 border border-emerald-200'; txt = 'SEGURO'; icn = '🟢'; cor = 'text-emerald-600'; }
 
-    const row = document.createElement('tr'); row.className = 'hover:bg-gray-50 border-b';
+    const row = document.createElement('tr'); row.className = 'hover:bg-blue-50 border-b cursor-pointer'; row.tabIndex=0;row.setAttribute('role','button');row.setAttribute('aria-label','Filtrar categoria '+cat);row.onclick=()=>selecionarCategoriaGrafico(cat);row.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();selecionarCategoriaGrafico(cat);}};
     const cells = [cat, prev.toLocaleString('pt-BR', { style:'currency', currency:'BRL' }), real.toLocaleString('pt-BR', { style:'currency', currency:'BRL' }), percUso === 999 ? '∞' : `${percUso.toFixed(1)}%`, saldo.toLocaleString('pt-BR', { style:'currency', currency:'BRL' })];
     cells.forEach((value,index)=>{ const td=document.createElement('td'); td.className=['p-3 font-bold','p-3 text-right','p-3 text-right',`p-3 text-center font-bold ${cor}`,`p-3 text-right font-black ${cor}`][index]; td.textContent=value; row.appendChild(td); });
     const statusCell=document.createElement('td'); statusCell.className='p-3 text-center';
@@ -1538,7 +1566,8 @@ function obterLinhasGrafico(cfg, obra, cats) {
   if (campoX?.tipo === 'coluna') {
     const planilha=dadosBasePlanilhas.find(p=>p.id===campoX.planilhaId);
     if (!planilha) return [];
-    let rows=linhasDaObra(planilha,obra);
+    const catHeader=planilha.tipo==='Previsto'?planilha.headers.find(h=>/categoria|natureza/.test(normalizarTextoUI(tituloColunaBase(planilha,h)))):obterCamposRealizado(planilha.headers,planilha.rows,planilha.id).categoria;
+    let rows=linhasDaObra(planilha,obra).filter(row=>linhaPassaFiltroInterativo(planilha,row,catHeader));
     if(planilha.tipo==='Previsto' && planilha.id.startsWith('previsto-') && planilha.id!==`previsto-${obraAtivaID}`)return [];
     const filtro=filtrosDashboard.base;
     if (filtro?.planilhaId===planilha.id) rows=rows.filter(r=>normalizarTextoUI(r[filtro.header])===normalizarTextoUI(filtro.value));
