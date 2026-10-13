@@ -304,7 +304,7 @@
           <label for="filtro-categoria-dashboard" class="text-xs font-bold text-gray-600">Categoria:</label>
           <select id="filtro-categoria-dashboard" onchange="filtrarCategoriaDashboard(this.value)" class="border p-2 rounded-lg text-sm"><option value="">Todas as categorias</option></select>
           <button type="button" onclick="limparFiltrosDashboard()" class="text-xs font-bold text-[#003399] underline">Limpar filtros</button>
-          <span id="dashboard-filtro-resumo" class="text-xs text-gray-500"></span>
+          <div class="flex flex-col gap-1"><span id="dashboard-filtro-resumo" class="text-xs text-gray-500"></span><span id="dashboard-base-status" class="text-[11px] text-emerald-700" aria-live="polite"></span></div>
         </div>
         <div class="mb-3 flex flex-wrap gap-x-5 gap-y-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-700" role="note" aria-label="Legenda dos faróis">
           <span><strong class="text-emerald-700">🟢 Seguro:</strong> realizado abaixo de 85% do previsto.</span>

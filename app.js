@@ -99,6 +99,8 @@ if (!Array.isArray(configGlobal.planilhasRealizado)) configGlobal.planilhasReali
 let dadosBasePlanilhas = [];
 let dadosBaseAtivo = null;
 let dadosBasePaginaAtual = 0;
+let assinaturaBaseAnaliseRealizado = '';
+let diagnosticoBaseAnaliseRealizado = '';
 const DADOS_BASE_PAGINA_TAMANHO = 100;
 const BASE_DB_NAME = 'sistema_bp_dados';
 const BASE_STORE_NAME = 'planilhas';
@@ -199,7 +201,10 @@ function chaveComparacaoObra(valor) {
 function encontrarColuna(chaves, tipo) {
   const normalizadas = chaves.map(chave => ({ chave, nome: normalizarTexto(chave) }));
   const regras = {
-    obra: [n => /(^|\b)(OBRA|PROJETO)(\b|$)/.test(n), n => n.includes("CENTRO DE CUSTO"), n => n.includes("DEPARTAMENTO"), n => n.includes("CODIGO DO CENTRO")],
+    // Em exportações financeiras que trazem Projeto e Departamento, o segundo
+    // é o identificador da obra usado pelo sistema; priorize-o para não agrupar
+    // os custos pelo nome do projeto ou deixar as obras com R$ 0,00.
+    obra: [n => n.includes("DEPARTAMENTO"), n => n.includes("CENTRO DE CUSTO"), n => /(^|\b)OBRA(\b|$)/.test(n), n => n.includes("CODIGO DO CENTRO"), n => /(^|\b)PROJETO(\b|$)/.test(n)],
     categoria: [n => n.includes("CATEGORIA"), n => n.includes("NATUREZA"), n => n.includes("CLASSIFICACAO"), n => n.includes("RUBRICA"), n => n === "CONTA" || n.includes("GRUPO DE CUSTO")],
     valor: [n => n.includes("VALOR LIQUIDO"), n => n.includes("VALOR PAGO"), n => n.includes("VALOR REALIZADO"), n => n.includes("TOTAL PAGO"), n => n.includes("VALOR DA CONTA"), n => n.includes("CUSTO TOTAL"), n => n.includes("VALOR TOTAL"), n => n.includes("VALOR DO DOCUMENTO"), n => n.includes("VALOR DA NOTA"), n => n === "VALOR", n => n.startsWith("VALOR ") || n.startsWith("CUSTO ")]
   };
@@ -759,7 +764,7 @@ function renderizarIndicadoresRealizado(planilha, linhas=[]) {
   if(graficoRealizadoCustos){graficoRealizadoCustos.destroy();graficoRealizadoCustos=null;}
   document.getElementById('realizado-chart-vazio')?.classList.add('hidden');host.replaceChildren();
   const obra=obrasBD[obraAtivaID];const moeda=n=>Number(n||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});const headers=planilha?.headers||[];
-  const valorHeader=headers.find(h=>/valor liquido|valor da conta|valor total|valor pago|custo total/.test(normalizarTextoUI(h)))||headers.find(h=>normalizarTextoUI(h).includes('valor'))||headers.find(h=>normalizarTextoUI(h).includes('custo'));
+  const valorHeader=headers.find(h=>/valor liquido|valor da conta|valor total|valor pago|custo total/.test(normalizarTextoUI(h)))||headers.find(h=>normalizarTextoUI(h).includes('valor'))||headers.find(h=>normalizarTextoUI(h).includes('custo'))||inferirColunaMonetaria(headers,linhas).header;
   const categoriaHeader=headers.find(h=>/categoria|natureza/.test(normalizarTextoUI(h)))||headers.find(h=>/descricao|servico|item/.test(normalizarTextoUI(h)));
   let total=0;const grupos=new Map();
   if(planilha){linhas.forEach(row=>{const valor=valorHeader?parseMonetario(row[valorHeader]):0;const categoria=String((categoriaHeader&&row[categoriaHeader])||'Outros').trim()||'Outros';total+=valor;grupos.set(categoria,(grupos.get(categoria)||0)+valor);});}
@@ -1086,7 +1091,69 @@ function renderizarInsightsDashboard(linhas, totalPrevisto, totalRealizado, sald
   lista(leitura,observacoes,x=>x); resumo.appendChild(leitura);
 }
 
+function recalcularRealizadoDaBaseLocal() {
+  const bases = (dadosBasePlanilhas || []).filter(base => base.tipo === 'Realizado' && Array.isArray(base.rows));
+  const assinatura = bases.map(base => {
+    const fonte = (configGlobal.planilhasRealizado || []).find(item => item.id === base.id);
+    return `${base.id}:${base.rows.length}:${base.atualizadoEm || ''}:${fonte?.colunaValor || ''}`;
+  }).join('|');
+  if (!bases.length || assinatura === assinaturaBaseAnaliseRealizado) return;
+
+  const mapaObras = new Map();
+  Object.entries(obrasBD || {}).forEach(([id, obra]) => {
+    [id, obra.cc, obra.nome].filter(Boolean).forEach(valor => {
+      mapaObras.set(normalizarTexto(valor), id);
+      mapaObras.set(chaveComparacaoObra(valor), id);
+    });
+  });
+
+  const acumulados = new Map();
+  let fontesLidas = 0;
+  let linhasSomadas = 0;
+  const problemas = [];
+  bases.forEach(base => {
+    const headers = base.headers || Object.keys(base.rows[0] || {});
+    const colunaObra = encontrarColuna(headers, 'obra');
+    const fonteCfg = (configGlobal.planilhasRealizado || []).find(item => item.id === base.id);
+    const inferencia = inferirColunaMonetaria(headers, base.rows);
+    const colunaValor = headers.includes(fonteCfg?.colunaValor) ? fonteCfg.colunaValor : (encontrarColuna(headers, 'valor') || inferencia.header);
+    const colunaCategoria = encontrarColuna(headers, 'categoria');
+    if (!colunaObra || !colunaValor) {
+      problemas.push(`${base.nome || 'Realizado'}: ${!colunaObra ? 'coluna de obra/departamento não identificada' : 'coluna de valor ambígua'}`);
+      return;
+    }
+    fontesLidas++;
+    base.rows.forEach(linha => {
+      const obraTexto = String(linha[colunaObra] ?? '').trim();
+      if (!obraTexto || ['N/D', '0.0'].includes(obraTexto.toUpperCase())) return;
+      const chave = mapaObras.get(normalizarTexto(obraTexto)) || mapaObras.get(chaveComparacaoObra(obraTexto));
+      if (!chave || obrasBD[chave]?.status === 'Arquivada') return;
+      const valor = parseMonetario(linha[colunaValor]);
+      const categoria = String((colunaCategoria && linha[colunaCategoria]) || 'Outros').trim() || 'Outros';
+      if (!acumulados.has(chave)) acumulados.set(chave, { total: 0, categorias: {} });
+      const soma = acumulados.get(chave);
+      soma.total += valor;
+      soma.categorias[categoria] = (soma.categorias[categoria] || 0) + valor;
+      linhasSomadas++;
+    });
+  });
+
+  if (fontesLidas) {
+    Object.values(obrasBD).forEach(obra => { obra.realizadoTotal = 0; obra.categoriasRealizado = {}; });
+    acumulados.forEach((soma, chave) => {
+      obrasBD[chave].realizadoTotal = soma.total;
+      obrasBD[chave].categoriasRealizado = soma.categorias;
+    });
+    try { localStorage.setItem('obras_bp', JSON.stringify(obrasBD)); } catch (erro) { console.warn('Não foi possível guardar o resumo calculado da base local.', erro); }
+    diagnosticoBaseAnaliseRealizado = `${fontesLidas} fonte(s) de Realizado lida(s) diretamente de Dados Base; ${linhasSomadas} linha(s) associadas às obras.`;
+  } else {
+    diagnosticoBaseAnaliseRealizado = problemas.length ? `Não foi possível montar o Realizado para Análises: ${problemas.join('; ')}.` : '';
+  }
+  assinaturaBaseAnaliseRealizado = assinatura;
+}
+
 function atualizarDashboard() {
+  recalcularRealizadoDaBaseLocal();
   if (obraAtivaID && obrasBD[obraAtivaID]?.status === 'Arquivada' && usuarioAutenticado?.perfil !== 'Mestre') popularSeletorObras();
   if (!obraAtivaID || !obrasBD[obraAtivaID]) {
     ['obra-titulo','obra-cc','obra-resp'].forEach(id => { const el=document.getElementById(id); if(el) el.textContent='—'; });
@@ -1168,6 +1235,8 @@ function atualizarDashboard() {
   }
   const resumo = document.getElementById('dashboard-filtro-resumo');
   if (resumo) resumo.textContent = filtrosDashboard.base ? `Filtro da base ativo: ${filtrosDashboard.base.planilhaNome} • ${filtrosDashboard.base.header} = ${filtrosDashboard.base.value}. Gráficos da planilha e Dados Base estão conectados.` : (filtrosDashboard.categoria || filtrosDashboard.farol ? 'Filtros ativos — KPIs, demonstrativo e gráficos estão sincronizados.' : 'Selecione uma categoria, um farol ou um ponto de gráfico para filtrar a análise.');
+  const statusBase = document.getElementById('dashboard-base-status');
+  if (statusBase) statusBase.textContent = diagnosticoBaseAnaliseRealizado;
   renderizarGridGraficosDinamicos(obra, cats);
   if (!document.getElementById('view-dados-base')?.classList.contains('hidden')) renderizarDadosBase();
   if (!document.getElementById('view-previsto')?.classList.contains('hidden')) renderizarPrevisto();
