@@ -221,7 +221,12 @@ function inferirColunaMonetaria(headers, rows) {
   const amostras = (rows || []).slice(0, 300);
   const candidatos = headers.filter(header => !bloqueios.test(normalizarTexto(header))).map(header => {
     const valores = amostras.map(row => String(row[header] ?? '').trim()).filter(Boolean);
-    const numericos = valores.filter(value => /^(?:R\$\s*)?\(?-?\d[\d.,\s]*\)?$/.test(value));
+    // O export do Google retorna negativos como "-R$ 99,90"; retire a moeda
+    // antes de validar para não confundir essas colunas com campos vazios/zero.
+    const numericos = valores.filter(value => {
+      const normalizado = value.replace(/R\$\s*/gi, '').replace(/[−–]/g, '-').trim();
+      return /^\(?-?\s*\d[\d.,\s]*\)?$/.test(normalizado);
+    });
     const monetarios = numericos.filter(value => /R\$|,\d{1,2}$|\.\d{1,2}$/.test(value));
     const total = numericos.reduce((sum, value) => sum + parseMonetario(value), 0);
     const taxa = valores.length ? numericos.length / valores.length : 0;
@@ -241,10 +246,18 @@ function obterCamposRealizado(headers, rows = [], fonteId = '') {
   const colunas = Array.isArray(headers) ? headers : [];
   const configuracaoFonte = (configGlobal.planilhasRealizado || []).find(fonte => fonte.id === fonteId);
   const inferencia = inferirColunaMonetaria(colunas, rows);
+  const nomes = colunas.map(header => normalizarTexto(header));
+  // Nesta exportação específica, o Google omite alguns títulos de colunas.
+  // Conferimos na planilha que a coluna AH (Valor Pago) chega como "Coluna 34";
+  // a presença de Origem/Departamento e da sequência financeira genérica evita
+  // aplicar esse mapeamento a planilhas de outros formatos.
+  const valorPagoGenerico = nomes.includes('DEPARTAMENTO') && nomes.includes('ORIGEM') && nomes.includes('COLUNA 34') && nomes.includes('COLUNA 23')
+    ? colunas[nomes.indexOf('COLUNA 34')]
+    : null;
   return {
     obra: encontrarColuna(colunas, 'obra'),
     categoria: encontrarColuna(colunas, 'categoria'),
-    valor: colunas.includes(configuracaoFonte?.colunaValor) ? configuracaoFonte.colunaValor : (encontrarColuna(colunas, 'valor') || inferencia.header),
+    valor: colunas.includes(configuracaoFonte?.colunaValor) ? configuracaoFonte.colunaValor : (encontrarColuna(colunas, 'valor') || valorPagoGenerico || inferencia.header),
     inferencia
   };
 }
