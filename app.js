@@ -1932,7 +1932,7 @@ async function abrirModalUsuarios() {
   }
   renderizarPainelUsuarios();
   const editor=document.getElementById('editor-permissoes-perfis');
-  if (editor) editor.classList.toggle('hidden', !obterPermissoesUsuario().permissoes);
+  if (editor) editor.classList.toggle('hidden', usuarioAutenticado?.perfil !== 'Mestre');
   document.getElementById('modal-usuarios').classList.remove('hidden');
 }
 function fecharModalUsuarios() { document.getElementById('modal-usuarios').classList.add('hidden'); }
@@ -2093,4 +2093,3 @@ function renderizarPainelUsuarios() {
   });
   renderizarEditorPermissoesPerfil();
 }
-
