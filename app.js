@@ -492,7 +492,7 @@ async function lerArquivoPlanilhaLocal(file) {
   if (!window.XLSX) throw new Error("Leitor Excel indisponível. Recarregue a página com acesso à biblioteca SheetJS.");
   const workbook = XLSX.read(await file.arrayBuffer(), { type: "array", cellDates: true });
   return workbook.SheetNames.map(nomeAba => {
-    const matriz = XLSX.utils.sheet_to_json(workbook.Sheets[nomeAba], { header: 1, defval: "", raw: false, blankrows: false });
+    const matriz = XLSX.utils.sheet_to_json(workbook.Sheets[nomeAba], { header: 1, defval: "", raw: false, dateNF:"yyyy-mm-dd", blankrows: false });
     return { nomeAba, ...formatarMatrizPlanilha(matriz) };
   }).filter(aba => aba.headers.length && aba.rows.length);
 }
