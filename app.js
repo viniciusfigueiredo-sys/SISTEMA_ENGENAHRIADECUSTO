@@ -296,7 +296,9 @@ function buscarPlanilhaGoogle(url) {
     const gid = String(url).match(/[?&#]gid=(\d+)/)?.[1];
     const callbackName = `bpSheetsCallback_${Date.now()}_${Math.random().toString(36).slice(2)}`;
     const script = document.createElement("script");
-    const parametros = new URLSearchParams({ tqx: `responseHandler:${callbackName}`, headers: "0" });
+    // Defina explicitamente o formato JSON/JSONP; sem out:json, algumas respostas
+    // do Google não chamam o callback e a tela acaba esperando até o timeout.
+    const parametros = new URLSearchParams({ tqx: `out:json;responseHandler:${callbackName}`, headers: "0" });
     if (gid) parametros.set("gid", gid);
     const timer = setTimeout(() => finalizar(new Error("Tempo esgotado ao ler a planilha Google. Confira o compartilhamento 'Qualquer pessoa com o link — Leitor'.")), 25000);
     function finalizar(erro, resultado) {
@@ -316,6 +318,11 @@ function buscarPlanilhaGoogle(url) {
       } catch (erro) { finalizar(erro); }
     };
     script.onerror = () => finalizar(new Error("Não foi possível consultar o Google Planilhas. Confirme que a fonte é nativa do Google e está compartilhada para leitura por link."));
+    script.onload = () => setTimeout(() => {
+      if (typeof window[callbackName] === 'function') {
+        finalizar(new Error("O Google respondeu, mas não enviou os dados da planilha. Confirme o compartilhamento 'Qualquer pessoa com o link — Leitor', se o link aponta para uma planilha nativa (não pasta/arquivo Excel no Drive) e se a aba/ID do link ainda existe."));
+      }
+    }, 0);
     script.src = `https://docs.google.com/spreadsheets/d/${encodeURIComponent(id)}/gviz/tq?${parametros.toString()}`;
     document.head.appendChild(script);
   });
