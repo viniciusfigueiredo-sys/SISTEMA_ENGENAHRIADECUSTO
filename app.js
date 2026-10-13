@@ -766,8 +766,8 @@ function pesquisarCustos(termo) {
   const linhasGrafico=[...grupos.values()].sort((a,b)=>(b.previsto+b.realizado)-(a.previsto+a.realizado)).slice(0,12);
   const detalhesVelocimetro=[...grupos.values()].map(g=>({label:'Categoria: '+g.categoria,previsto:g.previsto,realizado:g.realizado}));
   const itens=new Map();
-  const itemChave=x=>String(x.item || x.descricao || '').trim();
-  [...previstosDiretos,...dados].forEach(x=>{const label=itemChave(x);if(label && !x.agregado && !itens.has(label))itens.set(label,{label:'Item: '+label,previsto:0,realizado:0});});
+  const itemChave=x=>{const value=normalizarTexto(x.item || x.descricao || '');return ['N/D','N/A','0',''].includes(value)?'':value;};
+  [...previstosDiretos,...dados].forEach(x=>{const key=itemChave(x);if(key && !x.agregado && !itens.has(key))itens.set(key,{label:'Item: '+String(x.item || x.descricao).trim(),previsto:0,realizado:0});});
   previstosDiretos.forEach(x=>{const item=itens.get(itemChave(x));if(item)item.previsto+=x.valor;});
   dados.forEach(x=>{const item=itens.get(itemChave(x));if(item)item.realizado+=x.valor;});
   renderizarVelocimetros('pesquisa-velocimetros',{label:'Total da pesquisa',previsto,realizado},[...detalhesVelocimetro,...itens.values()]);
@@ -924,7 +924,14 @@ function renderizarIndicadoresRealizado(planilha, linhas=[]) {
   const cards=[[fallback?'Realizado consolidado da obra':'Realizado nos filtros atuais',moeda(total)],['Registros exibidos',fallback?'Resumo da obra':String(linhas.length)],['Categorias encontradas',String(grupos.size)],['Média por registro',!fallback&&linhas.length?moeda(total/linhas.length):'—']];
   const detalhes=[...grupos.entries()].map(([label,realizado])=>({label,realizado,previsto:Number(obra?.categoriasPrevisto?.[label]||0)*multiplicadorCenario}));
   const itemHeader=headers.find(h=>/^(item|codigo item)$|descri[cç][aã]o|hist[oó]rico/i.test(h));
-  if(itemHeader){const itens=new Map();linhas.forEach(row=>{const label=String(row[itemHeader]||'').trim();if(!label || label==='N/D')return;if(!itens.has(label))itens.set(label,{label:'Item: '+label,realizado:0,previsto:0,nota:'Sem previsto específico vinculado a este item; consulte também a categoria.'});itens.get(label).realizado+=valorHeader?parseMonetario(row[valorHeader]):0;});detalhes.push(...itens.values());}
+  if(itemHeader){
+    const basePrevista=dadosBasePlanilhas.find(p=>p.tipo==='Previsto' && p.id===`previsto-${obraAtivaID}`);
+    const previstoItemHeader=basePrevista?.headers?.find(h=>/^(item|codigo item)$|descri[cç][aã]o|hist[oó]rico/i.test(h));
+    const previstoValorHeader=encontrarColuna(basePrevista?.headers || [],'valor');
+    const orcamentoItens=new Map();
+    if(previstoItemHeader && previstoValorHeader)(basePrevista.rows || []).forEach(row=>{const key=normalizarTexto(row[previstoItemHeader]);if(key && key!=='N/D')orcamentoItens.set(key,(orcamentoItens.get(key)||0)+parseMonetario(row[previstoValorHeader])*multiplicadorCenario);});
+    const itens=new Map();linhas.forEach(row=>{const label=String(row[itemHeader]||'').trim(),key=normalizarTexto(label);if(!key || ['N/D','N/A','0'].includes(key))return;if(!itens.has(key))itens.set(key,{label:'Item: '+label,realizado:0,previsto:orcamentoItens.get(key)||0,nota:orcamentoItens.has(key)?'Previsto vinculado pelo código ou descrição do item.':'Sem previsto específico vinculado a este item; consulte também a categoria.'});itens.get(key).realizado+=valorHeader?parseMonetario(row[valorHeader]):0;});detalhes.push(...itens.values());
+  }
   renderizarVelocimetros('realizado-velocimetros',{previsto:detalhes.filter(d=>!d.label.startsWith('Item: ')).reduce((s,d)=>s+d.previsto,0),realizado:total,nota:'Previsto das categorias presentes nos filtros. Filtros de registros não fracionam o orçamento da categoria.'},detalhes);
   cards.forEach(([label,value])=>{const card=document.createElement('article');card.className='bg-white p-4 rounded-xl shadow-sm border border-gray-200';const l=document.createElement('p');l.className='text-xs font-bold text-gray-500 uppercase';l.textContent=label;const v=document.createElement('p');v.className='text-lg font-black text-[#003399] mt-1';v.textContent=value;card.append(l,v);host.appendChild(card);});
   const chartData=[...grupos.entries()].sort((a,b)=>b[1]-a[1]).slice(0,12);const canvas=document.getElementById('realizado-chart');
