@@ -14,7 +14,11 @@ if(typeof Chart!=='undefined')Chart.register({
   options.plugins.legend.labels.generateLabels=c=>gerar(c).map(item=>({...item,textoCompleto:item.text,text:abreviarRotuloGrafico(item.text,28)}));
   options.plugins.legend.onHover=(event,item)=>{chart.canvas.title=item.textoCompleto||item.text;};
   options.plugins.legend.onLeave=()=>{chart.canvas.title='';};
+  options.plugins.tooltip||={};options.plugins.tooltip.callbacks||={};
+  const tituloTooltip=options.plugins.tooltip.callbacks.title||Chart.defaults.plugins.tooltip.callbacks.title;
+  options.plugins.tooltip.callbacks.title=itens=>{const titulo=tituloTooltip(itens);return (Array.isArray(titulo)?titulo:[titulo]).flatMap(texto=>String(texto??'').match(/.{1,45}(?:\s|$)|.{1,45}/g)||['']);};
  },
+ afterInit(chart){const titulo=chart.canvas.parentElement?.parentElement?.querySelector('h3');if(titulo)titulo.title=titulo.textContent;},
  afterEvent(chart,args){
   const event=args.event;let texto='';
   if(event.type!=='mouseout')for(const scale of Object.values(chart.scales)){
