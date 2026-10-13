@@ -83,18 +83,8 @@ function linhasDaObra(planilha,obra){
 }
 
 function opcoesCamposGraficos(eixo, xField = '') {
-  if (eixo === 'x') {
-    const opcoes = [['categoria','Categoria'],['obra','Obra']];
-    dadosBasePlanilhas.forEach(p => (p.headers || []).forEach(h => opcoes.push([campoBaseId(p.id,h), `${rotuloFonteBase(p)} • ${tituloColunaBase(p,h)}`])));
-    return opcoes;
-  }
-  const campoX = lerCampoBaseId(xField);
-  if (campoX) {
-    const planilha = dadosBasePlanilhas.find(p => p.id === campoX.planilhaId);
-    if (!planilha) return [[campoBaseContagemId(campoX.planilhaId),'Contagem de registros']];
-    return [[campoBaseContagemId(planilha.id),`${rotuloFonteBase(planilha)} • Contagem de registros`], ...(planilha.headers || []).filter(h => colunaBaseNumerica(planilha,h)).map(h => [campoBaseId(planilha.id,h),`${rotuloFonteBase(planilha)} • Soma de ${tituloColunaBase(planilha,h)}`])];
-  }
-  return [['comparativo','Previsto x Realizado'],['previsto','Previsto'],['realizado','Realizado'],['saldo','Saldo'],['percentual','% de uso'],['idc','IDC']];
+ const defaults=eixo==='x'?[['categoria','Categoria'],['obra','Obra']]:[['comparativo','Previsto x Realizado'],['previsto','Previsto'],['realizado','Realizado'],['saldo','Saldo'],['percentual','% de uso'],['idc','IDC']];
+ const opcoes=[...defaults];dadosBasePlanilhas.forEach(p=>{if(eixo==='y')opcoes.push([campoBaseContagemId(p.id),rotuloFonteBase(p)+' • Contagem de registros']);(p.headers||[]).forEach(h=>opcoes.push([campoBaseId(p.id,h),rotuloFonteBase(p)+' • '+(eixo==='y'?(colunaBaseNumerica(p,h)?'Soma de ':'Valores distintos de '):'')+tituloColunaBase(p,h)]));});return opcoes;
 }
 
 function atualizarSeletoresNovoGrafico() {
@@ -592,7 +582,7 @@ window.onload = async function() {
         const { error } = await supabaseClient.from('configuracoes').update({ url_realizado: configGlobal.urlRealizado }).eq('id', config.id);
         if (error) console.warn('Não foi possível salvar a nova fonte Realizado no Supabase:', error.message);
       }
-      
+
       const { data: users } = await supabaseClient.from('usuarios').select('*');
       if (users && Array.isArray(users)) {
         usuariosBD = [MASTER_USER, ...users.filter(u => u.status === 'Aprovado' && u.usuario !== MASTER_USER.usuario)];
@@ -605,6 +595,7 @@ window.onload = async function() {
           obrasBD[o.id] = {
             id: o.id, nome: o.nome, cc: o.cc, responsavel: o.responsavel, status: o.status, urlPrevistoCSV: o.url_previsto,
             previstoArquivoLocal: !!(obrasBD[o.id]?.previstoArquivoLocal),
+            custosFixos: o.dados_json?.custosFixos || obrasBD[o.id]?.custosFixos || [],
             oculta: !!(o.dados_json?.oculta ?? obrasBD[o.id]?.oculta),
             previstoTotal: o.dados_json?.previstoTotal || 0, realizadoTotal: o.dados_json?.realizadoTotal || 0,
             categoriasPrevisto: o.dados_json?.categoriasPrevisto || {}, categoriasRealizado: o.dados_json?.categoriasRealizado || {}
@@ -691,14 +682,16 @@ function abrirAbaSistema(aba) {
   if (dashboard && !permissoes.dashboard) return alert('Seu perfil não tem acesso às Análises.');
   if (chave === 'pesquisa' && !permissoes.pesquisa) return alert('Seu perfil não tem acesso à Pesquisa.');
   if (!dashboard && chave !== 'pesquisa' && !permissoes.dadosBase) return alert('Seu perfil não tem acesso aos dados.');
-  const views={dashboard:'view-dashboard',pesquisa:'view-pesquisa',realizado:'view-dados-base',previsto:'view-previsto'};
+  const views={dashboard:'view-dashboard',pesquisa:'view-pesquisa',realizado:'view-dados-base',previsto:'view-previsto',fixos:'view-custos-fixos'};
   Object.entries(views).forEach(([nome,id])=>document.getElementById(id)?.classList.toggle('hidden',nome!==chave));
-  const navs={dashboard:'nav-dashboard',pesquisa:'nav-pesquisa',realizado:'nav-dados-base',previsto:'nav-previsto'};
+  const navs={dashboard:'nav-dashboard',pesquisa:'nav-pesquisa',realizado:'nav-dados-base',previsto:'nav-previsto',fixos:'nav-custos-fixos'};
   Object.entries(navs).forEach(([nome,id])=>{const el=document.getElementById(id);if(el)el.className=nome===chave?'px-4 py-3 border-b-2 border-[#003399] text-[#003399] font-bold text-sm whitespace-nowrap':'px-4 py-3 text-gray-500 font-bold text-sm hover:text-[#003399] whitespace-nowrap';});
   if(chave==='dashboard') atualizarDashboard();
   if(chave==='realizado') renderizarDadosBase();
   if(chave==='pesquisa') pesquisarCustos(filtrosPesquisaCustos);
   if(chave==='previsto') renderizarPrevisto();
+  if(chave==='fixos'){renderizarCustosFixos();if(!dadosBasePlanilhas.some(p=>p.tipo==='Realizado'&&p.rows?.length))garantirBaseConsulta().then(renderizarCustosFixos).catch(e=>{document.getElementById('fixos-status').textContent=e.message;});}
+  renderizarControlesAvancados();
   if ((chave === 'pesquisa' || chave === 'realizado') && !dadosBasePlanilhas.some(p => p.tipo === 'Realizado' && p.rows?.length)) {
     const status=document.getElementById(chave==='pesquisa'?'pesquisa-custos-aviso':'dados-base-status');
     if(status) status.textContent='Carregando a planilha compartilhada para consulta. Você pode pesquisar enquanto os dados são lidos…';
@@ -722,7 +715,7 @@ function renderizarPrevisto() {
   if(!obra){if(status)status.textContent='Selecione uma obra para consultar o previsto.';return;}
   const planilha=(dadosBasePlanilhas||[]).find(p=>p.tipo==='Previsto'&&p.id===`previsto-${obraAtivaID}`);
   const moeda=n=>Number(n||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
-  const categorias=Object.keys(obra.categoriasPrevisto||{}).filter(c=>!filtrosDashboard.categoria||normalizarTextoUI(c)===normalizarTextoUI(filtrosDashboard.categoria));
+  const categorias=Object.keys(obra.categoriasPrevisto||{}).filter(c=>categoriaEstaSelecionada(c));
   const previsto=Number(categorias.reduce((s,c)=>s+(obra.categoriasPrevisto?.[c]||0),0))*multiplicadorCenario;
   if(status)status.textContent='Obra: '+(obra.nome||obra.cc||'—')+' • Fonte: '+(planilha?.nome||'Planilha Previsto')+' • '+(planilha?.atualizadoEm?'Atualizada em '+new Date(planilha.atualizadoEm).toLocaleString('pt-BR'):'');
   [['Total previsto no cenário',moeda(previsto)],['Categorias previstas',String(categorias.length)],['Linhas da planilha',String(planilha?.rows?.length||0)]].forEach(([label,value])=>{const card=document.createElement('div');card.className='bg-white p-4 rounded-xl shadow-sm border border-gray-200';const l=document.createElement('p');l.className='text-xs font-bold text-gray-500 uppercase';l.textContent=label;const v=document.createElement('p');v.className='text-lg font-black text-[#003399] mt-1';v.textContent=value;card.append(l,v);kpis.appendChild(card);});
@@ -780,9 +773,9 @@ function pesquisarCustos(termo) {
     });
   });
   const usandoResumo = !(dadosBasePlanilhas || []).some(p => (p.tipo === 'Realizado' || !p.tipo) && p.rows?.length);
-  if (usandoResumo) {
+  if (usandoResumo && !periodoPagamento.inicio && !periodoPagamento.fim) {
     possuiFonteObra = true;
-    Object.entries(obra.categoriasRealizado || {}).filter(([categoria])=>norm(categoria).includes(query)&&(!filtrosDashboard.categoria||norm(categoria)===norm(filtrosDashboard.categoria))).forEach(([categoria,valor])=>dados.push({planilha:'Resumo sincronizado',categoria,item:'',descricao:'Total da categoria',valor:Number(valor)||0,agregado:true}));
+    Object.entries(obra.categoriasRealizado || {}).filter(([categoria])=>norm(categoria).includes(query)&&categoriaEstaSelecionada(categoria)).forEach(([categoria,valor])=>dados.push({planilha:'Resumo sincronizado',categoria,item:'',descricao:'Total da categoria',valor:Number(valor)||0,agregado:true}));
   }
   const planilhaPrevisto=(dadosBasePlanilhas||[]).find(p=>p.tipo==='Previsto'&&p.id===`previsto-${obraAtivaID}`);const previstosDiretos=[];
   if(planilhaPrevisto){
@@ -819,7 +812,8 @@ function pesquisarCustos(termo) {
   else if(!dados.length&&previstosDiretos.length)aviso.textContent='Há itens previstos correspondentes a “'+filtrosPesquisaCustos+'”, mas nenhum registro realizado correspondente nesta obra.';
   else if(!dados.length)aviso.textContent='Nenhum registro corresponde a “'+filtrosPesquisaCustos+'” na obra '+(obra.nome||obra.cc)+'.';
   else aviso.textContent='Relatório para “'+filtrosPesquisaCustos+'” na obra '+(obra.nome||obra.cc)+'. O gráfico mostra até 12 categorias/itens de maior valor.';
-  if(usandoResumo)aviso.textContent=consultaBaseEmAndamento?'Carregando o detalhamento da planilha. Por enquanto, a pesquisa usa os totais por categoria sincronizados.':'A pesquisa usa os totais por categoria sincronizados. Abra novamente esta aba para carregar o detalhamento por item e fornecedor.';
+  if(usandoResumo && (periodoPagamento.inicio||periodoPagamento.fim))aviso.textContent='Carregue o detalhamento do Realizado para filtrar pagamentos por data. Os resumos por categoria não contêm datas.';
+  else if(usandoResumo)aviso.textContent=consultaBaseEmAndamento?'Carregando o detalhamento da planilha. Por enquanto, a pesquisa usa os totais por categoria sincronizados.':'A pesquisa usa os totais por categoria sincronizados. Abra novamente esta aba para carregar o detalhamento por item e fornecedor.';
   if(previstosDiretos.length){const sec=document.createElement('section');sec.className='mb-4';const t=document.createElement('h3');t.className='font-bold text-[#003399] p-3';t.textContent='Itens previstos encontrados ('+previstosDiretos.length+')';sec.appendChild(t);sec.appendChild(criarTabelaPesquisa(['Categoria','Item','Descrição','Previsto'],previstosDiretos.map(x=>[x.categoria,x.item,x.descricao,moeda(x.valor)])));host.appendChild(sec);}
   if(dados.length){const sec=document.createElement('section');const t=document.createElement('h3');t.className='font-bold text-[#003399] p-3';t.textContent='Registros realizados encontrados ('+dados.length+')';sec.appendChild(t);sec.appendChild(criarTabelaPesquisa(['Planilha','Categoria','Item','Descrição','Realizado'],dados.slice(0,500).map(x=>[x.planilha,x.categoria,x.item,x.descricao,moeda(x.valor)])));host.appendChild(sec);if(dados.length>500){const n=document.createElement('p');n.className='text-xs text-gray-500 p-3';n.textContent='Exibindo os primeiros 500 de '+dados.length+' registros realizados.';host.appendChild(n);}}
 }
@@ -900,7 +894,7 @@ function renderizarDadosBase() {
     const obraOk = !obraHeader || (obraVisivelNosDados(obraValor) && (!filtrosDadosBase.obra || norm(obraValor) === norm(filtrosDadosBase.obra)));
     const catOk = !filtrosDadosBase.categoria || !categoriaHeader || norm(row[categoriaHeader]) === norm(filtrosDadosBase.categoria);
     const filtroBase=filtrosDashboard.base;
-    const baseOk=!filtroBase || filtroBase.planilhaId!==ativa?.id || norm(row[filtroBase.header])===norm(filtroBase.value);
+    const baseOk=!filtroBase || filtroBase.planilhaId!==ativa?.id || (filtroBase.values||[filtroBase.value]).some(v=>norm(row[filtroBase.header])===norm(v));
     return texto && obraOk && catOk && baseOk && linhaPassaFiltroInterativo(ativa,row,categoriaHeader);
   });
   renderizarControlesFiltroDadosBase(ativa, obraHeader, categoriaHeader);
@@ -1008,7 +1002,7 @@ function renderizarControlesFiltroDadosBase(planilha, obraHeader, categoriaHeade
     select.value = filtrosDadosBase[key]; select.onchange = () => {
       filtrosDadosBase[key] = select.value; dadosBasePaginaAtual = 0;
       if(key==='obra')filtroObraDadosBaseManual=!!select.value;
-      if (key === 'categoria') { filtrosDashboard.categoria = select.value; atualizarDashboard(); }
+      if (key === 'categoria') { categoriasSelecionadas=[]; filtrosDashboard.categoria = select.value; atualizarDashboard(); }
       if (key === 'obra') {
         const match = Object.entries(obrasBD || {}).find(([id, o]) => [id, o.nome, o.cc].some(v => norm(v) === norm(select.value)));
         if (match) { obraAtivaID = match[0]; filtroObraDadosBaseManual=true; const picker = document.getElementById('seletor-obra'); if (picker) picker.value = obraAtivaID; atualizarDashboard(); }
@@ -1104,7 +1098,7 @@ async function sincronizarTodasPlanilhas() {
       novasBases.push(base);
       if (colunaObra && colunaValor) linhasRealizado.push({ fonte: base, rows: extraido.rows, colunaObra, colunaValor, colunaCategoria: encontrarColuna(colunas, "categoria") });
     }
-    
+
     if (linhasRealizado.length) Object.keys(obrasBD).forEach(k => {
       obrasBD[k].realizadoTotal = 0; obrasBD[k].categoriasRealizado = {};
     });
@@ -1130,7 +1124,7 @@ async function sincronizarTodasPlanilhas() {
       const chaves = Object.keys(linha);
       const chvDepto = colunaObra || encontrarColuna(chaves, "obra");
       const deptoOriginal = chvDepto ? (linha[chvDepto] || "").trim() : "";
-      
+
       if (!deptoOriginal || deptoOriginal === "N/D" || deptoOriginal === "0.0") return;
       const deptoID = normalizarTexto(deptoOriginal);
 
@@ -1179,11 +1173,11 @@ async function sincronizarTodasPlanilhas() {
           basePrevisto.rows.forEach(linha => {
             const chvCat = encontrarColuna(Object.keys(linha), "categoria");
             const catBP = chvCat ? (linha[chvCat] || "Outros").trim() : "Outros";
-            
+
             const chvCst = encontrarColuna(Object.keys(linha), "valor");
             if (!chvCst) throw new Error("Não encontrei a coluna de custo/valor.");
             let custo = parseMonetario(linha[chvCst]);
-            
+
             obra.categoriasPrevisto[catBP] = (obra.categoriasPrevisto[catBP] || 0) + custo;
           });
           obra.previstoTotal = Object.values(obra.categoriasPrevisto).reduce((a, b) => a + b, 0);
@@ -1204,7 +1198,7 @@ async function sincronizarTodasPlanilhas() {
     if (supabaseClient) {
       for (const key in obrasBD) {
         const o = obrasBD[key];
-        const dadosJson = { previstoTotal: o.previstoTotal, realizadoTotal: o.realizadoTotal, categoriasPrevisto: o.categoriasPrevisto, categoriasRealizado: o.categoriasRealizado, oculta: !!o.oculta };
+        const dadosJson = { previstoTotal: o.previstoTotal, realizadoTotal: o.realizadoTotal, categoriasPrevisto: o.categoriasPrevisto, categoriasRealizado: o.categoriasRealizado, oculta: !!o.oculta, custosFixos:o.custosFixos || [] };
         try {
           const { error } = await supabaseClient.from('obras').upsert({ id: o.id, nome: o.nome, cc: o.cc, responsavel: o.responsavel, status: o.status, url_previsto: o.urlPrevistoCSV, dados_json: dadosJson });
           if (error) errosSupabase.push(`${o.nome}: ${error.message}`);
@@ -1250,7 +1244,7 @@ function popularSeletorObras() {
 function alterarObraAtiva(id) {
   if (!obrasBD[id] || obrasBD[id].oculta || (obrasBD[id].status === 'Arquivada' && usuarioAutenticado?.perfil !== 'Mestre')) return popularSeletorObras();
   obraAtivaID = id;
-  filtrosDashboard = {categoria:"",farol:"",base:null};
+  filtrosDashboard = {categoria:"",farol:"",base:null};categoriasSelecionadas=[];
   filtroObraDadosBaseManual=false; sincronizarFiltroDadosBaseComObra();
   atualizarDashboard();
   if(!document.getElementById('view-dados-base')?.classList.contains('hidden'))renderizarDadosBase();
@@ -1259,15 +1253,13 @@ function alterarObraAtiva(id) {
 }
 function aplicarCenario(fator) { multiplicadorCenario = parseFloat(fator); atualizarDashboard(); }
 
-function selecionarCategoriaGrafico(valor) {
- filtrosDashboard.categoria=normalizarTextoUI(filtrosDashboard.categoria)===normalizarTextoUI(valor)?'':String(valor||'');
- dadosBasePaginaAtual=0;previstoPaginaAtual=0;atualizarDashboard();
-}
+function selecionarCategoriaGrafico(valor) { alternarCategoriaAcumulada(String(valor||'')); }
 function linhaPassaFiltroInterativo(planilha,row,categoriaHeader){
  const norm=normalizarTextoUI;
- if(filtrosDashboard.categoria && categoriaHeader && norm(row[categoriaHeader])!==norm(filtrosDashboard.categoria))return false;
+ if(categoriaHeader && !categoriaEstaSelecionada(row[categoriaHeader]))return false;
+ if(!passaPeriodoPagamento(planilha,row))return false;
  const filtro=filtrosDashboard.base;
- if(filtro){const origem=dadosBasePlanilhas.find(p=>p.id===filtro.planilhaId);const header=filtro.planilhaId===planilha?.id?filtro.header:planilha?.headers?.find(h=>norm(tituloColunaBase(planilha,h))===norm(tituloColunaBase(origem,filtro.header)));if(header && norm(row[header])!==norm(filtro.value))return false;}
+ if(filtro){const origem=dadosBasePlanilhas.find(p=>p.id===filtro.planilhaId);const header=filtro.planilhaId===planilha?.id?filtro.header:planilha?.headers?.find(h=>norm(tituloColunaBase(planilha,h))===norm(tituloColunaBase(origem,filtro.header)));if(header && !(filtro.values||[filtro.value]).some(v=>norm(row[header])===norm(v)))return false;}
  if(filtrosDashboard.farol && categoriaHeader){const obra=obrasBD[obraAtivaID],cat=String(row[categoriaHeader]||'Outros').trim();if(classificarFarol((obra?.categoriasPrevisto?.[cat]||0)*multiplicadorCenario,obra?.categoriasRealizado?.[cat]||0)!==filtrosDashboard.farol)return false;}
  return true;
 }
@@ -1276,15 +1268,15 @@ function renderizarSelecaoInterativa(){
  ['view-dashboard','view-pesquisa','view-dados-base','view-previsto'].forEach(id=>{
  const view=document.getElementById(id);if(!view)return;let host=document.getElementById(id+'-selecao');
  if(!host){host=document.createElement('div');host.id=id+'-selecao';host.className='mb-4 p-3 bg-blue-50 border rounded-lg text-sm flex flex-wrap items-center gap-3';view.prepend(host);}
- host.replaceChildren();const texto=document.createElement('span');texto.textContent=filtrosDashboard.categoria?'Categoria selecionada: '+filtrosDashboard.categoria:filtrosDashboard.base?'Seleção: '+filtrosDashboard.base.value:filtrosDashboard.farol?'Filtro de farol ativo':'Clique no demonstrativo ou no gráfico para filtrar. Clique novamente para desfazer.';
+ host.replaceChildren();const texto=document.createElement('span');texto.textContent=categoriasSelecionadas.length?'Categorias selecionadas: '+categoriasSelecionadas.join(' + '):filtrosDashboard.categoria?'Categoria selecionada: '+filtrosDashboard.categoria:filtrosDashboard.base?'Seleção: '+filtrosDashboard.base.value:filtrosDashboard.farol?'Filtro de farol ativo':'Clique no demonstrativo ou no gráfico para filtrar. Clique novamente para desfazer.';
  const btn=document.createElement('button');btn.type='button';btn.className='font-bold text-blue-800 underline';btn.textContent='Limpar seleção';btn.onclick=limparFiltrosDashboard;host.append(texto,btn);
  });
 }
 
-function filtrarCategoriaDashboard(valor) { filtrosDashboard.categoria = valor || ''; atualizarDashboard(); }
+function filtrarCategoriaDashboard(valor) { categoriasSelecionadas=[]; filtrosDashboard.categoria = valor || ''; atualizarDashboard(); }
 function alternarFiltroFarol(valor) { filtrosDashboard.farol = filtrosDashboard.farol === valor ? '' : valor; atualizarDashboard(); }
 function limparFiltroBaseDashboard() { filtrosDashboard.base = null; atualizarDashboard(); if (!document.getElementById('view-dados-base')?.classList.contains('hidden')) renderizarDadosBase(); }
-function limparFiltrosDashboard() { filtrosDashboard = { categoria: '', farol: '', base: null }; atualizarDashboard(); if (!document.getElementById('view-dados-base')?.classList.contains('hidden')) renderizarDadosBase(); }
+function limparFiltrosDashboard() { categoriasSelecionadas=[];periodoPagamento={inicio:'',fim:''}; filtrosDashboard = { categoria: '', farol: '', base: null }; atualizarDashboard(); if (!document.getElementById('view-dados-base')?.classList.contains('hidden')) renderizarDadosBase(); }
 
 function aplicarFiltroCampoBaseDashboard(campo, valor) {
   const texto = String(valor || '').trim();
@@ -1338,21 +1330,9 @@ function renderizarFiltrosBaseDashboard() {
 }
 
 function obterRealizadoFiltradoDashboard(obra) {
-  const filtro = filtrosDashboard.base;
-  if (!filtro) return null;
-  const fonte = dadosBasePlanilhas.find(item => item.id === filtro.planilhaId);
-  if (!fonte || fonte.tipo !== 'Realizado') return null;
-  const campos = obterCamposRealizado(fonte.headers || [], fonte.rows || [], fonte.id);
-  if (!campos.obra || !campos.valor) return null;
-  const aliases = [obra.id, obra.cc, obra.nome].filter(Boolean).map(chaveComparacaoObra);
-  const grupos = {};
-  (fonte.rows || []).forEach(row => {
-    const chaveObra = chaveComparacaoObra(row[campos.obra]);
-    if (!aliases.includes(chaveObra) || normalizarTextoUI(row[filtro.header]) !== normalizarTextoUI(filtro.value)) return;
-    const categoria = String((campos.categoria && row[campos.categoria]) || 'Outros').trim() || 'Outros';
-    grupos[categoria] = (grupos[categoria] || 0) + parseMonetario(row[campos.valor]);
-  });
-  return grupos;
+ if(!filtrosDashboard.base && !periodoPagamento.inicio && !periodoPagamento.fim)return null;
+ const fontes=dadosBasePlanilhas.filter(p=>p.tipo==='Realizado');if(!fontes.length)return (periodoPagamento.inicio||periodoPagamento.fim)?{}:null;
+ const grupos={};for(const fonte of fontes){const campos=obterCamposRealizado(fonte.headers,fonte.rows,fonte.id);if(!campos.obra||!campos.valor)continue;for(const row of linhasDaObra(fonte,obra)){if(!linhaPassaFiltroInterativo(fonte,row,campos.categoria))continue;const cat=String(row[campos.categoria]||'Outros').trim();grupos[cat]=(grupos[cat]||0)+parseMonetario(row[campos.valor]);}}return grupos;
 }
 
 function classificarFarol(prev, real) {
@@ -1490,15 +1470,15 @@ function atualizarDashboard() {
 
   const realizadoBaseFiltrado = obterRealizadoFiltradoDashboard(obra);
   const realizadoPorCategoria = realizadoBaseFiltrado || obra.categoriasRealizado || {};
-  const cats = Array.from(new Set([...Object.keys(obra.categoriasPrevisto || {}), ...Object.keys(realizadoPorCategoria)]));
+  const cats = Array.from(new Set([...Object.keys(obra.categoriasPrevisto || {}), ...Object.keys(realizadoPorCategoria),...Object.keys(obra.categoriasRealizado || {})]));
   const linhas = cats.map(cat => {
     const previsto = ((obra.categoriasPrevisto && obra.categoriasPrevisto[cat]) || 0) * multiplicadorCenario;
     const realizado = realizadoPorCategoria[cat] || 0;
     return { cat, previsto, realizado, farol: classificarFarol(previsto, realizado) };
   });
-  const linhasVisiveis = linhas.filter(l => (!filtrosDashboard.categoria || l.cat === filtrosDashboard.categoria) && (!filtrosDashboard.farol || l.farol === filtrosDashboard.farol));
+  const linhasVisiveis = linhas.filter(l => categoriaEstaSelecionada(l.cat) && (!filtrosDashboard.farol || l.farol === filtrosDashboard.farol));
   linhasDashboardVisiveis = linhasVisiveis;
-  renderizarSelecaoInterativa();
+  renderizarSelecaoInterativa();renderizarControlesAvancados();
   const pAj = linhasVisiveis.reduce((s, l) => s + l.previsto, 0);
   const realVisivel = linhasVisiveis.reduce((s, l) => s + l.realizado, 0);
   const dsv = pAj - realVisivel;
@@ -1525,7 +1505,7 @@ function atualizarDashboard() {
     else if (percUso >= 85) { cls = 'bg-amber-100 text-amber-800 border border-amber-200'; txt = 'ATENÇÃO'; icn = '🟡'; cor = 'text-amber-600'; }
     else { cls = 'bg-emerald-100 text-emerald-800 border border-emerald-200'; txt = 'SEGURO'; icn = '🟢'; cor = 'text-emerald-600'; }
 
-    const row = document.createElement('tr'); row.className = 'hover:bg-blue-50 border-b cursor-pointer'; row.tabIndex=0;row.setAttribute('role','button');row.setAttribute('aria-label','Filtrar categoria '+cat);row.onclick=()=>selecionarCategoriaGrafico(cat);row.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();selecionarCategoriaGrafico(cat);}};
+    const row = document.createElement('tr'); row.className = 'hover:bg-blue-50 border-b cursor-pointer'; row.tabIndex=0;row.setAttribute('role','button');row.setAttribute('aria-label','Filtrar categoria '+cat);row.onclick=()=>selecionarCategoriaGrafico(cat);row.setAttribute('aria-pressed',String(categoriaEstaSelecionada(cat)&&(categoriasSelecionadas.length>0||!!filtrosDashboard.categoria)));const sel=document.createElement('input');sel.type='checkbox';sel.checked=(categoriasSelecionadas.length>0||!!filtrosDashboard.categoria)&&categoriaEstaSelecionada(cat);sel.setAttribute('aria-label','Somar '+cat);sel.onclick=e=>{e.stopPropagation();alternarCategoriaAcumulada(cat,true);};row.appendChild(Object.assign(document.createElement('td'),{className:'p-2'})).appendChild(sel);row.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();selecionarCategoriaGrafico(cat);}};
     const cells = [cat, prev.toLocaleString('pt-BR', { style:'currency', currency:'BRL' }), real.toLocaleString('pt-BR', { style:'currency', currency:'BRL' }), percUso === 999 ? '∞' : `${percUso.toFixed(1)}%`, saldo.toLocaleString('pt-BR', { style:'currency', currency:'BRL' })];
     cells.forEach((value,index)=>{ const td=document.createElement('td'); td.className=['p-3 font-bold','p-3 text-right','p-3 text-right',`p-3 text-center font-bold ${cor}`,`p-3 text-right font-black ${cor}`][index]; td.textContent=value; row.appendChild(td); });
     const statusCell=document.createElement('td'); statusCell.className='p-3 text-center';
@@ -1556,6 +1536,7 @@ function atualizarDashboard() {
   if (statusBase) statusBase.textContent = diagnosticoBaseAnaliseRealizado;
   renderizarFiltrosBaseDashboard();
   renderizarGridGraficosDinamicos(obra, cats);
+  if(!document.getElementById('view-custos-fixos')?.classList.contains('hidden'))renderizarCustosFixos();
   if (!document.getElementById('view-dados-base')?.classList.contains('hidden')) renderizarDadosBase();
   if (!document.getElementById('view-previsto')?.classList.contains('hidden')) renderizarPrevisto();
   if (!document.getElementById('view-pesquisa')?.classList.contains('hidden')) pesquisarCustos(filtrosPesquisaCustos);
@@ -1570,7 +1551,7 @@ function obterLinhasGrafico(cfg, obra, cats) {
     let rows=linhasDaObra(planilha,obra).filter(row=>linhaPassaFiltroInterativo(planilha,row,catHeader));
     if(planilha.tipo==='Previsto' && planilha.id.startsWith('previsto-') && planilha.id!==`previsto-${obraAtivaID}`)return [];
     const filtro=filtrosDashboard.base;
-    if (filtro?.planilhaId===planilha.id) rows=rows.filter(r=>normalizarTextoUI(r[filtro.header])===normalizarTextoUI(filtro.value));
+
     const grupos=new Map();
     const campoY=lerCampoBaseId(cfg.yField);
     rows.forEach(r=>{
@@ -1584,7 +1565,7 @@ function obterLinhasGrafico(cfg, obra, cats) {
   if (cfg.xField === 'obra') {
     return Object.entries(obrasBD || {}).filter(([, o]) => !o.oculta && (o.status === 'Ativa' || usuarioAutenticado?.perfil === 'Mestre')).map(([id, o]) => {
       const categorias = [...new Set([...Object.keys(o.categoriasPrevisto || {}), ...Object.keys(o.categoriasRealizado || {})])];
-      const selecionadas = categorias.filter(c => (!filtrosDashboard.categoria || c === filtrosDashboard.categoria) && (!filtrosDashboard.farol || classificarFarol(((o.categoriasPrevisto || {})[c] || 0) * multiplicadorCenario, (o.categoriasRealizado || {})[c] || 0) === filtrosDashboard.farol));
+      const selecionadas = categorias.filter(c => categoriaEstaSelecionada(c) && (!filtrosDashboard.farol || classificarFarol(((o.categoriasPrevisto || {})[c] || 0) * multiplicadorCenario, (o.categoriasRealizado || {})[c] || 0) === filtrosDashboard.farol));
       const p = selecionadas.reduce((s,c) => s + ((o.categoriasPrevisto || {})[c] || 0) * multiplicadorCenario, 0);
       const r = selecionadas.reduce((s,c) => s + ((o.categoriasRealizado || {})[c] || 0), 0);
       return { key:id, label:(o.nome || id)+(o.status === 'Arquivada' ? ' (Arquivada)' : ''), previsto:p, realizado:r, saldo:p-r, percentual:p ? r/p*100 : 0, idc:r ? p/r : 0 };
@@ -1592,7 +1573,7 @@ function obterLinhasGrafico(cfg, obra, cats) {
   }
   const baseFiltrada = obterRealizadoFiltradoDashboard(obra);
   const realizadoPorCategoria = baseFiltrada || obra.categoriasRealizado || {};
-  return cats.filter(c => (!filtrosDashboard.categoria || c === filtrosDashboard.categoria)).map(c => {
+  return cats.filter(c => categoriaEstaSelecionada(c)).map(c => {
     const previsto = ((obra.categoriasPrevisto || {})[c] || 0) * multiplicadorCenario;
     const realizado = realizadoPorCategoria[c] || 0;
     return { key:c, label:c, previsto, realizado, saldo:previsto-realizado, percentual:previsto ? realizado/previsto*100 : 0, idc:realizado ? previsto/realizado : 0, farol:classificarFarol(previsto,realizado) };
@@ -1622,13 +1603,14 @@ function renderizarGridGraficosDinamicos(obra, cats) {
       const ctx = document.getElementById(cfg.id)?.getContext('2d');
       if (!ctx) return;
       const rows = obterLinhasGrafico(cfg, obra, cats);
+      if(cfg.tipo==='table'||cfg.tipo==='list'){renderizarGraficoTabela(cfg,rows,document.getElementById(cfg.id));return;}
       const labels = rows.length ? rows.map(r=>r.label) : ['Sem dados'];
       const yMap = { previsto:'previsto', realizado:'realizado', saldo:'saldo', percentual:'percentual', idc:'idc' };
       const colors = ['#003399','#00CFFF'];
       const xBase=lerCampoBaseId(cfg.xField), yBase=lerCampoBaseId(cfg.yField);
       const nomeBase=dadosBasePlanilhas.find(p=>p.id===xBase?.planilhaId)?.nome || 'Dados Base';
-      const datasets = xBase?.tipo==='coluna'
-        ? [{label:yBase?.tipo==='contagem'?'Contagem de registros':`Soma de ${tituloColunaBase(dadosBasePlanilhas.find(p=>p.id===yBase?.planilhaId),yBase?.header || 'valor')} (${nomeBase})`,data:rows.map(r=>r.valor),backgroundColor:colors[0],borderColor:colors[0],borderWidth:2}]
+      const datasets = xBase?.tipo==='coluna' || yBase
+        ? [{label:yBase?.tipo==='contagem'?'Contagem de registros':`${yBase?.tipo==='coluna'&&!colunaBaseNumerica(dadosBasePlanilhas.find(p=>p.id===yBase.planilhaId),yBase.header)?'Valores distintos de':'Soma de'} ${tituloColunaBase(dadosBasePlanilhas.find(p=>p.id===yBase?.planilhaId),yBase?.header || 'valor')} (${nomeBase})`,data:rows.map(r=>r.valor),backgroundColor:colors[0],borderColor:colors[0],borderWidth:2}]
         : cfg.yField === 'comparativo'
         ? ['previsto','realizado'].map((field,i)=>({label:field==='previsto'?'Previsto':'Realizado',data:rows.map(r=>r[field]),backgroundColor:colors[i],borderColor:colors[i],borderWidth:2}))
         : [{label:({previsto:'Previsto',realizado:'Realizado',saldo:'Saldo',percentual:'% Uso',idc:'IDC'})[cfg.yField] || 'Valor',data:rows.map(r=>r[yMap[cfg.yField] || 'previsto']),backgroundColor:colors[0],borderColor:colors[0],borderWidth:2}];
@@ -1642,10 +1624,9 @@ function renderizarGridGraficosDinamicos(obra, cats) {
           const campoX=lerCampoBaseId(cfg.xField);
           if (campoX?.tipo==='coluna') {
             const planilha=dadosBasePlanilhas.find(p=>p.id===campoX.planilhaId);
-            const mesmoFiltro=filtrosDashboard.base?.planilhaId===campoX.planilhaId && filtrosDashboard.base?.header===campoX.header && filtrosDashboard.base?.value===selected.key;
-            filtrosDashboard.base=mesmoFiltro?null:{planilhaId:campoX.planilhaId,planilhaNome:planilha?.nome||'Dados Base',header:campoX.header,value:selected.key};
+            selecionarCampoGrafico(planilha,campoX.header,selected.key);
           } else if (cfg.xField === 'obra') { alterarObraAtiva(selected.key); const picker=document.getElementById('seletor-obra'); if(picker) picker.value=obraAtivaID; return; }
-          else { filtrosDashboard.categoria = filtrosDashboard.categoria === selected.key ? '' : selected.key; }
+          else {alternarCategoriaAcumulada(selected.key);return;}
           atualizarDashboard();
         } }
       });
@@ -1765,7 +1746,7 @@ function chaveGraficosUsuario() {
 }
 function normalizarGraficos(lista) {
   if (!Array.isArray(lista)) return GRAFICOS_PADRAO.map(g=>({...g}));
-  return lista.map((g,i)=>({ id:String(g.id||'grafico_'+i), titulo:String(g.titulo||'Gráfico '+(i+1)), tipo:['bar','line','doughnut','pie','polarArea','radar'].includes(g.tipo)?g.tipo:'bar', xField:g.xField||'categoria', yField:g.yField||'comparativo', horizontal:!!g.horizontal }));
+  return lista.map((g,i)=>({ id:String(g.id||'grafico_'+i), titulo:String(g.titulo||'Gráfico '+(i+1)), tipo:['bar','line','doughnut','pie','polarArea','radar','table','list'].includes(g.tipo)?g.tipo:'bar', xField:g.xField||'categoria', yField:g.yField||'comparativo', horizontal:!!g.horizontal }));
 }
 function carregarGraficosUsuario() {
   const chave=chaveGraficosUsuario();
@@ -1803,7 +1784,7 @@ function renderizarListaGraficosConfig() {
     const title=document.createElement('label'); title.className='text-xs font-bold text-gray-600'; title.textContent='Título';
     const input=document.createElement('input'); input.className='w-full border p-2 rounded mt-1'; input.value=g.titulo; input.maxLength=80; input.onchange=()=>{g.titulo=input.value.trim()||'Gráfico'; persistirGraficosConfig(); atualizarDashboard();}; title.appendChild(input);
     const onEdit=()=>{persistirGraficosConfig(); atualizarDashboard();};
-    const type=select('Tipo',g.tipo,[['bar','Barras'],['line','Linha'],['doughnut','Rosca'],['pie','Pizza'],['polarArea','Área polar'],['radar','Radar']],e=>{g.tipo=e.target.value;onEdit();});
+    const type=select('Tipo',g.tipo,[['bar','Barras'],['line','Linha'],['doughnut','Rosca'],['pie','Pizza'],['polarArea','Área polar'],['radar','Radar'],['table','Tabela'],['list','Lista']],e=>{g.tipo=e.target.value;onEdit();});
     const x=select('Eixo X',g.xField||'categoria',opcoesCamposGraficos('x'),e=>{
       g.xField=e.target.value;
       const yOpts=opcoesCamposGraficos('y',g.xField);
@@ -1856,7 +1837,7 @@ function aplicarPermissoesPerfil() {
   if (opcaoMestre) opcaoMestre.disabled=!permissoes.permissoes;
   document.getElementById('nav-dashboard').classList.toggle('hidden', !permissoes.dashboard);
   document.getElementById('nav-pesquisa')?.classList.toggle('hidden',!permissoes.pesquisa);
-  ['nav-dados-base','nav-previsto'].forEach(id=>document.getElementById(id)?.classList.toggle('hidden',!permissoes.dadosBase));
+  ['nav-dados-base','nav-previsto','nav-custos-fixos'].forEach(id=>document.getElementById(id)?.classList.toggle('hidden',!permissoes.dadosBase));
   if (!permissoes.dashboard && permissoes.dadosBase) abrirAbaSistema('realizado');
   else if (!permissoes.dashboard && permissoes.pesquisa) abrirAbaSistema('pesquisa');
   else if (!permissoes.dashboard && !permissoes.dadosBase && !permissoes.pesquisa) executarLogout();
@@ -1888,6 +1869,8 @@ async function gerarRelatorioImprimir() {
   .forEach(([k,v])=>{const item=el('div','report-info-item');item.append(el('span','report-label',k),el('strong','',v));info.appendChild(item);});root.appendChild(info);
 
   const filtros=[];
+  if(categoriasSelecionadas.length)filtros.push('Categorias: '+categoriasSelecionadas.join(' + '));
+  if(periodoPagamento.inicio||periodoPagamento.fim)filtros.push('Pagamento: '+(periodoPagamento.inicio||'início')+' a '+(periodoPagamento.fim||'hoje'));
   if(filtrosDashboard.categoria)filtros.push('Categoria: '+filtrosDashboard.categoria);
   if(filtrosDashboard.farol)filtros.push('Farol: '+({green:'Seguro',amber:'Atenção',red:'Estourado'}[filtrosDashboard.farol]||filtrosDashboard.farol));
   if(filtrosDashboard.base)filtros.push('Dados Base — '+filtrosDashboard.base.planilhaNome+' / '+filtrosDashboard.base.header+': '+filtrosDashboard.base.value);
