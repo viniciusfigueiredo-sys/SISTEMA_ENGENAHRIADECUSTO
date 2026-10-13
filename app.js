@@ -1267,7 +1267,7 @@ function linhaPassaFiltroInterativo(planilha,row,categoriaHeader){
  const norm=normalizarTextoUI;
  if(filtrosDashboard.categoria && categoriaHeader && norm(row[categoriaHeader])!==norm(filtrosDashboard.categoria))return false;
  const filtro=filtrosDashboard.base;
- if(filtro?.planilhaId===planilha?.id && norm(row[filtro.header])!==norm(filtro.value))return false;
+ if(filtro){const origem=dadosBasePlanilhas.find(p=>p.id===filtro.planilhaId);const header=filtro.planilhaId===planilha?.id?filtro.header:planilha?.headers?.find(h=>norm(tituloColunaBase(planilha,h))===norm(tituloColunaBase(origem,filtro.header)));if(header && norm(row[header])!==norm(filtro.value))return false;}
  if(filtrosDashboard.farol && categoriaHeader){const obra=obrasBD[obraAtivaID],cat=String(row[categoriaHeader]||'Outros').trim();if(classificarFarol((obra?.categoriasPrevisto?.[cat]||0)*multiplicadorCenario,obra?.categoriasRealizado?.[cat]||0)!==filtrosDashboard.farol)return false;}
  return true;
 }
@@ -1599,7 +1599,9 @@ function obterLinhasGrafico(cfg, obra, cats) {
   }).filter(r => !filtrosDashboard.farol || r.farol === filtrosDashboard.farol);
 }
 
+let geracaoGraficosDashboard=0;
 function renderizarGridGraficosDinamicos(obra, cats) {
+  const geracao=++geracaoGraficosDashboard;
   const container = document.getElementById('grid-graficos-dinamicos');
   container.innerHTML = '';
   Object.keys(graficosInstancias).forEach(id => { if (graficosInstancias[id]) graficosInstancias[id].destroy(); });
@@ -1615,6 +1617,7 @@ function renderizarGridGraficosDinamicos(obra, cats) {
   });
 
   setTimeout(() => {
+    if(geracao!==geracaoGraficosDashboard)return;
     graficosConfig.forEach(cfg => {
       const ctx = document.getElementById(cfg.id)?.getContext('2d');
       if (!ctx) return;
@@ -1640,7 +1643,7 @@ function renderizarGridGraficosDinamicos(obra, cats) {
             const planilha=dadosBasePlanilhas.find(p=>p.id===campoX.planilhaId);
             const mesmoFiltro=filtrosDashboard.base?.planilhaId===campoX.planilhaId && filtrosDashboard.base?.header===campoX.header && filtrosDashboard.base?.value===selected.key;
             filtrosDashboard.base=mesmoFiltro?null:{planilhaId:campoX.planilhaId,planilhaNome:planilha?.nome||'Dados Base',header:campoX.header,value:selected.key};
-          } else if (cfg.xField === 'obra') { obraAtivaID=selected.key; const picker=document.getElementById('seletor-obra'); if(picker) picker.value=obraAtivaID; }
+          } else if (cfg.xField === 'obra') { alterarObraAtiva(selected.key); const picker=document.getElementById('seletor-obra'); if(picker) picker.value=obraAtivaID; return; }
           else { filtrosDashboard.categoria = filtrosDashboard.categoria === selected.key ? '' : selected.key; }
           atualizarDashboard();
         } }
