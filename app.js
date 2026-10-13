@@ -207,8 +207,8 @@ function encontrarColuna(chaves, tipo) {
 }
 
 function migrarLinkPlanilhaRealizado() {
-  const idAtual = "1wZQhhLXwcpToKGy26gW1rHooGwUuRQMJ";
-  const idsAntigos = ["1S41dXyTC2Y_SJjD3iw86WaUqi0OWNxyf", "1v3FrPW55ofd8j3-rOqyyZlw1HHMJuf6"];
+  const idAtual = "1hl9Q4UgickyOa4kCEJixEY9XNruivmbSBqWxZIz16oA";
+  const idsAntigos = ["1S41dXyTC2Y_SJjD3iw86WaUqi0OWNxyf", "1v3FrPW55ofd8j3-rOqyyZlw1HHMJuf6", "1wZQhhLXwcpToKGy26gW1rHooGwUuRQMJ"];
   const linkAtual = `https://docs.google.com/spreadsheets/d/${idAtual}/edit?gid=1037311119`;
   let alterou = false;
   if (idsAntigos.some(id => String(configGlobal.urlRealizado || "").includes(id))) { configGlobal.urlRealizado = linkAtual; alterou = true; }
@@ -301,7 +301,7 @@ window.onload = async function() {
     if (supabaseClient) {
       const { data: config } = await supabaseClient.from('configuracoes').select('*').limit(1).single();
       if (config) { configGlobal.titulo = config.titulo || "Brasil Pontes"; configGlobal.urlRealizado = config.url_realizado || ""; }
-      const linkRealizadoDesatualizado = ["1S41dXyTC2Y_SJjD3iw86WaUqi0OWNxyf", "1v3FrPW55ofd8j3-rOqyyZlw1HHMJuf6"].some(id => String(config?.url_realizado || "").includes(id));
+      const linkRealizadoDesatualizado = ["1S41dXyTC2Y_SJjD3iw86WaUqi0OWNxyf", "1v3FrPW55ofd8j3-rOqyyZlw1HHMJuf6", "1wZQhhLXwcpToKGy26gW1rHooGwUuRQMJ"].some(id => String(config?.url_realizado || "").includes(id));
       if (migrarLinkPlanilhaRealizado() && linkRealizadoDesatualizado) {
         const { error } = await supabaseClient.from('configuracoes').update({ url_realizado: configGlobal.urlRealizado }).eq('id', config.id);
         if (error) console.warn('Não foi possível salvar a nova fonte Realizado no Supabase:', error.message);
