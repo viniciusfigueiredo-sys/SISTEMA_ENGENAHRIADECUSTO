@@ -92,7 +92,11 @@
       #header-app-title { font-size: 1rem; }
       #app-container main h2 { overflow-wrap: anywhere; }
     }
-  </style>
+  
+      #grid-graficos-dinamicos > div, [id^="painel-fixo-"] .grid > div { min-width:0; }
+      #grid-graficos-dinamicos h3, [id^="painel-fixo-"] h3 { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+      .dica-rotulo-grafico { position:absolute; z-index:30; max-width:280px; padding:8px 10px; background:#0f172a; color:white; border-radius:6px; font-size:12px; white-space:normal; pointer-events:none; box-shadow:0 2px 8px #0003; }
+    </style>
 </head>
 <body class="bg-[#F4F6F9] font-sans text-gray-800 antialiased min-h-screen flex flex-col">
 
@@ -603,11 +607,12 @@
   <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   
-  <script src="app.js?v=paineis-compartilhados-20261013d"></script>
-<script src="configuracoes-sistema.js?v=paineis-compartilhados-20261013d"></script>
-  <script src="telas-config.js?v=paineis-compartilhados-20261013d"></script>
-  <script src="analise-avancada.js?v=paineis-compartilhados-20261013d"></script>
-  <script src="paineis-fixos.js?v=paineis-compartilhados-20261013d"></script>
+  <script src="app.js?v=rotulos-legiveis-20261013a"></script>
+<script src="configuracoes-sistema.js?v=rotulos-legiveis-20261013a"></script>
+  <script src="telas-config.js?v=rotulos-legiveis-20261013a"></script>
+  <script src="analise-avancada.js?v=rotulos-legiveis-20261013a"></script>
+  <script src="paineis-fixos.js?v=rotulos-legiveis-20261013a"></script>
+  <script src="graficos-legiveis.js?v=rotulos-legiveis-20261013a"></script>
 </body>
 </html>
 
