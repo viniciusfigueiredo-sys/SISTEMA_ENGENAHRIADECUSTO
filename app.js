@@ -206,7 +206,7 @@ function encontrarColuna(chaves, tipo) {
     // os custos pelo nome do projeto ou deixar as obras com R$ 0,00.
     obra: [n => n.includes("DEPARTAMENTO"), n => n.includes("CENTRO DE CUSTO"), n => /(^|\b)OBRA(\b|$)/.test(n), n => n.includes("CODIGO DO CENTRO"), n => /(^|\b)PROJETO(\b|$)/.test(n)],
     categoria: [n => n.includes("CATEGORIA"), n => n.includes("NATUREZA"), n => n.includes("CLASSIFICACAO"), n => n.includes("RUBRICA"), n => n === "CONTA" || n.includes("GRUPO DE CUSTO")],
-    valor: [n => n.includes("VALOR LIQUIDO"), n => n.includes("VALOR PAGO"), n => n.includes("VALOR REALIZADO"), n => n.includes("TOTAL PAGO"), n => n.includes("VALOR DA CONTA"), n => n.includes("CUSTO TOTAL"), n => n.includes("VALOR TOTAL"), n => n.includes("VALOR DO DOCUMENTO"), n => n.includes("VALOR DA NOTA"), n => n === "VALOR", n => n.startsWith("VALOR ") || n.startsWith("CUSTO ")]
+    valor: [n => n === "PAGO OU RECEBIDO", n => n.includes("VALOR PAGO"), n => n.includes("PAGO OU RECEBIDO"), n => n.includes("VALOR REALIZADO"), n => n.includes("TOTAL PAGO"), n => n.includes("VALOR LIQUIDO"), n => n.includes("VALOR DA CONTA"), n => n.includes("CUSTO TOTAL"), n => n.includes("VALOR TOTAL"), n => n.includes("VALOR DO DOCUMENTO"), n => n.includes("VALOR DA NOTA"), n => n === "VALOR", n => n.startsWith("VALOR ") || n.startsWith("CUSTO ")]
   };
   for (const regra of regras[tipo] || []) {
     const encontrado = normalizadas.find(item => regra(item.nome));
@@ -234,6 +234,18 @@ function inferirColunaMonetaria(headers, rows) {
   if (!first) return { header: null, candidatos: [] };
   const unique = candidatos.length === 1 || first.score - candidatos[1].score >= 8;
   return { header: (first.taxaMonetaria >= 0.35 || unique) ? first.header : null, candidatos: candidatos.slice(0, 8) };
+}
+
+function obterCamposRealizado(headers, rows = [], fonteId = '') {
+  const colunas = Array.isArray(headers) ? headers : [];
+  const configuracaoFonte = (configGlobal.planilhasRealizado || []).find(fonte => fonte.id === fonteId);
+  const inferencia = inferirColunaMonetaria(colunas, rows);
+  return {
+    obra: encontrarColuna(colunas, 'obra'),
+    categoria: encontrarColuna(colunas, 'categoria'),
+    valor: colunas.includes(configuracaoFonte?.colunaValor) ? configuracaoFonte.colunaValor : (encontrarColuna(colunas, 'valor') || inferencia.header),
+    inferencia
+  };
 }
 
 function migrarLinkPlanilhaRealizado() {
@@ -590,9 +602,9 @@ function pesquisarCustos(termo) {
   const obra=obrasBD[obraAtivaID];if(!obra){aviso.textContent='Selecione uma obra no cabeçalho antes de pesquisar.';return;}
   const dados=[];const norm=normalizarTextoUI;const col=(headers,pred)=>headers.find(h=>pred(norm(h)));let possuiFonteObra=false;
   (dadosBasePlanilhas||[]).filter(p=>p.tipo==='Realizado'||!p.tipo).forEach(planilha=>{
-    const headers=planilha.headers||[];const obraHeader=col(headers,h=>h.includes('obra')||h.includes('departamento')||h.includes('centro de custo'));if(!obraHeader)return;
-    const categoriaHeader=col(headers,h=>h.includes('categoria')||h.includes('natureza'));
-    const valorHeader=headers.find(h=>/valor liquido|valor da conta|valor total|valor pago|custo total/.test(norm(h)))||col(headers,h=>h.includes('valor'));
+    const headers=planilha.headers||[];const campos=obterCamposRealizado(headers,planilha.rows||[],planilha.id);const obraHeader=campos.obra;if(!obraHeader)return;
+    const categoriaHeader=campos.categoria;
+    const valorHeader=campos.valor;
     const itemHeader=col(headers,h=>h==='item'||h.includes('item ')||h.includes('codigo item')||h.includes('codigo'));
     const descricaoHeader=col(headers,h=>h.includes('descricao')||h.includes('servico')||h.includes('historico')||h.includes('especificacao'));
     const camposBusca=headers.filter(header=>/categoria|natureza|item|descricao|servico|historico|fornecedor|produto|conta|codigo/.test(norm(header)));
@@ -764,8 +776,9 @@ function renderizarIndicadoresRealizado(planilha, linhas=[]) {
   if(graficoRealizadoCustos){graficoRealizadoCustos.destroy();graficoRealizadoCustos=null;}
   document.getElementById('realizado-chart-vazio')?.classList.add('hidden');host.replaceChildren();
   const obra=obrasBD[obraAtivaID];const moeda=n=>Number(n||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});const headers=planilha?.headers||[];
-  const valorHeader=headers.find(h=>/valor liquido|valor da conta|valor total|valor pago|custo total/.test(normalizarTextoUI(h)))||headers.find(h=>normalizarTextoUI(h).includes('valor'))||headers.find(h=>normalizarTextoUI(h).includes('custo'))||inferirColunaMonetaria(headers,linhas).header;
-  const categoriaHeader=headers.find(h=>/categoria|natureza/.test(normalizarTextoUI(h)))||headers.find(h=>/descricao|servico|item/.test(normalizarTextoUI(h)));
+  const campos=obterCamposRealizado(headers,linhas,planilha?.id);
+  const valorHeader=campos.valor;
+  const categoriaHeader=campos.categoria||headers.find(h=>/descricao|servico|item/.test(normalizarTextoUI(h)));
   let total=0;const grupos=new Map();
   if(planilha){linhas.forEach(row=>{const valor=valorHeader?parseMonetario(row[valorHeader]):0;const categoria=String((categoriaHeader&&row[categoriaHeader])||'Outros').trim()||'Outros';total+=valor;grupos.set(categoria,(grupos.get(categoria)||0)+valor);});}
   else if(obra){Object.entries(obra.categoriasRealizado||{}).forEach(([categoria,valor])=>{grupos.set(categoria,valor);total+=valor;});}
@@ -873,24 +886,40 @@ async function sincronizarTodasPlanilhas() {
   try {
     const novasBases = [];
     const linhasRealizado = [];
+    const fontesEmCache=[];
     for (const fonte of fontesRealizado) {
-      let extraido;
+      let extraido, baseCache=null, reutilizouCache=false;
+      const basesCache=(dadosBasePlanilhas||[]).filter(base=>base.tipo==='Realizado'&&Array.isArray(base.rows)&&base.rows.length);
+      baseCache=basesCache.find(base=>base.id===fonte.id)||(fontesRealizado.length===1&&basesCache.length===1?basesCache[0]:null);
       if (fonte.arquivoLocal) {
         const salvo = (dadosBasePlanilhas || []).find(base => base.id === fonte.id && base.origem === 'arquivo-local');
         if (!salvo) throw new Error(`O arquivo local de "${fonte.nome}" não está carregado. Selecione-o novamente nas Configurações.`);
         extraido = { headers: salvo.headers, rows: salvo.rows };
-      } else extraido = await buscarCSV(fonte.url);
+      } else {
+        try { extraido = await buscarCSV(fonte.url); }
+        catch (erroFonte) {
+          if (!baseCache) throw erroFonte;
+          extraido = { headers: baseCache.headers, rows: baseCache.rows }; reutilizouCache=true;
+          fontesEmCache.push(`${baseCache.nome || fonte.nome} (${baseCache.atualizadoEm ? new Date(baseCache.atualizadoEm).toLocaleString('pt-BR') : 'data da importação indisponível'})`);
+        }
+      }
       if (!extraido.rows.length) throw new Error(`A planilha "${fonte.nome}" não contém linhas de dados.`);
-      const colunas = extraido.headers;
-      const colunaObra = encontrarColuna(colunas, "obra");
-      const deteccaoValor = inferirColunaMonetaria(colunas, extraido.rows);
-      const colunaValor = colunas.includes(fonte.colunaValor) ? fonte.colunaValor : (encontrarColuna(colunas, "valor") || deteccaoValor.header);
+      let colunas = extraido.headers;
+      let campos=obterCamposRealizado(colunas,extraido.rows,reutilizouCache?baseCache?.id:fonte.id);
+      if (!fonte.arquivoLocal && !reutilizouCache && baseCache && (!campos.obra || !campos.valor)) {
+        extraido={headers:baseCache.headers,rows:baseCache.rows}; colunas=extraido.headers;
+        campos=obterCamposRealizado(colunas,extraido.rows,baseCache.id); reutilizouCache=true;
+        fontesEmCache.push(`${baseCache.nome || fonte.nome} (${baseCache.atualizadoEm ? new Date(baseCache.atualizadoEm).toLocaleString('pt-BR') : 'data da importação indisponível'})`);
+      }
+      const colunaObra = campos.obra;
+      const deteccaoValor = campos.inferencia;
+      const colunaValor = campos.valor;
       if (!colunaObra) throw new Error(`Não identifiquei a coluna da obra/departamento na planilha "${fonte.nome}". Cabeçalhos encontrados: ${colunas.join(", ")}.`);
       if (!colunaValor) {
         const sugestoes = deteccaoValor.candidatos.map(item => `${item.header} [ex.: ${item.amostra.join(' / ')}]`).join('; ');
         throw new Error(`Não consegui distinguir automaticamente o campo monetário da planilha "${fonte.nome}". ${sugestoes ? `Campos numéricos encontrados: ${sugestoes}. ` : ''}Em Configurações > Geral, preencha "Coluna de valor" com o cabeçalho exato da coluna que contém o custo/valor realizado. Cabeçalhos: ${colunas.join(", ")}.`);
       }
-      const base = { id: fonte.id || `realizado-${Date.now()}`, nome: fonte.nome || "Realizado", tipo: "Realizado", origem: fonte.arquivoLocal ? "arquivo-local" : "url", url: fonte.url || "", headers: extraido.headers, rows: extraido.rows, atualizadoEm: new Date().toISOString() };
+      const base = reutilizouCache ? baseCache : { id: fonte.id || `realizado-${Date.now()}`, nome: fonte.nome || "Realizado", tipo: "Realizado", origem: fonte.arquivoLocal ? "arquivo-local" : "url", url: fonte.url || "", headers: extraido.headers, rows: extraido.rows, atualizadoEm: new Date().toISOString() };
       novasBases.push(base);
       linhasRealizado.push({ fonte: base, rows: extraido.rows, colunaObra, colunaValor, colunaCategoria: encontrarColuna(colunas, "categoria") });
     }
@@ -1006,9 +1035,10 @@ async function sincronizarTodasPlanilhas() {
     renderizarDadosBase();
     const totalRealizadoImportado = Object.values(obrasBD).reduce((soma, obra) => soma + Number(obra.realizadoTotal || 0), 0);
     const detalheAssociacao = `${linhasRealizadoAssociadas} linha(s) de Realizado associadas; ${obrasCriadasNaImportacao.size} obra(s) nova(s) criada(s) por não encontrar correspondência pelo nome/CC.`;
-    if (errosSupabase.length) alert(`Dados importados e análises atualizadas neste navegador. ${detalheAssociacao} Total realizado: ${totalRealizadoImportado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}. O Supabase recusou parte das gravações:\n${errosSupabase.slice(0, 5).join('\n')}`);
-    else if (supabaseClient) alert(`Importação concluída: ${dadosBasePlanilhas.length} planilha(s). ${detalheAssociacao} Total realizado: ${totalRealizadoImportado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}. Resumos sincronizados com o Supabase.`);
-    else alert(`Importação concluída: ${dadosBasePlanilhas.length} planilha(s). ${detalheAssociacao} Total realizado: ${totalRealizadoImportado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}. Dados salvos neste navegador; Supabase indisponível.`);
+    const avisoCache=fontesEmCache.length?`\nA fonte remota não atualizou; foram mantidos os dados Realizado já salvos: ${fontesEmCache.join('; ')}.`:'';
+    if (errosSupabase.length) alert(`Dados importados e análises atualizadas neste navegador. ${detalheAssociacao} Total realizado: ${totalRealizadoImportado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}. O Supabase recusou parte das gravações:\n${errosSupabase.slice(0, 5).join('\n')}${avisoCache}`);
+    else if (supabaseClient) alert(`Importação concluída: ${dadosBasePlanilhas.length} planilha(s). ${detalheAssociacao} Total realizado: ${totalRealizadoImportado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}. Resumos sincronizados com o Supabase.${avisoCache}`);
+    else alert(`Importação concluída: ${dadosBasePlanilhas.length} planilha(s). ${detalheAssociacao} Total realizado: ${totalRealizadoImportado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}. Dados salvos neste navegador; Supabase indisponível.${avisoCache}`);
   } catch (error) {
     alert("Falha na sincronização dos dados.\nMotivo: " + (error.message || error));
   } finally {
@@ -1113,11 +1143,10 @@ function recalcularRealizadoDaBaseLocal() {
   const problemas = [];
   bases.forEach(base => {
     const headers = base.headers || Object.keys(base.rows[0] || {});
-    const colunaObra = encontrarColuna(headers, 'obra');
-    const fonteCfg = (configGlobal.planilhasRealizado || []).find(item => item.id === base.id);
-    const inferencia = inferirColunaMonetaria(headers, base.rows);
-    const colunaValor = headers.includes(fonteCfg?.colunaValor) ? fonteCfg.colunaValor : (encontrarColuna(headers, 'valor') || inferencia.header);
-    const colunaCategoria = encontrarColuna(headers, 'categoria');
+    const campos=obterCamposRealizado(headers,base.rows,base.id);
+    const colunaObra = campos.obra;
+    const colunaValor = campos.valor;
+    const colunaCategoria = campos.categoria;
     if (!colunaObra || !colunaValor) {
       problemas.push(`${base.nome || 'Realizado'}: ${!colunaObra ? 'coluna de obra/departamento não identificada' : 'coluna de valor ambígua'}`);
       return;
