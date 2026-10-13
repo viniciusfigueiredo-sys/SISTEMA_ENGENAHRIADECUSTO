@@ -289,6 +289,8 @@ window.onload = async function() {
   try {
     document.getElementById('header-app-title').innerText = configGlobal.titulo || "Brasil Pontes";
     document.getElementById('login-app-title').innerText = configGlobal.titulo || "Brasil Pontes";
+    // Corrige também a fonte antiga guardada somente no navegador, mesmo se o Supabase estiver indisponível.
+    migrarLinkPlanilhaRealizado();
 
     if (supabaseClient) {
       const { data: config } = await supabaseClient.from('configuracoes').select('*').limit(1).single();
