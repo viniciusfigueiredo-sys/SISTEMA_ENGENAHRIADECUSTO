@@ -192,6 +192,10 @@ function normalizarTexto(valor) {
   return String(valor || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ").trim().toUpperCase();
 }
 
+function chaveComparacaoObra(valor) {
+  return normalizarTexto(valor).replace(/[^A-Z0-9]/g, "");
+}
+
 function encontrarColuna(chaves, tipo) {
   const normalizadas = chaves.map(chave => ({ chave, nome: normalizarTexto(chave) }));
   const regras = {
@@ -335,6 +339,32 @@ async function importarArquivoRealizado(file, fonte) {
   } catch (erro) { alert(`Não consegui importar ${file.name}: ${erro.message || erro}`); }
 }
 
+async function importarArquivoPrevisto(file, chaveObra) {
+  if (!file) return;
+  const obra = obrasBD[chaveObra];
+  if (!obra) return alert('Não encontrei a obra selecionada para importar o Previsto.');
+  try {
+    const abas = await lerArquivoPlanilhaLocal(file);
+    const aba = abas.find(item => item.rows.length) || abas[0];
+    if (!aba?.headers?.length || !aba.rows.length) throw new Error('O arquivo não contém dados reconhecíveis.');
+    const base = {
+      id: `previsto-${chaveObra}`, nome: `Previsto — ${obra.nome || chaveObra} (${file.name})`, tipo: 'Previsto',
+      origem: 'arquivo-local', url: '', headers: aba.headers, rows: aba.rows, atualizadoEm: new Date().toISOString()
+    };
+    const bases = (dadosBasePlanilhas || []).filter(item => item.id !== base.id);
+    bases.push(base);
+    await salvarDadosBaseArmazenados(bases);
+    dadosBasePlanilhas = bases;
+    obra.previstoArquivoLocal = true;
+    obra.urlPrevistoCSV = '';
+    localStorage.setItem('obras_bp', JSON.stringify(obrasBD));
+    renderizarTabelaGestaoObras();
+    alert(`Previsto importado para ${obra.nome}. Clique em Sincronizar Base de Dados para recalcular os indicadores.`);
+  } catch (erro) {
+    alert(`Não consegui importar o Previsto de ${file.name}: ${erro.message || erro}`);
+  }
+}
+
 // Google Sheets usa a consulta oficial gviz (script injection, sem XHR/CORS); outros links CSV dependem de CORS.
 const buscarCSV = async url => {
   if (extrairIdPlanilhaGoogle(url)) return buscarPlanilhaGoogle(url);
@@ -383,6 +413,7 @@ window.onload = async function() {
         obras.forEach(o => {
           obrasBD[o.id] = {
             id: o.id, nome: o.nome, cc: o.cc, responsavel: o.responsavel, status: o.status, urlPrevistoCSV: o.url_previsto,
+            previstoArquivoLocal: !!(obrasBD[o.id]?.previstoArquivoLocal),
             previstoTotal: o.dados_json?.previstoTotal || 0, realizadoTotal: o.dados_json?.realizadoTotal || 0,
             categoriasPrevisto: o.dados_json?.categoriasPrevisto || {}, categoriasRealizado: o.dados_json?.categoriasRealizado || {}
           };
@@ -469,6 +500,7 @@ function abrirAbaSistema(aba) {
   Object.entries(views).forEach(([nome,id])=>document.getElementById(id)?.classList.toggle('hidden',nome!==chave));
   const navs={dashboard:'nav-dashboard',pesquisa:'nav-pesquisa',realizado:'nav-dados-base',previsto:'nav-previsto'};
   Object.entries(navs).forEach(([nome,id])=>{const el=document.getElementById(id);if(el)el.className=nome===chave?'px-4 py-3 border-b-2 border-[#003399] text-[#003399] font-bold text-sm whitespace-nowrap':'px-4 py-3 text-gray-500 font-bold text-sm hover:text-[#003399] whitespace-nowrap';});
+  if(chave==='dashboard') atualizarDashboard();
   if(chave==='realizado') renderizarDadosBase();
   if(chave==='pesquisa') pesquisarCustos(filtrosPesquisaCustos);
   if(chave==='previsto') renderizarPrevisto();
@@ -825,9 +857,17 @@ async function sincronizarTodasPlanilhas() {
 
     const chaveObraPorDepartamento = new Map();
     Object.entries(obrasBD).forEach(([key, obra]) => {
-      if (obra.cc) chaveObraPorDepartamento.set(normalizarTexto(obra.cc), key);
-      if (obra.nome) chaveObraPorDepartamento.set(normalizarTexto(obra.nome), key);
+      if (obra.cc) {
+        chaveObraPorDepartamento.set(normalizarTexto(obra.cc), key);
+        chaveObraPorDepartamento.set(chaveComparacaoObra(obra.cc), key);
+      }
+      if (obra.nome) {
+        chaveObraPorDepartamento.set(normalizarTexto(obra.nome), key);
+        chaveObraPorDepartamento.set(chaveComparacaoObra(obra.nome), key);
+      }
     });
+    let linhasRealizadoAssociadas = 0;
+    const obrasCriadasNaImportacao = new Set();
     linhasRealizado.forEach(({ fonte, rows, colunaObra, colunaValor, colunaCategoria }) => rows.forEach(linha => {
       const chaves = Object.keys(linha);
       const chvDepto = colunaObra || encontrarColuna(chaves, "obra");
@@ -836,11 +876,13 @@ async function sincronizarTodasPlanilhas() {
       if (!deptoOriginal || deptoOriginal === "N/D" || deptoOriginal === "0.0") return;
       const deptoID = normalizarTexto(deptoOriginal);
 
-      let chaveObra = chaveObraPorDepartamento.get(deptoID);
+      let chaveObra = chaveObraPorDepartamento.get(deptoID) || chaveObraPorDepartamento.get(chaveComparacaoObra(deptoOriginal));
       if (!chaveObra) {
         chaveObra = deptoID;
         obrasBD[chaveObra] = { id: deptoID, nome: deptoOriginal, cc: deptoOriginal, responsavel: "Não Atribuído", status: "Ativa", urlPrevistoCSV: "", previstoTotal: 0, realizadoTotal: 0, categoriasPrevisto: {}, categoriasRealizado: {} };
         chaveObraPorDepartamento.set(deptoID, chaveObra);
+        chaveObraPorDepartamento.set(chaveComparacaoObra(deptoOriginal), chaveObra);
+        obrasCriadasNaImportacao.add(chaveObra);
       }
 
       const chvVal = colunaValor || encontrarColuna(chaves, "valor");
@@ -853,11 +895,26 @@ async function sincronizarTodasPlanilhas() {
       if (obrasBD[chaveObra].status !== "Arquivada") {
         obrasBD[chaveObra].realizadoTotal += valor;
         obrasBD[chaveObra].categoriasRealizado[categoria] = (obrasBD[chaveObra].categoriasRealizado[categoria] || 0) + valor;
+        linhasRealizadoAssociadas++;
       }
     }));
 
     const promessasPrevisto = Object.keys(obrasBD).map(async (key) => {
       const obra = obrasBD[key];
+      const basePrevistoLocal = (dadosBasePlanilhas || []).find(base => base.id === `previsto-${key}` && base.origem === 'arquivo-local');
+      if (obra.previstoArquivoLocal && basePrevistoLocal) {
+        try {
+          novasBases.push(basePrevistoLocal);
+          basePrevistoLocal.rows.forEach(linha => {
+            const chvCat = encontrarColuna(Object.keys(linha), "categoria");
+            const catBP = chvCat ? (linha[chvCat] || "Outros").trim() : "Outros";
+            const chvCst = encontrarColuna(Object.keys(linha), "valor");
+            if (!chvCst) throw new Error("Não encontrei a coluna de custo/valor.");
+            obra.categoriasPrevisto[catBP] = (obra.categoriasPrevisto[catBP] || 0) + parseMonetario(linha[chvCst]);
+          });
+          obra.previstoTotal = Object.values(obra.categoriasPrevisto).reduce((a, b) => a + b, 0);
+        } catch(err) { throw new Error(`Falha no arquivo Previsto de ${obra.nome}: ${err.message || err}`); }
+      }
       if (obra.urlPrevistoCSV && obra.urlPrevistoCSV.trim() !== "") {
         try {
           const basePrevisto = await buscarCSV(obra.urlPrevistoCSV);
@@ -902,9 +959,11 @@ async function sincronizarTodasPlanilhas() {
     popularSeletorObras();
     atualizarDashboard();
     renderizarDadosBase();
-    if (errosSupabase.length) alert(`Dados importados e análises atualizadas neste navegador, mas o Supabase recusou parte das gravações:\n${errosSupabase.slice(0, 5).join('\n')}`);
-    else if (supabaseClient) alert(`Importação concluída: ${dadosBasePlanilhas.length} planilha(s) e ${linhasRealizado.reduce((n, item) => n + item.rows.length, 0)} linha(s) de Realizado. Resumos sincronizados com o Supabase.`);
-    else alert(`Importação concluída: ${dadosBasePlanilhas.length} planilha(s). Os dados e análises foram salvos neste navegador; Supabase indisponível.`);
+    const totalRealizadoImportado = Object.values(obrasBD).reduce((soma, obra) => soma + Number(obra.realizadoTotal || 0), 0);
+    const detalheAssociacao = `${linhasRealizadoAssociadas} linha(s) de Realizado associadas; ${obrasCriadasNaImportacao.size} obra(s) nova(s) criada(s) por não encontrar correspondência pelo nome/CC.`;
+    if (errosSupabase.length) alert(`Dados importados e análises atualizadas neste navegador. ${detalheAssociacao} Total realizado: ${totalRealizadoImportado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}. O Supabase recusou parte das gravações:\n${errosSupabase.slice(0, 5).join('\n')}`);
+    else if (supabaseClient) alert(`Importação concluída: ${dadosBasePlanilhas.length} planilha(s). ${detalheAssociacao} Total realizado: ${totalRealizadoImportado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}. Resumos sincronizados com o Supabase.`);
+    else alert(`Importação concluída: ${dadosBasePlanilhas.length} planilha(s). ${detalheAssociacao} Total realizado: ${totalRealizadoImportado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}. Dados salvos neste navegador; Supabase indisponível.`);
   } catch (error) {
     alert("Falha na sincronização dos dados.\nMotivo: " + (error.message || error));
   } finally {
@@ -1202,7 +1261,7 @@ function renderizarTabelaGestaoObras() {
         <td class="p-2 font-bold text-[10px]">${o.cc}</td>
         <td class="p-2"><input type="text" value="${o.nome}" onchange="atualizarCampoObra('${id}', 'nome', this.value)" class="border p-1 w-full text-xs"></td>
         <td class="p-2"><input type="text" value="${o.responsavel || ''}" onchange="atualizarCampoObra('${id}', 'responsavel', this.value)" class="border p-1 w-full text-xs" placeholder="Nome do gestor"></td>
-        <td class="p-2"><input type="url" value="${o.urlPrevistoCSV}" onchange="atualizarCampoObra('${id}', 'urlPrevistoCSV', this.value)" class="border p-1 w-full text-[10px]" placeholder="URL Previsto CSV"></td>
+        <td class="p-2 min-w-52"><input type="url" value="${o.urlPrevistoCSV || ''}" onchange="atualizarCampoObra('${id}', 'urlPrevistoCSV', this.value)" class="border p-1 w-full text-[10px]" placeholder="Link Google Planilhas / CSV"><label class="block mt-1 text-[10px] text-gray-500">ou arquivo local (CSV, XLSX, XLS, ODS)<input type="file" accept=".csv,.tsv,.txt,.xlsx,.xls,.xlsm,.ods" onchange="importarArquivoPrevisto(this.files?.[0], '${id}')" class="block w-full text-[10px]"></label><small class="text-[9px] text-gray-500">${o.previstoArquivoLocal ? 'Arquivo local carregado neste navegador' : ''}</small></td>
         <td class="p-2 text-center">
           <button onclick="alternarStatusArquivado('${id}')" class="bg-amber-500 text-white px-2 py-1 rounded text-[10px] font-bold">${o.status === 'Ativa' ? 'Arquivar' : 'Reativar'}</button>
         </td>
@@ -1214,6 +1273,7 @@ function renderizarTabelaGestaoObras() {
 async function atualizarCampoObra(id, campo, valor) {
   const obra=obrasBD[id]; if (!obra) return;
   const anterior=obra[campo]; obra[campo]=String(valor ?? '').trim();
+  if (campo==='urlPrevistoCSV' && obra[campo]) obra.previstoArquivoLocal=false;
   localStorage.setItem('obras_bp', JSON.stringify(obrasBD));
   if (supabaseClient) {
     try {
