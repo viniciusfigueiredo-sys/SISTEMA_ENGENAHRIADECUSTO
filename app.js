@@ -210,6 +210,27 @@ function encontrarColuna(chaves, tipo) {
   return null;
 }
 
+function inferirColunaMonetaria(headers, rows) {
+  const bloqueios = /cnpj|cpf|documento|nota fiscal|boleto|parcela|numero|conta corrente|telefone|cep|codigo|(^|\b)id(\b|$)|data|pedido|ordem de servico/i;
+  const amostras = (rows || []).slice(0, 300);
+  const candidatos = headers.filter(header => !bloqueios.test(normalizarTexto(header))).map(header => {
+    const valores = amostras.map(row => String(row[header] ?? '').trim()).filter(Boolean);
+    const numericos = valores.filter(value => /^(?:R\$\s*)?\(?-?\d[\d.,\s]*\)?$/.test(value));
+    const monetarios = numericos.filter(value => /R\$|,\d{1,2}$|\.\d{1,2}$/.test(value));
+    const total = numericos.reduce((sum, value) => sum + parseMonetario(value), 0);
+    const taxa = valores.length ? numericos.length / valores.length : 0;
+    const taxaMonetaria = numericos.length ? monetarios.length / numericos.length : 0;
+    const headerValor = /valor|custo|total|pago|liquid|montante|debito|credito/i.test(normalizarTexto(header));
+    const generico = /^coluna\s*\d+$/i.test(header);
+    const score = (headerValor ? 100 : 0) + taxa * 20 + taxaMonetaria * 35 + (generico ? 5 : 0) + (total > 0 ? Math.min(Math.log10(total + 1), 10) : 0);
+    return { header, score, count: numericos.length, taxa, taxaMonetaria, amostra: numericos.slice(0, 3) };
+  }).filter(candidate => candidate.count > 0 && candidate.taxa >= 0.5).sort((a, b) => b.score - a.score);
+  const first = candidatos[0];
+  if (!first) return { header: null, candidatos: [] };
+  const unique = candidatos.length === 1 || first.score - candidatos[1].score >= 8;
+  return { header: (first.taxaMonetaria >= 0.35 || unique) ? first.header : null, candidatos: candidatos.slice(0, 8) };
+}
+
 function migrarLinkPlanilhaRealizado() {
   const idAtual = "1hl9Q4UgickyOa4kCEJixEY9XNruivmbSBqWxZIz16oA";
   const idsAntigos = ["1S41dXyTC2Y_SJjD3iw86WaUqi0OWNxyf", "1v3FrPW55ofd8j3-rOqyyZlw1HHMJuf6", "1wZQhhLXwcpToKGy26gW1rHooGwUuRQMJ"];
@@ -331,7 +352,7 @@ async function importarArquivoRealizado(file, fonte) {
     await salvarDadosBaseArmazenados(basesSalvas);
     dadosBasePlanilhas = basesSalvas;
     const indiceFonte = configGlobal.planilhasRealizado.findIndex(f => f.id === fonte.id);
-    if (indiceFonte >= 0) configGlobal.planilhasRealizado.splice(indiceFonte, 1, ...novasFontes.map(({ id, nome, url, arquivoLocal, nomeAba }) => ({ id, nome, url, arquivoLocal, nomeAba })));
+    if (indiceFonte >= 0) configGlobal.planilhasRealizado.splice(indiceFonte, 1, ...novasFontes.map(({ id, nome, url, arquivoLocal, nomeAba }) => ({ ...fonte, id, nome, url, arquivoLocal, nomeAba })));
     localStorage.setItem("config_bp", JSON.stringify(configGlobal));
     renderizarFontesRealizado();
     renderizarDadosBase();
@@ -788,7 +809,7 @@ function renderizarFontesRealizado() {
   container.replaceChildren();
   configGlobal.planilhasRealizado.forEach((fonte, indice) => {
     const linha = document.createElement('div');
-    linha.className = 'grid grid-cols-1 md:grid-cols-[1fr_2fr_1fr_auto] gap-2 items-center bg-white p-2 border rounded-lg';
+    linha.className = 'grid grid-cols-1 md:grid-cols-[1fr_2fr_1fr_1fr_auto] gap-2 items-center bg-white p-2 border rounded-lg';
     const nome = document.createElement('input');
     nome.type = 'text'; nome.value = fonte.nome || ''; nome.placeholder = 'Nome para a aba Dados Base';
     nome.className = 'border p-2 rounded-lg'; nome.setAttribute('aria-label', `Nome da planilha ${indice + 1}`);
@@ -801,10 +822,15 @@ function renderizarFontesRealizado() {
     arquivo.type = 'file'; arquivo.accept = '.csv,.tsv,.txt,.xls,.xlsx,.xlsm,.ods';
     arquivo.className = 'border p-2 rounded-lg text-xs w-full'; arquivo.setAttribute('aria-label', `Importar arquivo da planilha ${indice + 1}`);
     arquivo.onchange = () => importarArquivoRealizado(arquivo.files?.[0], fonte);
+    const colunaValor = document.createElement('input');
+    colunaValor.type = 'text'; colunaValor.value = fonte.colunaValor || ''; colunaValor.placeholder = 'Coluna de valor (opcional)';
+    colunaValor.className = 'border p-2 rounded-lg text-xs'; colunaValor.setAttribute('aria-label', `Coluna monetária da planilha ${indice + 1}`);
+    colunaValor.title = 'Deixe vazio para detecção automática. Se a planilha tiver cabeçalho genérico, informe aqui o nome exato da coluna que contém o valor realizado.';
+    colunaValor.oninput = () => { fonte.colunaValor = colunaValor.value.trim(); };
     const remover = document.createElement('button');
     remover.type = 'button'; remover.textContent = 'Remover'; remover.className = 'text-red-600 font-bold px-2 py-1';
     remover.onclick = () => { configGlobal.planilhasRealizado.splice(indice, 1); renderizarFontesRealizado(); };
-    linha.append(nome, url, arquivo, remover); container.appendChild(linha);
+    linha.append(nome, url, arquivo, colunaValor, remover); container.appendChild(linha);
   });
   if (!configGlobal.planilhasRealizado.length) {
     const vazio = document.createElement('p'); vazio.className = 'text-gray-500'; vazio.textContent = 'Nenhuma planilha cadastrada.'; container.appendChild(vazio);
@@ -842,9 +868,13 @@ async function sincronizarTodasPlanilhas() {
       if (!extraido.rows.length) throw new Error(`A planilha "${fonte.nome}" não contém linhas de dados.`);
       const colunas = extraido.headers;
       const colunaObra = encontrarColuna(colunas, "obra");
-      const colunaValor = encontrarColuna(colunas, "valor");
+      const deteccaoValor = inferirColunaMonetaria(colunas, extraido.rows);
+      const colunaValor = colunas.includes(fonte.colunaValor) ? fonte.colunaValor : (encontrarColuna(colunas, "valor") || deteccaoValor.header);
       if (!colunaObra) throw new Error(`Não identifiquei a coluna da obra/departamento na planilha "${fonte.nome}". Cabeçalhos encontrados: ${colunas.join(", ")}.`);
-      if (!colunaValor) throw new Error(`Não identifiquei a coluna monetária na planilha "${fonte.nome}". Cabeçalhos encontrados: ${colunas.join(", ")}.`);
+      if (!colunaValor) {
+        const sugestoes = deteccaoValor.candidatos.map(item => `${item.header} [ex.: ${item.amostra.join(' / ')}]`).join('; ');
+        throw new Error(`Não consegui distinguir automaticamente o campo monetário da planilha "${fonte.nome}". ${sugestoes ? `Campos numéricos encontrados: ${sugestoes}. ` : ''}Em Configurações > Geral, preencha "Coluna de valor" com o cabeçalho exato da coluna que contém o custo/valor realizado. Cabeçalhos: ${colunas.join(", ")}.`);
+      }
       const base = { id: fonte.id || `realizado-${Date.now()}`, nome: fonte.nome || "Realizado", tipo: "Realizado", origem: fonte.arquivoLocal ? "arquivo-local" : "url", url: fonte.url || "", headers: extraido.headers, rows: extraido.rows, atualizadoEm: new Date().toISOString() };
       novasBases.push(base);
       linhasRealizado.push({ fonte: base, rows: extraido.rows, colunaObra, colunaValor, colunaCategoria: encontrarColuna(colunas, "categoria") });
