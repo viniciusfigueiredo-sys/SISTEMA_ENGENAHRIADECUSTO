@@ -19,7 +19,7 @@ const PERMISSOES_PADRAO = {
 let permissoesPerfis = Object.fromEntries(Object.entries(PERMISSOES_PADRAO).map(([perfil, regras]) => [perfil, { ...regras }]));
 try {
   const salvas=JSON.parse(localStorage.getItem('permissoes_bp') || 'null');
-  if (salvas && typeof salvas === 'object') Object.keys(PERMISSOES_PADRAO).forEach(perfil => {
+    if (salvas && typeof salvas === 'object') Object.keys(salvas).filter(p=>!['__proto__','constructor','prototype'].includes(p)).forEach(perfil => {
     if (salvas[perfil] && typeof salvas[perfil] === 'object') permissoesPerfis[perfil] = { ...PERMISSOES_PADRAO[perfil], ...salvas[perfil] };
   });
 } catch(e) { console.warn('Permissões locais inválidas; usando os padrões.', e); }
@@ -48,13 +48,9 @@ let graficoRealizadoCustos = null;
 let previstoPaginaAtual = 0;
 function normalizarTextoUI(valor) { return String(valor || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase(); }
 
-function obraVisivelNosDados(valor) {
-  const normalizado = normalizarTextoUI(valor);
-  const encontrada = Object.values(obrasBD || {}).find(obra => [obra.id, obra.nome, obra.cc].some(campo => campo && normalizarTextoUI(campo) === normalizado));
-  if (!encontrada) return true;
-  if (encontrada.oculta) return false;
-  return encontrada.status !== 'Arquivada' || usuarioAutenticado?.perfil === 'Mestre';
-}
+let indiceVisibilidade=null,perfilIndiceVisibilidade=null,obrasIndiceVisibilidade=null;
+function atualizarIndiceVisibilidade(){indiceVisibilidade=new Map();perfilIndiceVisibilidade=usuarioAutenticado?.perfil;obrasIndiceVisibilidade=obrasBD;Object.values(obrasBD || {}).forEach(obra=>{const visible=!obra.oculta && (obra.status!=='Arquivada'||perfilIndiceVisibilidade==='Mestre');[obra.id,obra.nome,obra.cc].filter(Boolean).forEach(v=>indiceVisibilidade.set(normalizarTextoUI(v),visible));});}
+function obraVisivelNosDados(valor) {if(!indiceVisibilidade||perfilIndiceVisibilidade!==usuarioAutenticado?.perfil||obrasIndiceVisibilidade!==obrasBD)atualizarIndiceVisibilidade();return indiceVisibilidade.get(normalizarTextoUI(valor)) ?? true;}
 
 function campoBaseId(planilhaId, header) { return `base:${encodeURIComponent(planilhaId)}:${encodeURIComponent(header)}`; }
 function campoBaseContagemId(planilhaId) { return `contagem:${encodeURIComponent(planilhaId)}`; }
@@ -67,24 +63,36 @@ function lerCampoBaseId(campo) {
 }
 
 function colunaBaseNumerica(planilha, header) {
-  if (/cnpj|cpf|documento|telefone|celular|cep|matricula|c[oó]digo|(^|\s)id($|\s)/i.test(header)) return false;
-  const valores = (planilha?.rows || []).map(r => String(r[header] ?? '').trim()).filter(Boolean).slice(0, 100);
+  let cache=cacheNumericoBase.get(planilha);if(!cache){cache=new Map();cacheNumericoBase.set(planilha,cache);}if(cache.has(header))return cache.get(header);
+  if (/cnpj|cpf|documento|telefone|celular|cep|matricula|c[oó]digo|data|vencimento|previsao|(^|\s)id($|\s)/i.test(normalizarTexto(tituloColunaBase(planilha,header)))) return false;
+  const valores=[];for(const row of (planilha?.rows || []).slice(0,300)){const v=String(row[header]??'').trim();if(v)valores.push(v);if(valores.length===100)break;}
   if (!valores.length) return false;
   const numericos = valores.filter(v => /^\(?\s*-?\s*R?\$?\s*\d[\d.,\s]*\)?\s*%?\s*$/.test(v));
-  return numericos.length / valores.length >= 0.7;
+  const resultado=numericos.length / valores.length >= 0.7;cache.set(header,resultado);return resultado;
+}
+const cacheNumericoBase=new WeakMap();
+const cacheIndiceObra=new WeakMap();
+function tituloColunaBase(planilha,header){return planilha?.titulosColunas?.[header] || header;}
+function rotuloFonteBase(p){return p.nome===p.tipo?p.tipo:`${p.tipo || 'Dados'} • ${p.nome}`;}
+function linhasDaObra(planilha,obra){
+  const header=encontrarColuna(planilha.headers || [],'obra');
+  if(!header || !obra)return planilha.rows || [];
+  let indice=cacheIndiceObra.get(planilha);
+  if(!indice){indice=new Map();for(const row of planilha.rows || []){const key=chaveComparacaoObra(row[header]);if(!indice.has(key))indice.set(key,[]);indice.get(key).push(row);}cacheIndiceObra.set(planilha,indice);}
+  const result=[],seen=new Set();for(const key of [obra.id,obra.cc,obra.nome].filter(Boolean).map(chaveComparacaoObra)){if(seen.has(key))continue;seen.add(key);result.push(...(indice.get(key)||[]));}return result;
 }
 
 function opcoesCamposGraficos(eixo, xField = '') {
   if (eixo === 'x') {
     const opcoes = [['categoria','Categoria'],['obra','Obra']];
-    dadosBasePlanilhas.forEach(p => (p.headers || []).forEach(h => opcoes.push([campoBaseId(p.id,h), `${p.nome} • ${h}`])));
+    dadosBasePlanilhas.forEach(p => (p.headers || []).forEach(h => opcoes.push([campoBaseId(p.id,h), `${rotuloFonteBase(p)} • ${tituloColunaBase(p,h)}`])));
     return opcoes;
   }
   const campoX = lerCampoBaseId(xField);
   if (campoX) {
     const planilha = dadosBasePlanilhas.find(p => p.id === campoX.planilhaId);
     if (!planilha) return [[campoBaseContagemId(campoX.planilhaId),'Contagem de registros']];
-    return [[campoBaseContagemId(planilha.id),`${planilha.nome} • Contagem de registros`], ...(planilha.headers || []).filter(h => colunaBaseNumerica(planilha,h)).map(h => [campoBaseId(planilha.id,h),`${planilha.nome} • Soma de ${h}`])];
+    return [[campoBaseContagemId(planilha.id),`${rotuloFonteBase(planilha)} • Contagem de registros`], ...(planilha.headers || []).filter(h => colunaBaseNumerica(planilha,h)).map(h => [campoBaseId(planilha.id,h),`${rotuloFonteBase(planilha)} • Soma de ${tituloColunaBase(planilha,h)}`])];
   }
   return [['comparativo','Previsto x Realizado'],['previsto','Previsto'],['realizado','Realizado'],['saldo','Saldo'],['percentual','% de uso'],['idc','IDC']];
 }
@@ -152,11 +160,12 @@ function renderizarVelocimetros(id, total, detalhes = []) {
     const box=document.createElement('div'); box.className='text-center border rounded-lg p-3';
     const label=document.createElement('p');label.className='font-bold text-sm text-gray-700';label.textContent=dado.label;box.appendChild(label);
     const estado=estadoVelocimetro(Number(dado.previsto)||0,Number(dado.realizado)||0);
-    const angle=Math.PI - Math.min(150,Math.max(0,estado.uso || 0))/150*Math.PI;
+  const ponteiro=estado.uso===null?(Number(dado.realizado)>0?125:0):estado.uso;
+  const angle=Math.PI - Math.min(150,Math.max(0,ponteiro))/150*Math.PI;
     const nx=120+75*Math.cos(angle), ny=108-75*Math.sin(angle);
     const arco=(start,end)=>{const p=n=>[120+90*Math.cos(Math.PI-n/150*Math.PI),108-90*Math.sin(Math.PI-n/150*Math.PI)];const a=p(start),b=p(end);return `M ${a[0]} ${a[1]} A 90 90 0 0 1 ${b[0]} ${b[1]}`;};
     const graphic=document.createElement('div');
-    graphic.innerHTML=`<svg viewBox="0 0 240 135" style="width:100%;max-width:300px;display:block;margin:auto" role="img"><title>Consumo do previsto</title><path d="${arco(0,85)}" fill="none" stroke="#10b981" stroke-width="17"/><path d="${arco(85,100)}" fill="none" stroke="#f59e0b" stroke-width="17"/><path d="${arco(100,150)}" fill="none" stroke="#ef4444" stroke-width="17"/><text x="24" y="132" font-size="10">0%</text><text x="188" y="132" font-size="10">150%+</text>${estado.uso === null ? '' : `<line x1="120" y1="108" x2="${nx}" y2="${ny}" stroke="#0f172a" stroke-width="4"/><circle cx="120" cy="108" r="6" fill="#0f172a"/>`}</svg>`;
+    graphic.innerHTML=`<svg viewBox="0 0 240 135" style="width:100%;max-width:300px;display:block;margin:auto" role="img"><title>Consumo do previsto</title><path d="${arco(0,85)}" fill="none" stroke="#10b981" stroke-width="17"/><path d="${arco(85,100)}" fill="none" stroke="#f59e0b" stroke-width="17"/><path d="${arco(100,150)}" fill="none" stroke="#ef4444" stroke-width="17"/><text x="24" y="132" font-size="10">0%</text><text x="188" y="132" font-size="10">150%+</text><line x1="120" y1="108" x2="${nx}" y2="${ny}" stroke="#0f172a" stroke-width="5"/><circle cx="120" cy="108" r="7" fill="#0f172a"/></svg>`;
     box.appendChild(graphic);
     const valor=document.createElement('p');valor.style.color=estado.cor;valor.className='text-xl font-black';valor.textContent=estado.uso===null?'N/P':estado.uso.toLocaleString('pt-BR',{maximumFractionDigits:1})+'%';box.appendChild(valor);
     const texto=document.createElement('p');texto.className='text-xs font-bold';texto.textContent=estado.texto;box.appendChild(texto);
@@ -169,7 +178,7 @@ function renderizarVelocimetros(id, total, detalhes = []) {
   const individual=document.createElement('div');grid.appendChild(individual);
   if(detalhes.length){const select=document.createElement('select');select.className='border rounded p-2 text-sm w-full mb-2';select.setAttribute('aria-label','Selecionar categoria ou item do velocímetro');detalhes.forEach((d,i)=>select.appendChild(new Option(d.label,String(i))));if(detalhes[Number(antiga)])select.value=antiga;const card=document.createElement('div');individual.append(select,card);const draw=()=>criar(card,detalhes[Number(select.value)]);select.onchange=draw;draw();}
   else criar(individual,{label:'Categoria ou item',previsto:0,realizado:0,nota:'Selecione uma obra ou pesquise itens com dados disponíveis.'});
-  const legenda=document.createElement('p');legenda.className='text-xs text-gray-600';legenda.textContent='Verde: abaixo de 85% · Amarelo: de 85% a 100% · Vermelho: acima de 100%. N/P: sem valor previsto para comparar. O ponteiro termina em 150%; o percentual exibe o valor integral.';host.appendChild(legenda);
+  const legenda=document.createElement('p');legenda.className='text-xs text-gray-600';legenda.textContent='Verde: abaixo de 85% · Amarelo: de 85% a 100% · Vermelho: acima de 100%. N/P: realizado sem orçamento; o ponteiro indica a faixa vermelha, sem percentual calculável. O ponteiro termina em 150%; o percentual exibe o valor integral.';host.appendChild(legenda);
 }
 let dadosBaseAtivo = null;
 let dadosBasePaginaAtual = 0;
@@ -385,7 +394,7 @@ function formatarMatrizPlanilha(matriz) {
     headers.forEach((header, idx) => { obj[header] = linha[idx] ?? ""; });
     return obj;
   });
-  return { headers, rows };
+  return { headers, rows, linhaCabecalho:headerIndex+1 };
 }
 
 function extrairIdPlanilhaGoogle(url) {
@@ -395,7 +404,7 @@ function extrairIdPlanilhaGoogle(url) {
 
 const GOOGLE_SHEETS_PAGE_SIZE = 5000;
 
-function buscarPaginaPlanilhaGoogle(id, gid, offset, limite = GOOGLE_SHEETS_PAGE_SIZE) {
+function buscarPaginaPlanilhaGoogle(id, gid, offset, limite = GOOGLE_SHEETS_PAGE_SIZE, intervalo = '') {
   return new Promise((resolve, reject) => {
     const callbackName = `bpSheetsCallback_${Date.now()}_${Math.random().toString(36).slice(2)}`;
     const script = document.createElement("script");
@@ -403,6 +412,7 @@ function buscarPaginaPlanilhaGoogle(id, gid, offset, limite = GOOGLE_SHEETS_PAGE
     // do Google não chamam o callback e a tela acaba esperando até o timeout.
     const parametros = new URLSearchParams({ tqx: `out:json;responseHandler:${callbackName}`, headers: "0" });
     if (gid) parametros.set("gid", gid);
+    if(intervalo)parametros.set('range',intervalo);
     parametros.set("tq", `select * limit ${limite} offset ${offset}`);
     const timer = setTimeout(() => finalizar(new Error(`Tempo esgotado ao ler a página de dados ${Math.floor(offset / limite) + 1} da planilha Google. Confira o compartilhamento 'Qualquer pessoa com o link — Leitor'.`)), 30000);
     function finalizar(erro, resultado) {
@@ -450,11 +460,35 @@ async function buscarPlanilhaGoogle(url) {
   }
   if (!matrizCompleta.length) throw new Error('A planilha Google não retornou linhas. Confirme o ID, a aba e o compartilhamento de leitura.');
   const resultado = formatarMatrizPlanilha(matrizCompleta);
+  await preencherTitulosGoogle({...resultado,url},resultado);
   resultado.totalLinhasOrigem = matrizCompleta.length;
   if (matrizCompleta.length >= GOOGLE_SHEETS_PAGE_SIZE && offset === matrizCompleta.length) {
     resultado.avisoLeitura = `A leitura paginada recuperou ${matrizCompleta.length.toLocaleString('pt-BR')} linhas da fonte.`;
   }
   return resultado;
+}
+
+async function preencherTitulosGoogle(base,destino=base){
+  if(!(base.headers || []).some(h=>/^Coluna \d+$/i.test(h)))return;
+  const id=extrairIdPlanilhaGoogle(base.url);if(!id)return;
+  const gid=String(base.url).match(/[?&#]gid=(\d+)/)?.[1];
+  const row=base.linhaCabecalho || 2;
+  try{
+    const pagina=await buscarPaginaPlanilhaGoogle(id,gid,0,1,`A${row}:ZZ${row}`);
+    const titulos=pagina.matriz.find(r=>r.filter(Boolean).length>=2);if(!titulos)return;
+    const conhecidos=base.headers.map((h,i)=>({h,i})).filter(x=>!/^Coluna \d+$/i.test(x.h));
+    const matches=conhecidos.filter(x=>normalizarTexto(titulos[x.i])===normalizarTexto(x.h)).length;
+    if(matches<Math.min(2,conhecidos.length))return;
+    const aliases={...(base.titulosColunas||{})};base.headers.forEach((h,i)=>{const text=String(titulos[i]||'').trim();if(/^Coluna \d+$/i.test(h)&&text)aliases[h]=text;});destino.titulosColunas=aliases;
+    cacheNumericoBase.delete(destino);
+  }catch(e){console.warn('Não foi possível recuperar os títulos da planilha.',e.message);}
+}
+async function atualizarTitulosBasesSalvas(){
+  const bases=dadosBasePlanilhas.filter(p=>p.url && p.headers?.some(h=>/^Coluna \d+$/i.test(h)&&!p.titulosColunas?.[h]));
+  if(!bases.length)return;
+  for(const base of bases)await preencherTitulosGoogle(base);
+  atualizarSeletoresNovoGrafico();renderizarListaGraficosConfig();renderizarFiltrosBaseDashboard();renderizarDadosBase();
+  try{await salvarDadosBaseArmazenados(dadosBasePlanilhas);}catch(e){console.warn('Cabeçalhos atualizados em memória.',e);}
 }
 
 async function lerArquivoPlanilhaLocal(file) {
@@ -552,7 +586,7 @@ window.onload = async function() {
 
     if (supabaseClient) {
       const { data: config } = await supabaseClient.from('configuracoes').select('*').limit(1).single();
-      if (config) { configGlobal.titulo = config.titulo || "Brasil Pontes"; configGlobal.urlRealizado = config.url_realizado || ""; }
+      if (config) { configGlobal.titulo = config.titulo || "Brasil Pontes"; configGlobal.urlRealizado = config.url_realizado || "";configGlobal.idConfigSupabase=config.id;if(config.perfis_json && typeof config.perfis_json==='object'){Object.entries(config.perfis_json).filter(([p])=>!['__proto__','constructor','prototype','Mestre'].includes(p)).forEach(([p,regras])=>{permissoesPerfis[p]={...(PERMISSOES_PADRAO[p]||PERMISSOES_PADRAO.Engenheiro),...regras,configuracoes:false};});localStorage.setItem('permissoes_bp',JSON.stringify(permissoesPerfis));} }
       const linkRealizadoDesatualizado = ["1S41dXyTC2Y_SJjD3iw86WaUqi0OWNxyf", "1v3FrPW55ofd8j3-rOqyyZlw1HHMJuf6", "1wZQhhLXwcpToKGy26gW1rHooGwUuRQMJ"].some(id => String(config?.url_realizado || "").includes(id));
       if (migrarLinkPlanilhaRealizado() && linkRealizadoDesatualizado) {
         const { error } = await supabaseClient.from('configuracoes').update({ url_realizado: configGlobal.urlRealizado }).eq('id', config.id);
@@ -587,9 +621,11 @@ window.onload = async function() {
   }
   verificarSessao();
   renderizarDadosBase();
+  if(usuarioAutenticado)atualizarTitulosBasesSalvas().catch(e=>console.warn(e));
 };
 
 function verificarSessao() {
+  atualizarSeletoresPerfis();
   if (!usuarioAutenticado) {
     document.getElementById('screen-login').classList.remove('hidden');
     document.getElementById('app-container').classList.add('hidden');
@@ -703,7 +739,7 @@ function renderizarPrevisto() {
   if(!planilha){const vazio=document.createElement('div');vazio.className='p-8 text-center text-gray-500';vazio.textContent='Não há planilha de Previsto importada para esta obra. Cadastre a planilha nas configurações da obra e sincronize os dados.';host.appendChild(vazio);return;}
   if(!headers.length){const vazio=document.createElement('div');vazio.className='p-8 text-center text-gray-500';vazio.textContent='A planilha de Previsto não possui dados para exibir.';host.appendChild(vazio);return;}
   const totalPaginas=Math.max(1,Math.ceil(rows.length/DADOS_BASE_PAGINA_TAMANHO));previstoPaginaAtual=Math.min(previstoPaginaAtual,totalPaginas-1);const inicio=previstoPaginaAtual*DADOS_BASE_PAGINA_TAMANHO;const fatia=rows.slice(inicio,inicio+DADOS_BASE_PAGINA_TAMANHO);
-  const wrap=document.createElement('div');wrap.className='overflow-auto max-h-[70vh]';const table=document.createElement('table');table.className='min-w-full text-xs text-left';const thead=document.createElement('thead');thead.className='sticky top-0 bg-[#003399] text-white uppercase';const trh=document.createElement('tr');headers.forEach(h=>{const th=document.createElement('th');th.className='p-3 whitespace-nowrap';th.textContent=h;trh.appendChild(th);});thead.appendChild(trh);const tbody=document.createElement('tbody');tbody.className='divide-y divide-gray-200';
+  const wrap=document.createElement('div');wrap.className='overflow-auto max-h-[70vh]';const table=document.createElement('table');table.className='min-w-full text-xs text-left';const thead=document.createElement('thead');thead.className='sticky top-0 bg-[#003399] text-white uppercase';const trh=document.createElement('tr');headers.forEach(h=>{const th=document.createElement('th');th.className='p-3 whitespace-nowrap';th.textContent=tituloColunaBase(planilha,h);trh.appendChild(th);});thead.appendChild(trh);const tbody=document.createElement('tbody');tbody.className='divide-y divide-gray-200';
   fatia.forEach(row=>{const tr=document.createElement('tr');headers.forEach(h=>{const td=document.createElement('td');td.className='p-3 whitespace-nowrap';td.textContent=row[h]??'';tr.appendChild(td);});tbody.appendChild(tr);});table.append(thead,tbody);wrap.appendChild(table);host.appendChild(wrap);
   if(paginacao){const anterior=document.createElement('button');anterior.type='button';anterior.textContent='← Anterior';anterior.disabled=previstoPaginaAtual===0;anterior.className='px-3 py-2 border rounded-lg text-sm font-bold disabled:opacity-40';anterior.onclick=()=>{previstoPaginaAtual--;renderizarPrevisto();};const texto=document.createElement('span');texto.className='text-sm text-gray-600';texto.textContent=`Página ${previstoPaginaAtual+1} de ${totalPaginas} • ${rows.length} linhas`;const proxima=document.createElement('button');proxima.type='button';proxima.textContent='Próxima →';proxima.disabled=previstoPaginaAtual>=totalPaginas-1;proxima.className='px-3 py-2 border rounded-lg text-sm font-bold disabled:opacity-40';proxima.onclick=()=>{previstoPaginaAtual++;renderizarPrevisto();};paginacao.append(anterior,texto,proxima);}
 }
@@ -732,7 +768,7 @@ function pesquisarCustos(termo) {
     const itemHeader=col(headers,h=>h==='item'||h.includes('item ')||h.includes('codigo item')||h.includes('codigo'));
     const descricaoHeader=col(headers,h=>h.includes('descricao')||h.includes('servico')||h.includes('historico')||h.includes('especificacao'));
     const camposBusca=headers.filter(header=>/categoria|natureza|item|descricao|servico|historico|fornecedor|produto|conta|codigo/.test(norm(header)));
-    (planilha.rows||[]).forEach(row=>{
+    linhasDaObra(planilha,obra).forEach(row=>{
       const obraLinha=norm(row[obraHeader]);const obraOk=obraLinha===norm(obra.nome)||obraLinha===norm(obra.cc)||obraLinha===norm(obra.id)||((obra.cc||'').trim()&&obraLinha.includes(norm(obra.cc)));
       if(!obraOk)return;possuiFonteObra=true;if(!(camposBusca.length?camposBusca:headers).some(header=>norm(row[header]).includes(query)))return;
       const categoria=String((categoriaHeader&&row[categoriaHeader])||'Outros').trim()||'Outros';
@@ -812,7 +848,7 @@ function sincronizarFiltroDadosBaseComObra(){
   for(const planilha of (dadosBasePlanilhas||[]).filter(p=>p.tipo==='Realizado'||!p.tipo)){
     const header=(planilha.headers||[]).find(h=>{const n=normalizarTextoUI(h);return n.includes('obra')||n.includes('departamento')||n.includes('centro de custo');});
     if(!header){filtrosDadosBase.obra='';return;}
-    const valor=(planilha.rows||[]).map(r=>String(r[header]||'').trim()).find(v=>candidatos.includes(normalizarTextoUI(v))||candidatos.some(c=>c&&normalizarTextoUI(v).includes(c)));
+    const valor=String(linhasDaObra(planilha,obra)[0]?.[header]||'').trim();
     if(valor){filtrosDadosBase.obra=valor;return;}
   }
   filtrosDadosBase.obra='__OBRA_SEM_CORRESPONDENCIA__';
@@ -821,6 +857,7 @@ function sincronizarFiltroDadosBaseComObra(){
 function renderizarDadosBase() {
   const view = document.getElementById('view-dados-base');
   if (view?.classList.contains('hidden')) return;
+  atualizarIndiceVisibilidade();
   const tabs = document.getElementById('dados-base-tabs');
   const conteudo = document.getElementById('dados-base-conteudo');
   const status = document.getElementById('dados-base-status');
@@ -847,7 +884,7 @@ function renderizarDadosBase() {
     tabs.appendChild(botao);
   });
   const ativa = dadosBasePlanilhas.find(p => p.id === dadosBaseAtivo);
-  const rowsOriginais = ativa?.rows || [];
+  const rowsOriginais = ativa && filtrosDadosBase.obra && filtrosDadosBase.obra!=='__OBRA_SEM_CORRESPONDENCIA__' ? linhasDaObra(ativa,{cc:filtrosDadosBase.obra}) : (ativa?.rows || []);
   const norm = normalizarTextoUI;
   const headersNorm = (ativa?.headers || []).map(h => [h, norm(h)]);
   const obraHeader = headersNorm.find(([, h]) => /obra|departamento|centro de custo/.test(h))?.[0];
@@ -881,7 +918,7 @@ function renderizarDadosBase() {
   const thead = document.createElement('thead');
   thead.className = 'sticky top-0 bg-[#003399] text-white uppercase';
   const trHead = document.createElement('tr');
-  ativa.headers.forEach(header => { const th = document.createElement('th'); th.className = 'p-3 whitespace-nowrap'; th.textContent = header; trHead.appendChild(th); });
+  ativa.headers.forEach(header => { const th = document.createElement('th'); th.className = 'p-3 whitespace-nowrap'; th.textContent = tituloColunaBase(ativa,header); trHead.appendChild(th); });
   thead.appendChild(trHead);
   const tbody = document.createElement('tbody');
   tbody.className = 'divide-y divide-gray-200';
@@ -1059,7 +1096,7 @@ async function sincronizarTodasPlanilhas() {
       const colunaObra = campos.obra;
       const deteccaoValor = campos.inferencia;
       const colunaValor = campos.valor;
-      const base = reutilizouCache ? baseCache : { id: fonte.id || `realizado-${Date.now()}`, nome: fonte.nome || "Realizado", tipo: "Realizado", origem: fonte.arquivoLocal ? "arquivo-local" : "url", url: fonte.url || "", headers: extraido.headers, rows: extraido.rows, atualizadoEm: new Date().toISOString() };
+      const base = reutilizouCache ? baseCache : { id: fonte.id || `realizado-${Date.now()}`, nome: fonte.nome || "Realizado", tipo: "Realizado", origem: fonte.arquivoLocal ? "arquivo-local" : "url", url: fonte.url || "", headers: extraido.headers, rows: extraido.rows, titulosColunas:extraido.titulosColunas,linhaCabecalho:extraido.linhaCabecalho, atualizadoEm: new Date().toISOString() };
       novasBases.push(base);
       if (colunaObra && colunaValor) linhasRealizado.push({ fonte: base, rows: extraido.rows, colunaObra, colunaValor, colunaCategoria: encontrarColuna(colunas, "categoria") });
     }
@@ -1134,7 +1171,7 @@ async function sincronizarTodasPlanilhas() {
         try {
           const basePrevisto = await buscarCSV(obra.urlPrevistoCSV);
           const idBase = `previsto-${key}`;
-          novasBases.push({ id: idBase, nome: obra.nome || `Previsto - ${key}`, tipo: "Previsto", url: obra.urlPrevistoCSV, headers: basePrevisto.headers, rows: basePrevisto.rows, atualizadoEm: new Date().toISOString() });
+          novasBases.push({ id: idBase, nome: obra.nome || `Previsto - ${key}`, tipo: "Previsto", url: obra.urlPrevistoCSV, headers: basePrevisto.headers, rows: basePrevisto.rows,titulosColunas:basePrevisto.titulosColunas,linhaCabecalho:basePrevisto.linhaCabecalho, atualizadoEm: new Date().toISOString() });
           basePrevisto.rows.forEach(linha => {
             const chvCat = encontrarColuna(Object.keys(linha), "categoria");
             const catBP = chvCat ? (linha[chvCat] || "Outros").trim() : "Outros";
@@ -1242,7 +1279,7 @@ function renderizarFiltrosBaseDashboard() {
   const filtro = filtrosDashboard.base;
   let fonte = fontes.find(item => item.id === filtro?.planilhaId) || fontes[0];
   host.classList.remove('hidden');
-  const opcoes = fontes.flatMap(item => (item.headers || []).map(header => ({ value: `${item.id}\u001f${header}`, label: `${item.nome || 'Realizado'} • ${header}`, item, header })));
+  const opcoes = fontes.flatMap(item => (item.headers || []).map(header => ({ value: `${item.id}\u001f${header}`, label: `${item.nome || 'Realizado'} • ${tituloColunaBase(item,header)}`, item, header })));
   seletor.replaceChildren(...opcoes.map(op => new Option(op.label, op.value)));
   const campoSalvo = filtro ? `${filtro.planilhaId}\u001f${filtro.header}` : campoBaseFiltroSelecionado;
   const selecionada = opcoes.find(op => `${op.item.id}\u001f${op.header}` === campoSalvo) || opcoes[0];
@@ -1501,18 +1538,18 @@ function obterLinhasGrafico(cfg, obra, cats) {
   if (campoX?.tipo === 'coluna') {
     const planilha=dadosBasePlanilhas.find(p=>p.id===campoX.planilhaId);
     if (!planilha) return [];
-    let rows=planilha.rows || [];
+    let rows=linhasDaObra(planilha,obra);
+    if(planilha.tipo==='Previsto' && planilha.id.startsWith('previsto-') && planilha.id!==`previsto-${obraAtivaID}`)return [];
     const filtro=filtrosDashboard.base;
     if (filtro?.planilhaId===planilha.id) rows=rows.filter(r=>normalizarTextoUI(r[filtro.header])===normalizarTextoUI(filtro.value));
     const grupos=new Map();
+    const campoY=lerCampoBaseId(cfg.yField);
     rows.forEach(r=>{
       const bruto=String(r[campoX.header] ?? '').trim(); const label=bruto || '(vazio)';
       if (!grupos.has(label)) grupos.set(label,{key:label,label,valor:0,contagem:0});
       const grupo=grupos.get(label); grupo.contagem++;
-      const campoY=lerCampoBaseId(cfg.yField);
       if (campoY?.tipo==='coluna' && campoY.planilhaId===planilha.id) grupo.valor+=parseMonetario(r[campoY.header]);
     });
-    const campoY=lerCampoBaseId(cfg.yField);
     return [...grupos.values()].map(g=>({...g,valor:campoY?.tipo==='contagem'?g.contagem:g.valor})).sort((a,b)=>b.valor-a.valor).slice(0,100);
   }
   if (cfg.xField === 'obra') {
@@ -1559,7 +1596,7 @@ function renderizarGridGraficosDinamicos(obra, cats) {
       const xBase=lerCampoBaseId(cfg.xField), yBase=lerCampoBaseId(cfg.yField);
       const nomeBase=dadosBasePlanilhas.find(p=>p.id===xBase?.planilhaId)?.nome || 'Dados Base';
       const datasets = xBase?.tipo==='coluna'
-        ? [{label:yBase?.tipo==='contagem'?'Contagem de registros':`Soma de ${yBase?.header || 'valor'} (${nomeBase})`,data:rows.map(r=>r.valor),backgroundColor:colors[0],borderColor:colors[0],borderWidth:2}]
+        ? [{label:yBase?.tipo==='contagem'?'Contagem de registros':`Soma de ${tituloColunaBase(dadosBasePlanilhas.find(p=>p.id===yBase?.planilhaId),yBase?.header || 'valor')} (${nomeBase})`,data:rows.map(r=>r.valor),backgroundColor:colors[0],borderColor:colors[0],borderWidth:2}]
         : cfg.yField === 'comparativo'
         ? ['previsto','realizado'].map((field,i)=>({label:field==='previsto'?'Previsto':'Realizado',data:rows.map(r=>r[field]),backgroundColor:colors[i],borderColor:colors[i],borderWidth:2}))
         : [{label:({previsto:'Previsto',realizado:'Realizado',saldo:'Saldo',percentual:'% Uso',idc:'IDC'})[cfg.yField] || 'Valor',data:rows.map(r=>r[yMap[cfg.yField] || 'previsto']),backgroundColor:colors[0],borderColor:colors[0],borderWidth:2}];
@@ -1857,10 +1894,29 @@ async function gerarRelatorioImprimir() {
   await Promise.allSettled(Array.from(root.querySelectorAll("img")).map(img=>img.decode?img.decode():Promise.resolve()));
   window.print();
 }
+function opcoesPerfisUsuario(){return Object.keys(permissoesPerfis).map(p=>[p,p==='Dono'?'Dono / Diretoria':p]);}
+function atualizarSeletoresPerfis(){['novo-usr-perfil','permissoes-perfil-select'].forEach(id=>{const select=document.getElementById(id);if(!select)return;const valor=select.value;select.replaceChildren(...opcoesPerfisUsuario().map(([v,t])=>new Option(t,v)));select.value=Object.hasOwn(permissoesPerfis,valor)?valor:'Engenheiro';});}
+async function persistirPerfisCompartilhados(perfis){
+  if(!supabaseClient)throw new Error('Conecte ao Supabase para salvar perfis compartilhados.');
+  const {data,error}=await supabaseClient.from('configuracoes').update({perfis_json:perfis}).eq('id',configGlobal.idConfigSupabase||1).select('id').single();
+  if(error)throw error;if(!data)throw new Error('O banco não confirmou o salvamento.');
+  localStorage.setItem('permissoes_bp',JSON.stringify(perfis));
+}
+async function criarPerfilPersonalizado(){
+  if(usuarioAutenticado?.perfil!=='Mestre')return alert('Somente o Mestre pode criar perfis.');
+  const input=document.getElementById('novo-perfil-nome'),status=document.getElementById('novo-perfil-status');const nome=input.value.trim();
+  if(!/^[\p{L}\p{N} _-]{2,40}$/u.test(nome)||['__proto__','constructor','prototype'].includes(nome.toLowerCase())){status.textContent='Use um nome de 2 a 40 letras, números ou espaços.';return;}
+  if(Object.keys(permissoesPerfis).some(p=>normalizarTexto(p)===normalizarTexto(nome))){status.textContent='Este perfil já existe.';return;}
+  const novos={...permissoesPerfis,[nome]:{...PERMISSOES_PADRAO.Engenheiro}};
+  const btn=document.getElementById('btn-criar-perfil');btn.disabled=true;status.textContent='Salvando…';
+  try{await persistirPerfisCompartilhados(novos);permissoesPerfis=novos;atualizarSeletoresPerfis();document.getElementById('permissoes-perfil-select').value=nome;renderizarEditorPermissoesPerfil();renderizarPainelUsuarios();input.value='';status.textContent=`Perfil ${nome} criado. Ajuste as permissões abaixo e salve.`;}
+  catch(e){status.textContent='Não foi possível criar: '+(e.message||e);}finally{btn.disabled=false;}
+}
+
 function obterPermissoesUsuario(usuario = usuarioAutenticado) {
   if (usuario?.perfil === 'Mestre') return { ...PERMISSOES_PADRAO.Mestre };
   if (!usuario) return { ...PERMISSOES_PADRAO.Engenheiro, configuracoes:false, graficos:false, relatorios:false };
-  return { ...PERMISSOES_PADRAO[usuario.perfil] || PERMISSOES_PADRAO.Engenheiro, ...permissoesPerfis[usuario.perfil], configuracoes:false };
+  return { ...Object.fromEntries(Object.keys(PERMISSOES_PADRAO.Mestre).map(k=>[k,false])),...PERMISSOES_PADRAO[usuario.perfil], ...permissoesPerfis[usuario.perfil], configuracoes:false };
 }
 
 async function abrirModalUsuarios() {
@@ -1894,10 +1950,11 @@ function renderizarEditorPermissoesPerfil() {
   document.getElementById('permissoes-status').textContent='';
 }
 
-function salvarPermissoesPerfil() {
-  if (!obterPermissoesUsuario().permissoes) return alert('Seu perfil não pode configurar permissões.');
+async function salvarPermissoesPerfil() {
+  if (usuarioAutenticado?.perfil!=='Mestre') return alert('Somente o Mestre pode configurar perfis.');
   const perfil=document.getElementById('permissoes-perfil-select').value;
   if (perfil==='Mestre') return;
+  const anteriores=permissoesPerfis[perfil];
   permissoesPerfis[perfil]={
     pesquisa:document.getElementById('perm-pesquisa').checked,
     dashboard:document.getElementById('perm-dashboard').checked,
@@ -1909,9 +1966,9 @@ function salvarPermissoesPerfil() {
     graficos:document.getElementById('perm-graficos').checked,
     relatorios:document.getElementById('perm-relatorios').checked
   };
-  try { localStorage.setItem('permissoes_bp',JSON.stringify(permissoesPerfis)); }
-  catch(e) { return alert('Não foi possível salvar permissões neste navegador.'); }
-  document.getElementById('permissoes-status').textContent=`Permissões de ${perfil} salvas neste navegador.`;
+  try { await persistirPerfisCompartilhados(permissoesPerfis); }
+  catch(e) {permissoesPerfis[perfil]=anteriores;document.getElementById('permissoes-status').textContent='Não foi possível salvar: '+(e.message||e);return;}
+  document.getElementById('permissoes-status').textContent=`Permissões de ${perfil} salvas no Supabase.`;
   if (usuarioAutenticado?.perfil===perfil) aplicarPermissoesPerfil();
 }
 
@@ -1992,7 +2049,7 @@ async function salvarDadosUsuario(id, campos, botao, aviso) {
   if(!dados.nome || !dados.usuario) {aviso.textContent='Preencha nome e login.';return;}
   if(dados.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(dados.email)){aviso.textContent='Informe um e-mail válido.';return;}
   if(usuariosBD.some(u=>String(u.id)!==String(id) && (normalizarTexto(u.usuario)===normalizarTexto(dados.usuario) || (dados.email && normalizarTexto(u.email)===normalizarTexto(dados.email))))){aviso.textContent='Login ou e-mail já utilizado.';return;}
-  if(!['Mestre','Dono','Engenheiro','Orçamentista'].includes(dados.perfil)){aviso.textContent='Perfil inválido.';return;}
+  if(!Object.hasOwn(permissoesPerfis,dados.perfil)){aviso.textContent='Perfil inválido.';return;}
   if(campos.senha.value) dados.senha=campos.senha.value;
   botao.disabled=true;aviso.textContent='Salvando…';
   try {
@@ -2028,7 +2085,7 @@ function renderizarPainelUsuarios() {
     [['nome','Nome','text'],['email','E-mail','email'],['usuario','Login','text']].forEach(([key,label,type])=>{const td=document.createElement('td');td.className='p-2';const input=document.createElement('input');input.type=type;input.value=u[key]||'';input.disabled=!editavel;input.className='border rounded p-2 text-xs w-44';input.setAttribute('aria-label',`${label} de ${u.nome||u.usuario}`);td.appendChild(input);tr.appendChild(td);campos[key]=input;});
     const perfilTd=document.createElement('td');perfilTd.className='p-2';
     const perfil=document.createElement('select');perfil.className='border rounded p-1 text-xs';
-    [['Engenheiro','Engenheiro'],['Orçamentista','Orçamentista'],['Dono','Dono / Diretoria'],['Mestre','Mestre']].forEach(([v,t])=>{const option=new Option(t,v);if(v==='Mestre'&&!obterPermissoesUsuario().permissoes)option.disabled=true;perfil.add(option);});
+    opcoesPerfisUsuario().forEach(([v,t])=>{const option=new Option(t,v);if(v==='Mestre'&&!obterPermissoesUsuario().permissoes)option.disabled=true;perfil.add(option);});
     perfil.value=u.perfil || 'Engenheiro';perfil.disabled=!editavel;perfil.setAttribute('aria-label',`Perfil de ${u.nome || u.usuario}`);perfilTd.appendChild(perfil);tr.appendChild(perfilTd);campos.perfil=perfil;
     const senhaTd=document.createElement('td');senhaTd.className='p-2';const senha=document.createElement('input');senha.type='password';senha.autocomplete='new-password';senha.placeholder='Nova senha (opcional)';senha.disabled=!editavel;senha.className='border rounded p-2 text-xs w-44';senha.setAttribute('aria-label',`Nova senha de ${u.nome||u.usuario}`);senhaTd.appendChild(senha);tr.appendChild(senhaTd);campos.senha=senha;
     const status=document.createElement('td');status.className='p-2 min-w-44';const aviso=document.createElement('p');aviso.className='text-xs mt-1';aviso.setAttribute('aria-live','polite');if(editavel){const salvar=document.createElement('button');salvar.type='button';salvar.textContent='Salvar dados';salvar.className='bg-[#003399] text-white rounded px-3 py-2 text-xs font-bold';salvar.onclick=()=>salvarDadosUsuario(u.id,campos,salvar,aviso);status.appendChild(salvar);}else aviso.textContent=String(u.id)==='local_master'?'Conta principal':'Somente o Mestre pode editar.';status.appendChild(aviso);tr.appendChild(status);
@@ -2036,3 +2093,4 @@ function renderizarPainelUsuarios() {
   });
   renderizarEditorPermissoesPerfil();
 }
+
