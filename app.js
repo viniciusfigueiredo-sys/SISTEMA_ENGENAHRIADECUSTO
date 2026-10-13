@@ -235,56 +235,121 @@ function parseMonetario(valorStr) {
   return Math.abs(parseFloat(str) || 0);
 }
 
-// BUSCA CSV COM "RADAR" DE CABEÇALHOS
-const buscarCSV = (url) => new Promise((resolve, reject) => {
-  if (typeof Papa === 'undefined') return reject("Biblioteca PapaParse não carregada.");
-  Papa.parse(obterLinkCSV(url), {
-    download: true, 
-    worker: true,
-    header: false, // Lemos em matriz para varrer o lixo do topo
-    skipEmptyLines: true,
-    complete: (res) => {
-      const data = res.data;
-      if (res.errors?.length) return reject(res.errors.map(err => err.message).join("; "));
-      if (data.length === 0) return resolve({ headers: [], rows: [] });
-      if (data[0] && typeof data[0][0] === 'string' && /<!doctype html|<html/i.test(data[0][0])) {
-        return reject("A resposta do Google não é um CSV legível. Confirme que a fonte é uma planilha nativa do Google Planilhas e que o link permite leitura pelo sistema.");
-      }
-
-      // Procura a linha que tem o cabeçalho real (ignora as linhas de título do ERP)
-      let headerIndex = 0;
-      for (let i = 0; i < Math.min(15, data.length); i++) {
-        const row = data[i].map(c => String(c || "").trim());
-        const rowStr = normalizarTexto(row.join(" "));
-        const campos = row.map(normalizarTexto);
-        const temValor = campos.some(n => n === "VALOR" || n.includes("VALOR ") || n.includes("CUSTO"));
-        const temDimensao = campos.some(n => n.includes("DEPARTAMENTO") || n.includes("CENTRO DE CUSTO") || n === "OBRA" || n === "PROJETO" || n.includes("CATEGORIA") || n.includes("NATUREZA"));
-        if (temValor && temDimensao || rowStr.includes("VALOR REALIZADO") && temDimensao) {
-          headerIndex = i;
-          break;
-        }
-      }
-
-      const headers = data[headerIndex].map(h => (h || "").trim());
-      if (!headers.some(Boolean)) return reject("Não encontrei a linha de cabeçalhos na planilha.");
-      const formatado = [];
-
-      for (let i = headerIndex + 1; i < data.length; i++) {
-        let obj = {};
-        data[i].forEach((cell, idx) => { if (headers[idx]) obj[headers[idx]] = cell; });
-        formatado.push(obj);
-      }
-      resolve({ headers, rows: formatado });
-    },
-    error: (err) => {
-      const idPlanilhaRealizado = "1wZQhhLXwcpToKGy26gW1rHooGwUuRQMJ";
-      if (String(url).includes(idPlanilhaRealizado)) {
-        return reject("A fonte de Realizado está em formato Microsoft Excel (.XLSX), e a exportação CSV do sistema não consegue convertê-la. No Google Planilhas, use Arquivo > Salvar como Google Planilhas; depois cadastre aqui o link novo da cópia criada.");
-      }
-      reject(`Falha ao baixar o CSV. Verifique o link, o acesso de leitura e se o arquivo está no formato Google Planilhas. Detalhe: ${err.message || "erro de rede"}`);
-    }
+function formatarMatrizPlanilha(matriz) {
+  const dados = (matriz || []).map(linha => Array.isArray(linha) ? linha.map(celula => celula == null ? "" : String(celula).trim()) : []);
+  if (!dados.length) return { headers: [], rows: [] };
+  let headerIndex = -1;
+  let melhorPontuacao = 0;
+  for (let i = 0; i < Math.min(30, dados.length); i++) {
+    const campos = dados[i].map(normalizarTexto);
+    const temValor = campos.some(n => n === "VALOR" || n.startsWith("VALOR ") || n.startsWith("CUSTO ") || n.includes("TOTAL PAGO"));
+    const temDimensao = campos.some(n => n.includes("DEPARTAMENTO") || n.includes("CENTRO DE CUSTO") || n === "OBRA" || n === "PROJETO" || n.includes("CATEGORIA") || n.includes("NATUREZA") || n.includes("RUBRICA"));
+    const naoVazia = campos.filter(Boolean).length;
+    const pontuacao = (temValor ? 3 : 0) + (temDimensao ? 3 : 0) + Math.min(naoVazia, 6) / 6;
+    if (temValor && temDimensao) { headerIndex = i; break; }
+    if (naoVazia >= 2 && pontuacao > melhorPontuacao) { headerIndex = i; melhorPontuacao = pontuacao; }
+  }
+  if (headerIndex < 0) throw new Error("Não encontrei uma linha de cabeçalhos reconhecível nos primeiros 30 registros.");
+  const headers = dados[headerIndex].map((h, i) => h || `Coluna ${i + 1}`);
+  const rows = dados.slice(headerIndex + 1).filter(linha => linha.some(c => c !== "")).map(linha => {
+    const obj = {};
+    headers.forEach((header, idx) => { obj[header] = linha[idx] ?? ""; });
+    return obj;
   });
-});
+  return { headers, rows };
+}
+
+function extrairIdPlanilhaGoogle(url) {
+  const match = String(url || "").match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+  return match?.[1] || null;
+}
+
+function buscarPlanilhaGoogle(url) {
+  return new Promise((resolve, reject) => {
+    const id = extrairIdPlanilhaGoogle(url);
+    if (!id) return reject(new Error("O link Google Planilhas não contém um ID válido."));
+    const gid = String(url).match(/[?&#]gid=(\d+)/)?.[1];
+    const callbackName = `bpSheetsCallback_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    const script = document.createElement("script");
+    const parametros = new URLSearchParams({ tqx: `responseHandler:${callbackName}`, headers: "0" });
+    if (gid) parametros.set("gid", gid);
+    const timer = setTimeout(() => finalizar(new Error("Tempo esgotado ao ler a planilha Google. Confira o compartilhamento 'Qualquer pessoa com o link — Leitor'.")), 25000);
+    function finalizar(erro, resultado) {
+      clearTimeout(timer);
+      script.remove();
+      delete window[callbackName];
+      if (erro) reject(erro); else resolve(resultado);
+    }
+    window[callbackName] = resposta => {
+      if (!resposta || resposta.status === "error") {
+        const detalhe = resposta?.errors?.map(e => e.detailed_message || e.message).join("; ");
+        return finalizar(new Error(detalhe || "O Google não liberou os dados. Verifique o acesso de leitura do link."));
+      }
+      try {
+        const matriz = (resposta.table?.rows || []).map(linha => (linha.c || []).map(celula => celula ? (celula.f ?? celula.v ?? "") : ""));
+        finalizar(null, formatarMatrizPlanilha(matriz));
+      } catch (erro) { finalizar(erro); }
+    };
+    script.onerror = () => finalizar(new Error("Não foi possível consultar o Google Planilhas. Confirme que a fonte é nativa do Google e está compartilhada para leitura por link."));
+    script.src = `https://docs.google.com/spreadsheets/d/${encodeURIComponent(id)}/gviz/tq?${parametros.toString()}`;
+    document.head.appendChild(script);
+  });
+}
+
+async function lerArquivoPlanilhaLocal(file) {
+  const extensao = file.name.split(".").pop().toLowerCase();
+  if (["csv", "tsv", "txt"].includes(extensao)) {
+    if (typeof Papa === "undefined") throw new Error("Biblioteca CSV não carregada.");
+    const resultado = Papa.parse(await file.text(), { header: false, skipEmptyLines: true, delimiter: "" });
+    if (resultado.errors?.length) throw new Error(resultado.errors.map(e => e.message).join("; "));
+    return [{ nomeAba: file.name.replace(/\.[^.]+$/, ""), ...formatarMatrizPlanilha(resultado.data) }];
+  }
+  if (!window.XLSX) throw new Error("Leitor Excel indisponível. Recarregue a página com acesso à biblioteca SheetJS.");
+  const workbook = XLSX.read(await file.arrayBuffer(), { type: "array", cellDates: true });
+  return workbook.SheetNames.map(nomeAba => {
+    const matriz = XLSX.utils.sheet_to_json(workbook.Sheets[nomeAba], { header: 1, defval: "", raw: false, blankrows: false });
+    return { nomeAba, ...formatarMatrizPlanilha(matriz) };
+  }).filter(aba => aba.headers.length && aba.rows.length);
+}
+
+async function importarArquivoRealizado(file, fonte) {
+  if (!file) return;
+  try {
+    const abas = await lerArquivoPlanilhaLocal(file);
+    if (!abas.length) throw new Error("O arquivo não contém abas com dados reconhecíveis.");
+    const novasFontes = abas.map((aba, indice) => {
+      const id = indice === 0 ? fonte.id : `realizado-${Date.now()}-${indice}`;
+      const nome = abas.length === 1 ? file.name.replace(/\.[^.]+$/, "") : `${file.name.replace(/\.[^.]+$/, "")} — ${aba.nomeAba}`;
+      return { id, nome, url: "", arquivoLocal: true, nomeAba: aba.nomeAba, headers: aba.headers, rows: aba.rows, atualizadoEm: new Date().toISOString() };
+    });
+    const outros = (dadosBasePlanilhas || []).filter(base => !novasFontes.some(f => f.id === base.id));
+    const basesSalvas = [...outros, ...novasFontes.map(f => ({ id: f.id, nome: f.nome, tipo: "Realizado", origem: "arquivo-local", url: "", headers: f.headers, rows: f.rows, atualizadoEm: f.atualizadoEm }))];
+    await salvarDadosBaseArmazenados(basesSalvas);
+    dadosBasePlanilhas = basesSalvas;
+    const indiceFonte = configGlobal.planilhasRealizado.findIndex(f => f.id === fonte.id);
+    if (indiceFonte >= 0) configGlobal.planilhasRealizado.splice(indiceFonte, 1, ...novasFontes.map(({ id, nome, url, arquivoLocal, nomeAba }) => ({ id, nome, url, arquivoLocal, nomeAba })));
+    localStorage.setItem("config_bp", JSON.stringify(configGlobal));
+    renderizarFontesRealizado();
+    renderizarDadosBase();
+    alert(`${novasFontes.length} aba(s) importada(s) de ${file.name}. Clique em A Extrair Dados para atualizar os indicadores.`);
+  } catch (erro) { alert(`Não consegui importar ${file.name}: ${erro.message || erro}`); }
+}
+
+// Google Sheets usa a consulta oficial gviz (script injection, sem XHR/CORS); outros links CSV dependem de CORS.
+const buscarCSV = async url => {
+  if (extrairIdPlanilhaGoogle(url)) return buscarPlanilhaGoogle(url);
+  if (typeof Papa === "undefined") throw new Error("Biblioteca PapaParse não carregada.");
+  return new Promise((resolve, reject) => Papa.parse(obterLinkCSV(url), {
+    download: true, worker: true, header: false, skipEmptyLines: true,
+    complete: resultado => {
+      try {
+        if (resultado.errors?.length) throw new Error(resultado.errors.map(e => e.message).join("; "));
+        resolve(formatarMatrizPlanilha(resultado.data));
+      } catch (erro) { reject(erro); }
+    },
+    error: erro => reject(new Error(`O servidor deste link bloqueou a leitura direta do navegador (CORS). Baixe o arquivo e use Importar arquivo. Detalhe: ${erro.message || "falha de rede"}`))
+  }));
+};
 
 // ==========================================
 // INICIALIZAÇÃO
@@ -691,7 +756,7 @@ function renderizarFontesRealizado() {
   container.replaceChildren();
   configGlobal.planilhasRealizado.forEach((fonte, indice) => {
     const linha = document.createElement('div');
-    linha.className = 'grid grid-cols-1 md:grid-cols-[1fr_2fr_auto] gap-2 items-center bg-white p-2 border rounded-lg';
+    linha.className = 'grid grid-cols-1 md:grid-cols-[1fr_2fr_1fr_auto] gap-2 items-center bg-white p-2 border rounded-lg';
     const nome = document.createElement('input');
     nome.type = 'text'; nome.value = fonte.nome || ''; nome.placeholder = 'Nome para a aba Dados Base';
     nome.className = 'border p-2 rounded-lg'; nome.setAttribute('aria-label', `Nome da planilha ${indice + 1}`);
@@ -699,11 +764,15 @@ function renderizarFontesRealizado() {
     const url = document.createElement('input');
     url.type = 'url'; url.value = fonte.url || ''; url.placeholder = 'Link de compartilhamento do Google Sheets';
     url.className = 'border p-2 rounded-lg'; url.setAttribute('aria-label', `Link da planilha ${indice + 1}`);
-    url.oninput = () => { fonte.url = url.value; };
+    url.oninput = () => { fonte.url = url.value; if (url.value.trim()) fonte.arquivoLocal = false; };
+    const arquivo = document.createElement('input');
+    arquivo.type = 'file'; arquivo.accept = '.csv,.tsv,.txt,.xls,.xlsx,.xlsm,.ods';
+    arquivo.className = 'border p-2 rounded-lg text-xs w-full'; arquivo.setAttribute('aria-label', `Importar arquivo da planilha ${indice + 1}`);
+    arquivo.onchange = () => importarArquivoRealizado(arquivo.files?.[0], fonte);
     const remover = document.createElement('button');
     remover.type = 'button'; remover.textContent = 'Remover'; remover.className = 'text-red-600 font-bold px-2 py-1';
     remover.onclick = () => { configGlobal.planilhasRealizado.splice(indice, 1); renderizarFontesRealizado(); };
-    linha.append(nome, url, remover); container.appendChild(linha);
+    linha.append(nome, url, arquivo, remover); container.appendChild(linha);
   });
   if (!configGlobal.planilhasRealizado.length) {
     const vazio = document.createElement('p'); vazio.className = 'text-gray-500'; vazio.textContent = 'Nenhuma planilha cadastrada.'; container.appendChild(vazio);
@@ -720,7 +789,7 @@ function adicionarFonteRealizado() {
 // ==========================================
 async function sincronizarTodasPlanilhas() {
   if (!obterPermissoesUsuario().sincronizar) return alert('Seu perfil não tem permissão para sincronizar planilhas.');
-  const fontesRealizado = (configGlobal.planilhasRealizado || []).filter(f => f.url && f.url.trim());
+  const fontesRealizado = (configGlobal.planilhasRealizado || []).filter(f => (f.url && f.url.trim()) || f.arquivoLocal);
   if (!fontesRealizado.length && configGlobal.urlRealizado) {
     fontesRealizado.push({ id: "realizado-principal", nome: "Realizado", url: configGlobal.urlRealizado });
   }
@@ -732,14 +801,19 @@ async function sincronizarTodasPlanilhas() {
     const novasBases = [];
     const linhasRealizado = [];
     for (const fonte of fontesRealizado) {
-      const extraido = await buscarCSV(fonte.url);
+      let extraido;
+      if (fonte.arquivoLocal) {
+        const salvo = (dadosBasePlanilhas || []).find(base => base.id === fonte.id && base.origem === 'arquivo-local');
+        if (!salvo) throw new Error(`O arquivo local de "${fonte.nome}" não está carregado. Selecione-o novamente nas Configurações.`);
+        extraido = { headers: salvo.headers, rows: salvo.rows };
+      } else extraido = await buscarCSV(fonte.url);
       if (!extraido.rows.length) throw new Error(`A planilha "${fonte.nome}" não contém linhas de dados.`);
       const colunas = extraido.headers;
       const colunaObra = encontrarColuna(colunas, "obra");
       const colunaValor = encontrarColuna(colunas, "valor");
       if (!colunaObra) throw new Error(`Não identifiquei a coluna da obra/departamento na planilha "${fonte.nome}". Cabeçalhos encontrados: ${colunas.join(", ")}.`);
       if (!colunaValor) throw new Error(`Não identifiquei a coluna monetária na planilha "${fonte.nome}". Cabeçalhos encontrados: ${colunas.join(", ")}.`);
-      const base = { id: fonte.id || `realizado-${Date.now()}`, nome: fonte.nome || "Realizado", tipo: "Realizado", url: fonte.url, headers: extraido.headers, rows: extraido.rows, atualizadoEm: new Date().toISOString() };
+      const base = { id: fonte.id || `realizado-${Date.now()}`, nome: fonte.nome || "Realizado", tipo: "Realizado", origem: fonte.arquivoLocal ? "arquivo-local" : "url", url: fonte.url || "", headers: extraido.headers, rows: extraido.rows, atualizadoEm: new Date().toISOString() };
       novasBases.push(base);
       linhasRealizado.push({ fonte: base, rows: extraido.rows, colunaObra, colunaValor, colunaCategoria: encontrarColuna(colunas, "categoria") });
     }
@@ -1227,7 +1301,7 @@ function renderizarListaGraficosConfig() {
 async function salvarConfiguracoesGerais() {
   if (!obterPermissoesUsuario().configuracoes) return alert('Seu perfil não pode alterar as configurações do sistema.');
   configGlobal.titulo = document.getElementById('config-app-title').value.trim();
-  configGlobal.planilhasRealizado = configGlobal.planilhasRealizado.filter(f => f.nome?.trim() && f.url?.trim()).map(f => ({ ...f, nome: f.nome.trim(), url: f.url.trim() }));
+  configGlobal.planilhasRealizado = configGlobal.planilhasRealizado.filter(f => f.nome?.trim() && (f.url?.trim() || f.arquivoLocal)).map(f => ({ ...f, nome: f.nome.trim(), url: (f.url || '').trim() }));
   configGlobal.urlRealizado = configGlobal.planilhasRealizado[0]?.url || '';
   localStorage.setItem('config_bp', JSON.stringify(configGlobal));
   let erroSupabase = null;
