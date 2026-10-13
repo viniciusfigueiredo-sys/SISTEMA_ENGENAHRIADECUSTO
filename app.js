@@ -48,6 +48,14 @@ let graficoRealizadoCustos = null;
 let previstoPaginaAtual = 0;
 function normalizarTextoUI(valor) { return String(valor || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase(); }
 
+function obraVisivelNosDados(valor) {
+  const normalizado = normalizarTextoUI(valor);
+  const encontrada = Object.values(obrasBD || {}).find(obra => [obra.id, obra.nome, obra.cc].some(campo => campo && normalizarTextoUI(campo) === normalizado));
+  if (!encontrada) return true;
+  if (encontrada.oculta) return false;
+  return encontrada.status !== 'Arquivada' || usuarioAutenticado?.perfil === 'Mestre';
+}
+
 function campoBaseId(planilhaId, header) { return `base:${encodeURIComponent(planilhaId)}:${encodeURIComponent(header)}`; }
 function campoBaseContagemId(planilhaId) { return `contagem:${encodeURIComponent(planilhaId)}`; }
 function lerCampoBaseId(campo) {
@@ -758,7 +766,8 @@ function renderizarDadosBase() {
   const busca = norm(filtrosDadosBase.busca);
   const rowsFiltradas = rowsOriginais.filter(row => {
     const texto = !busca || ativa.headers.some(h => norm(row[h]).includes(busca));
-    const obraOk = !obraHeader || !filtrosDadosBase.obra || norm(row[obraHeader]) === norm(filtrosDadosBase.obra);
+    const obraValor = obraHeader ? String(row[obraHeader] ?? '').trim() : '';
+    const obraOk = !obraHeader || (obraVisivelNosDados(obraValor) && (!filtrosDadosBase.obra || norm(obraValor) === norm(filtrosDadosBase.obra)));
     const catOk = !filtrosDadosBase.categoria || !categoriaHeader || norm(row[categoriaHeader]) === norm(filtrosDadosBase.categoria);
     const filtroBase=filtrosDashboard.base;
     const baseOk=!filtroBase || filtroBase.planilhaId!==ativa?.id || norm(row[filtroBase.header])===norm(filtroBase.value);
@@ -850,7 +859,7 @@ function renderizarControlesFiltroDadosBase(planilha, obraHeader, categoriaHeade
     if (!header) return;
     const select = document.createElement('select'); select.className = 'border p-2 rounded-lg text-sm'; select.setAttribute('aria-label', label);
     const first = document.createElement('option'); first.value = ''; first.textContent = label; select.appendChild(first);
-    [...new Set((planilha?.rows || []).map(r => String(r[header] ?? '').trim()).filter(Boolean))].sort((a,b) => a.localeCompare(b, 'pt-BR')).forEach(value => {
+    [...new Set((planilha?.rows || []).map(r => String(r[header] ?? '').trim()).filter(value => value && (key !== 'obra' || obraVisivelNosDados(value))))].sort((a,b) => a.localeCompare(b, 'pt-BR')).forEach(value => {
       const option = document.createElement('option'); option.value = value; option.textContent = value; select.appendChild(option);
     });
     if(key==='obra'&&filtrosDadosBase.obra==='__OBRA_SEM_CORRESPONDENCIA__'){const option=document.createElement('option');option.value='__OBRA_SEM_CORRESPONDENCIA__';option.textContent='Obra selecionada sem correspondência';select.appendChild(option);}
@@ -999,11 +1008,9 @@ async function sincronizarTodasPlanilhas() {
       const chvCat = colunaCategoria || encontrarColuna(chaves, "categoria");
       const categoria = chvCat ? (linha[chvCat] || "Outros").trim() : "Outros";
 
-      if (obrasBD[chaveObra].status !== "Arquivada") {
-        obrasBD[chaveObra].realizadoTotal += valor;
-        obrasBD[chaveObra].categoriasRealizado[categoria] = (obrasBD[chaveObra].categoriasRealizado[categoria] || 0) + valor;
-        linhasRealizadoAssociadas++;
-      }
+      obrasBD[chaveObra].realizadoTotal += valor;
+      obrasBD[chaveObra].categoriasRealizado[categoria] = (obrasBD[chaveObra].categoriasRealizado[categoria] || 0) + valor;
+      linhasRealizadoAssociadas++;
     }));
 
     const promessasPrevisto = Object.keys(obrasBD).map(async (key) => {
@@ -1266,7 +1273,7 @@ function recalcularRealizadoDaBaseLocal() {
       const obraTexto = String(linha[colunaObra] ?? '').trim();
       if (!obraTexto || ['N/D', '0.0'].includes(obraTexto.toUpperCase())) return;
       const chave = mapaObras.get(normalizarTexto(obraTexto)) || mapaObras.get(chaveComparacaoObra(obraTexto));
-      if (!chave || obrasBD[chave]?.status === 'Arquivada') return;
+      if (!chave) return;
       const valor = parseMonetario(linha[colunaValor]);
       const categoria = String((colunaCategoria && linha[colunaCategoria]) || 'Outros').trim() || 'Outros';
       if (!acumulados.has(chave)) acumulados.set(chave, { total: 0, categorias: {} });
