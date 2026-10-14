@@ -14,7 +14,7 @@ function propagarFiltroTabela(key,state,ctx,headers){
  filtroAutomaticoTabela=novo;atualizarPaineisPorFiltro();
 }
 function linhasDaObraParaFiltro(p){return p.id.startsWith('@')?p.rows:linhasDaObra(p,obrasBD[obraAtivaID]);}
-function passaValoresTabela(values,state){return Object.entries(state.filtros).every(([i,v])=>!String(v).trim()||normalizarTextoUI(values[Number(i)]??'').includes(normalizarTextoUI(v)));}
+function passaValoresTabela(values,state){return Object.entries(state.filtros).every(([i,v])=>correspondePesquisa([values[Number(i)]??''],v));}
 function valoresResumoCustoTabela(c){const {inicio,fim}=periodoCustosAtual();return [c.nome+(c.ativo?'':' (arquivado)'),c.fornecedor,c.categoria,brl(c.valor),String(c.quantidade),'A cada '+c.intervalo+' '+c.unidade,brl(c.ativo?ocorrenciasCusto(c,inicio,fim)*c.valor*c.quantidade:0),''];}
 function agendarSelecaoTabela(key,state,ctx,headers,checks){if(key.startsWith('demonstrativo:'))return;state.registros||=new Map();checks.forEach((item,i)=>{if(item.checkbox.checked&&ctx.raw?.[i])state.registros.set(item.tr.dataset.chaveLinha,ctx.raw[i]);else if(!item.checkbox.checked)state.registros.delete(item.tr.dataset.chaveLinha);});clearTimeout(timerSelecaoAutomatica);timerSelecaoAutomatica=setTimeout(()=>propagarFiltroTabela(key,state,ctx,headers),80);}
 const linhaPassaAntesTabelaAutomatica=linhaPassaFiltroInterativo;
