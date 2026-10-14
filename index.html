@@ -26,12 +26,12 @@
       body { display:block !important; background:#fff !important; color:#1f2937 !important; font:9pt Arial,sans-serif !important; }
       #screen-login, #app-container, #modal-configuracoes, #modal-meus-graficos, #modal-usuarios { display:none !important; }
       #relatorio-impressao { display:block !important; position:static !important; inset:auto !important; width:100%; padding:0 !important; color:#1f2937; font:9pt Arial,sans-serif; }
-      #relatorio-impressao .report-letterhead { position:relative; z-index:1; width:100%; height:28mm; margin:0 0 5mm; overflow:hidden; background:#fff; break-inside:avoid; }
-      #relatorio-impressao .report-letterhead > svg { position:absolute; inset:0 0 auto; width:100%; height:21mm; }
-      #relatorio-impressao .report-logo { position:absolute; top:4mm; left:2mm; width:27mm; height:22mm; object-fit:contain; }
-      #relatorio-impressao .report-brand { position:absolute; right:2mm; top:8mm; display:flex; flex-direction:column; align-items:flex-end; color:#003399; }
+      #relatorio-impressao .report-letterhead { position:relative; z-index:1; width:100%; height:42mm; margin:0 0 5mm; overflow:hidden; background:#fff; break-inside:avoid; }
+      #relatorio-impressao .report-letterhead > svg { position:absolute; inset:0 0 auto; width:100%; height:14mm; }
+      #relatorio-impressao .report-logo { position:absolute; top:16mm; left:2mm; width:27mm; height:22mm; object-fit:contain; }
+      #relatorio-impressao .report-brand { position:absolute; right:2mm; top:18mm; display:flex; flex-direction:column; align-items:flex-end; color:#003399; }
       #relatorio-impressao .report-brand strong { font-size:12pt; letter-spacing:.04em; text-transform:uppercase; }
-      #relatorio-impressao .report-brand span { font-size:8pt; color:#4b5563; }
+      #relatorio-impressao .report-brand span { position:absolute; right:0; top:-15mm; width:115mm; font-size:8pt; color:#fff; white-space:nowrap; }
       #relatorio-impressao .report-letterhead-footer { position:relative; width:100%; height:18mm; margin-top:8mm; overflow:hidden; color:#fff; break-inside:avoid; }
       #relatorio-impressao .report-letterhead-footer svg { position:absolute; inset:0; width:100%; height:100%; }
       #relatorio-impressao .report-footer-text { position:absolute; bottom:2mm; width:100%; text-align:center; color:#fff; font-size:7.5pt; }
@@ -610,14 +610,15 @@
   <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   
-  <script src="app.js?v=senha-provisoria-20261014a"></script>
-<script src="configuracoes-sistema.js?v=senha-provisoria-20261014a"></script>
-  <script src="telas-config.js?v=senha-provisoria-20261014a"></script>
-  <script src="analise-avancada.js?v=senha-provisoria-20261014a"></script>
-  <script src="paineis-fixos.js?v=senha-provisoria-20261014a"></script>
-  <script src="graficos-legiveis.js?v=senha-provisoria-20261014a"></script>
-  <script src="solicitacoes-usuarios.js?v=senha-provisoria-20261014a"></script>
-  <script src="senha-provisoria.js?v=senha-provisoria-20261014a"></script>
+  <script src="app.js?v=inatividade-cabecalho-20261014a"></script>
+<script src="configuracoes-sistema.js?v=inatividade-cabecalho-20261014a"></script>
+  <script src="telas-config.js?v=inatividade-cabecalho-20261014a"></script>
+  <script src="analise-avancada.js?v=inatividade-cabecalho-20261014a"></script>
+  <script src="paineis-fixos.js?v=inatividade-cabecalho-20261014a"></script>
+  <script src="graficos-legiveis.js?v=inatividade-cabecalho-20261014a"></script>
+  <script src="solicitacoes-usuarios.js?v=inatividade-cabecalho-20261014a"></script>
+  <script src="senha-provisoria.js?v=inatividade-cabecalho-20261014a"></script>
+  <script src="sessao-inatividade.js?v=inatividade-cabecalho-20261014a"></script>
 </body>
 </html>
 
