@@ -33,7 +33,15 @@ function aplicarGraficoFixo(chart,tela){if(!chart)return chart;const tipo=config
 const VERSAO_SISTEMA=new URL(document.currentScript.src).searchParams.get('v');
 let verificandoVersaoSistema=false;
 let assinaturaArquivosSistema='';
-async function verificarVersaoSistema(){if(verificandoVersaoSistema)return;verificandoVersaoSistema=true;try{const response=await fetch('versao.json?t='+Date.now(),{cache:'no-store'});if(!response.ok)return;const info=await response.json();const sinais=await Promise.all(['index.html','app.js','analise-avancada.js','configuracoes-sistema.js','telas-config.js','paineis-fixos.js','graficos-legiveis.js','solicitacoes-usuarios.js','senha-provisoria.js','sessao-inatividade.js','auth-protegida.js'].map(async file=>{try{const r=await fetch(file+'?verificacao='+Date.now(),{method:'HEAD',cache:'no-store'});return r.ok?file+':'+(r.headers.get('etag')||'')+':'+(r.headers.get('last-modified')||''):'';}catch(e){return '';}}));const assinatura=sinais.filter(Boolean).join('|'),mudou=!!assinaturaArquivosSistema&&sinais.every(Boolean)&&assinatura!==assinaturaArquivosSistema;if(sinais.every(Boolean))assinaturaArquivosSistema=assinatura;if(info.versao&&info.versao!==VERSAO_SISTEMA||mudou){const editando=contaPrincipalMestre()&&(document.querySelector('#modal-configuracoes:not(.hidden),#modal-meus-graficos:not(.hidden),#modal-usuarios:not(.hidden)')||document.querySelector('#fixos-form input[name="nome"]')?.value);if(!editando)window.location.reload();else{let aviso=document.getElementById('aviso-versao');if(!aviso){aviso=document.createElement('button');aviso.id='aviso-versao';aviso.className='fixed bottom-4 right-4 z-[90] bg-blue-800 text-white p-3 rounded shadow';aviso.textContent='Nova versão disponível · atualizar';aviso.onclick=()=>window.location.reload();document.body.append(aviso);}}}}catch(e){}finally{verificandoVersaoSistema=false;}}
+async function verificarVersaoSistema(){
+ if(verificandoVersaoSistema)return;verificandoVersaoSistema=true;
+ try{const response=await fetch('versao.json?t='+Date.now(),{cache:'no-store'});if(!response.ok)return;const info=await response.json();
+ if(!info.versao||info.versao===VERSAO_SISTEMA)return;
+ const publicada=await fetch('index.html?versao='+encodeURIComponent(info.versao),{cache:'no-store'});if(!publicada.ok)return;const html=await publicada.text();
+ if(!html.includes('telas-config.js?v='+info.versao+'"'))return;
+ atualizarPaginaUmaVez('codigo:'+info.versao,info.versao);
+ }catch(e){}finally{verificandoVersaoSistema=false;}
+}
 setInterval(verificarVersaoSistema,15000);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)verificarVersaoSistema();});
 
