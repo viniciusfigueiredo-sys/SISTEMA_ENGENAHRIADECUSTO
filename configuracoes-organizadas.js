@@ -1,0 +1,47 @@
+// Organização visual: preserva os campos e os fluxos de persistência existentes.
+function caixaConfiguracao(titulo,descricao){const box=elementoFixo('section',undefined,'cfg-caixa');box.append(elementoFixo('h3',titulo,'font-bold text-blue-800'),elementoFixo('p',descricao,'text-sm text-gray-600 mb-3'));return box;}
+function moverCampoConfiguracao(id,host){const el=document.getElementById(id);if(el)host.append(el.closest('label')||el);}
+function salvarGrupoConfiguracao(botao){const original=botao.textContent;botao.disabled=true;botao.textContent='Salvando…';Promise.resolve(salvarParametrosSistema()).finally(()=>{botao.disabled=false;botao.textContent=original;const status=document.getElementById('param-status');let aviso=botao.parentElement.querySelector('.cfg-resultado');if(!aviso){aviso=elementoFixo('p',undefined,'cfg-resultado text-sm mt-2');aviso.setAttribute('role','status');botao.after(aviso);}aviso.textContent=status?.textContent||'Confira o resultado do salvamento.';});}
+function botaoSalvarGrupo(host,texto){const b=elementoFixo('button',texto,'bg-blue-800 text-white rounded px-4 py-2 font-bold');b.type='button';b.onclick=()=>salvarGrupoConfiguracao(b);host.append(b);return b;}
+let telaConfigSelecionada='dashboard';
+function selecionarTelaConfiguracao(tela){telaConfigSelecionada=tela;const select=document.getElementById('cfg-seletor-tela');if(select)select.value=tela;document.querySelectorAll('#config-telas > details').forEach(d=>{const ativa=d.dataset.tela===tela;d.hidden=!ativa;d.open=ativa;});}
+const organizarConfigPorAssuntoAnterior=organizarConfiguracoesPorTela;
+organizarConfiguracoesPorTela=function(){
+ organizarConfigPorAssuntoAnterior();
+ // Os campos globais são reconstruídos antes de cada abertura. Limpa somente caixas vazias de aberturas anteriores.
+ document.querySelectorAll('.cfg-organizado').forEach(el=>el.remove());
+ const geral=document.getElementById('cfg-aba-geral'),telas=document.getElementById('cfg-aba-telas'),users=document.getElementById('cfg-aba-usuarios'),host=document.getElementById('config-parametros'),panel=document.getElementById('config-telas');if(!host||!panel)return;
+ const intro={geral:['Geral','Nome do sistema, manutenção e padrões compartilhados entre as telas.'],links:['Fontes de dados','Planilhas de Realizado. O Previsto de cada obra é configurado em Obras.'],telas:['Telas','Escolha uma tela para organizar os indicadores, gráficos, tabelas e análises.'],obras:['Obras','Nome, gestor, planilha de Previsto e disponibilidade de cada obra.'],usuarios:['Usuários e permissões','Cadastros, aprovações e autorização para editar as configurações.']};
+ Object.entries(intro).forEach(([key,[title,desc]])=>{const pane=document.getElementById('cfg-aba-'+key);const h=caixaConfiguracao(title,desc);h.classList.add('cfg-organizado','cfg-intro');pane.prepend(h);});document.getElementById('tab-btn-links').textContent='Fontes de dados';
+ const padroes=caixaConfiguracao('Padrões gerais de exibição','Estes limites valem para as telas que não possuem um ajuste próprio.');padroes.classList.add('cfg-organizado');
+ ['maxCategoriasGrafico','maxGruposGrafico','maxRegistrosPesquisa','paginaLinhas'].forEach(key=>moverCampoConfiguracao('param-'+key,padroes));geral.append(padroes);botaoSalvarGrupo(padroes,'Salvar padrões gerais');
+ const perms=caixaConfiguracao('Quem pode editar as configurações','O Mestre mantém acesso completo. Marque os usuários autorizados em cada assunto e salve as permissões.');perms.classList.add('cfg-organizado');
+ [...host.children].filter(el=>el.tagName==='DETAILS'&&el.querySelector('input[data-grupo]')).forEach(el=>perms.append(el));
+ [...host.querySelectorAll(':scope > h4')].forEach(el=>el.remove());if(usuarioAutenticado?.perfil==='Mestre'){users.prepend(perms);botaoSalvarGrupo(perms,'Salvar permissões de configuração');}
+ // Uma lista suspensa substitui seis telas abertas numa única página.
+ const escolher=caixaConfiguracao('Qual tela você quer configurar?','As alterações de painéis fixos aparecem para todos os usuários autorizados a visualizar essa tela.');escolher.classList.add('cfg-organizado');
+ const select=document.createElement('select');select.id='cfg-seletor-tela';select.setAttribute('aria-label','Tela a configurar');select.className='border rounded p-3 w-full';Object.entries(TELAS_CONFIG).filter(([,info])=>podeConfigurar(info.grupo)).forEach(([id,info])=>select.add(new Option(info.nome,id)));select.onchange=()=>selecionarTelaConfiguracao(select.value);escolher.append(select);panel.before(escolher);
+ panel.querySelectorAll(':scope > input,:scope > p,:scope > h4').forEach(el=>el.remove());
+ const detailsPorTela={};[...panel.querySelectorAll(':scope > details')].forEach(d=>{const tela=Object.keys(TELAS_CONFIG).find(key=>TELAS_CONFIG[key].nome===d.querySelector('summary')?.textContent);if(!tela)return;d.dataset.tela=tela;detailsPorTela[tela]=d;
+ const conteudo=caixaConfiguracao('Conteúdo da tela','Ative os elementos que devem aparecer nesta tela e escolha a ordenação.');const paineis=caixaConfiguracao('Gráficos e KPIs compartilhados','Adicione um painel ou abra seu título para editar os dados, o cálculo e a apresentação.');const layout=caixaConfiguracao('Aparência e organização','Ajuste os títulos, a largura, a altura e a ordem dos elementos existentes.');
+ [...d.children].filter(el=>el.tagName!=='SUMMARY').forEach(el=>{if(el.tagName==='SECTION')paineis.append(el);else if(el.tagName==='DETAILS')layout.append(el);else conteudo.append(el);});d.append(conteudo,paineis,layout);
+ });
+ const farol=caixaConfiguracao('Demonstrativo e faróis','Defina os limites das cores, a medida usada na ordenação e as colunas exibidas no Demonstrativo.');['farolAmarelo','farolVermelho','velocimetroMax','ordemDemonstrativo'].forEach(key=>moverCampoConfiguracao('param-'+key,farol));const cols=document.getElementById('param-dre-categoria')?.closest('fieldset');if(cols)farol.append(cols);detailsPorTela.dashboard?.append(farol);
+ const recorrencia=caixaConfiguracao('Identificação de pagamentos recorrentes','Quantidade mínima de meses diferentes com pagamentos para identificar uma recorrência.');moverCampoConfiguracao('param-minMesesRecorrencia',recorrencia);detailsPorTela.recorrentes?.append(recorrencia);
+ // Elimina o bloco misturado de parâmetros e os botões duplicados. Conserva o status usado pelo salvamento.
+ [...host.children].forEach(el=>{if(el!==panel&&el!==escolher&&el.id!=='param-status')el.remove();});host.querySelector('#param-status')?.classList.add('sr-only');const footer=elementoFixo('div',undefined,'cfg-salvar-tela');footer.classList.add('cfg-organizado');botaoSalvarGrupo(footer,'Salvar configurações das telas');host.append(footer);
+ selecionarTelaConfiguracao([...select.options].some(o=>o.value===telaConfigSelecionada)?telaConfigSelecionada:select.value);
+ const save=document.getElementById('btn-salvar-configuracoes');save.textContent='Salvar nome do sistema';save.onclick=salvarIdentidadeSistema;
+ // Campos de fontes e obra têm explicação próxima à tarefa, sem instruções técnicas extensas.
+ const fontes=document.getElementById('fontes-realizado-config')?.parentElement;const texto=fontes?.querySelector('p.text-gray-500');if(texto)texto.textContent='Adicione um link do Google Planilhas ou importe um arquivo Excel/CSV. Nomeie cada fonte para identificá-la. A coluna de valor é detectada automaticamente; informe o cabeçalho quando precisar corrigir o reconhecimento.';
+};
+async function salvarIdentidadeSistema(){if(!podeConfigurar('geral'))return;const titulo=document.getElementById('config-app-title').value.trim();if(!titulo)return alert('Informe o nome do sistema.');try{const {error}=await supabaseClient.from('configuracoes').update({titulo}).eq('id',configGlobal.idConfigSupabase||1);if(error)throw error;configGlobal.titulo=titulo;document.getElementById('header-app-title').textContent=titulo;document.getElementById('login-app-title').textContent=titulo;await sinalizarAlteracaoCompartilhada();let status=document.getElementById('cfg-status-identidade');if(!status){status=elementoFixo('p',undefined,'text-sm text-green-700');status.id='cfg-status-identidade';document.getElementById('btn-salvar-configuracoes').after(status);}status.textContent='Nome do sistema salvo.';}catch(e){alert('Não foi possível salvar o nome: '+e.message);}}
+const abrirEditorPorAssuntoAnterior=abrirEditorTela;
+abrirEditorTela=function(tela,id){abrirEditorPorAssuntoAnterior(tela,id);selecionarTelaConfiguracao(tela);};
+// Orientações junto aos grupos do editor, preservando os campos que se atualizam dinamicamente.
+const criarEditorPorAssuntoAnterior=criarEditorCompartilhado;
+criarEditorCompartilhado=function(tela,cfg,classe,onRemover){
+ const editor=criarEditorPorAssuntoAnterior(tela,cfg,classe,onRemover),field=editor.querySelector(':scope > fieldset');
+ if(field){const grids=field.querySelectorAll(':scope > div');grids[0]?.before(elementoFixo('h4','Identificação e fonte de dados','font-bold text-blue-800'));grids[1]?.before(elementoFixo('h4','Campos, cálculo e visualização','font-bold text-blue-800'));}
+ return editor;
+};
