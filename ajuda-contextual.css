@@ -1,0 +1,6 @@
+.bp-ajuda{display:inline-flex!important;align-items:center;justify-content:center;vertical-align:middle;margin-left:5px;padding:0!important;width:19px!important;height:19px!important;min-width:19px;min-height:19px!important;border:1px solid #64748b!important;border-radius:50%!important;background:#f8fafc!important;color:#334155!important;cursor:help;font-size:12px!important;line-height:1!important;box-shadow:none!important;flex:none;position:relative}
+.bp-ajuda::before{content:'?';font-weight:700}.bp-ajuda:focus-visible{outline:3px solid #38bdf8;outline-offset:2px}
+.bp-tooltip-ajuda{position:fixed;z-index:10000;background:#0f172a;color:#fff;border-radius:10px;padding:12px 14px;max-width:min(340px,calc(100vw - 16px));font-size:13px;line-height:1.5;box-shadow:0 6px 20px #0003;pointer-events:none;text-align:left;font-weight:400;white-space:normal}
+.bp-tooltip-ajuda[hidden]{display:none!important}
+@media(max-width:640px){.bp-ajuda{width:24px!important;height:24px!important;min-width:24px;min-height:24px!important}.bp-tooltip-ajuda{font-size:14px}}
+@media print{.bp-ajuda,.bp-tooltip-ajuda{display:none!important}}
