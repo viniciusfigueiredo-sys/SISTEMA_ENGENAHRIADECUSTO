@@ -1,0 +1,6 @@
+// Mantém os dados completos; o corte visual usa CSS e o nome completo fica no tooltip.
+function padronizarTabelaBP(table){table.classList.add('bp-tabela-padrao');for(const cell of table.querySelectorAll('td')){if(!cell.querySelector('input,select,button,a')){const texto=cell.textContent.trim();if(texto)cell.title=texto;}}const toolbar=table.previousElementSibling;if(toolbar?.querySelector('select[aria-label="Coluna para somar"]'))toolbar.classList.add('bp-tabela-toolbar');}
+const tabelasPendentesBP=new Set();let quadroTabelasBP=0;
+function agendarPaletaTabelasBP(node){if(!node||node.nodeType!==1)return;const parent=node.closest('table');if(parent)tabelasPendentesBP.add(parent);node.querySelectorAll('table').forEach(t=>tabelasPendentesBP.add(t));if(node.matches('table'))tabelasPendentesBP.add(node);if(!quadroTabelasBP)quadroTabelasBP=requestAnimationFrame(()=>{quadroTabelasBP=0;for(const t of tabelasPendentesBP)if(t.isConnected)padronizarTabelaBP(t);tabelasPendentesBP.clear();});}
+agendarPaletaTabelasBP(document.body);
+new MutationObserver(records=>{for(const r of records){agendarPaletaTabelasBP(r.target);for(const n of r.addedNodes)agendarPaletaTabelasBP(n);}}).observe(document.body,{childList:true,subtree:true});
