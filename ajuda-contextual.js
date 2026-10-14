@@ -138,7 +138,8 @@ function adicionarAjuda(el){if(el.closest('#relatorio-impressao,.bp-tooltip-ajud
  const icon=document.createElement('button');icon.type='button';icon.className='bp-ajuda';icon.setAttribute('aria-label','Ajuda: '+(textoRotuloAjuda(el)||el.getAttribute('aria-label')));icon.setAttribute('aria-expanded','false');icon.setAttribute('aria-describedby','bp-tooltip-ajuda');icon.dataset.explicacao=explicacaoAjuda(el);
  icon.addEventListener('mouseenter',()=>mostrarAjuda(icon));icon.addEventListener('mouseleave',esconderAjuda);icon.addEventListener('focus',()=>mostrarAjuda(icon));icon.addEventListener('blur',esconderAjuda);icon.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();mostrarAjuda(icon);});
  // Não altera o texto dos rótulos usado pelos editores e não cria botões dentro de botões.
- if(el.matches('button,input,select,textarea'))el.after(icon);else el.append(icon);ajudaAssociada.set(el,icon);
+ if(el.matches('button')&&el.closest('#fixos-form')&&el.parentElement.classList.contains('grid')){const wrap=document.createElement('div');wrap.className='flex items-center gap-1 min-w-0';el.before(wrap);wrap.append(el,icon);}
+ else if(el.matches('button,input,select,textarea'))el.after(icon);else el.append(icon);ajudaAssociada.set(el,icon);
 }
 function instalarAjuda(root=document){if(root.nodeType!==1&&root!==document)return;if(root.matches?.('label,button,h2,h3,h4,summary,th'))adicionarAjuda(root);root.querySelectorAll('label,button:not(.bp-ajuda),h2,h3,h4,summary,th').forEach(adicionarAjuda);
  const controles=[...(root.matches?.('input,select,textarea')?[root]:[]),...root.querySelectorAll('input:not([type=hidden]),select,textarea')];controles.forEach(el=>{const labels=[...(el.labels||[])];if(labels.some(l=>!l.classList.contains('sr-only'))||el.closest('label')||el.previousElementSibling?.matches('label:not(.sr-only)'))return;adicionarAjuda(el);});
