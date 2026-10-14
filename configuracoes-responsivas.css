@@ -16,6 +16,27 @@
 #config-parametros button{max-width:100%;height:auto;align-self:flex-start}
 #config-parametros .salvar-telas{position:sticky;bottom:0;z-index:5;box-shadow:0 0 0 8px white}
 @media(max-width:640px){
+ html,body{width:100%;min-width:0;margin:0}
+ #app-container{width:100%;min-width:0}
+ #app-container>header,#app-container>header>div{width:100%;min-width:0;max-width:100%}
+ #app-container>header>div{padding:12px!important}
+ #header-controles{display:flex;flex-direction:column;align-items:stretch!important;width:100%;min-width:0;margin:0!important}
+ #header-controles>div{width:100%;min-width:0;margin:0!important}
+ #app-container #seletor-obra{width:100%;max-width:100%!important;min-width:0;font-size:16px;text-overflow:ellipsis}
+ #header-acoes{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px!important;padding:0!important;border:0!important;align-items:stretch!important}
+ #header-acoes>button{width:100%;min-width:0;min-height:40px;margin:0!important;padding:9px 6px;white-space:normal;font-size:12px}
+ #header-acoes>button:last-child{grid-column:1/-1}
+ #header-acoes>.hidden{display:none!important}
+ #app-container main nav{width:100%;max-width:100%;min-width:0}
+ #app-container main nav button{padding:12px 10px;font-size:13px}
+ [id$="-periodo"]{width:100%;display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px!important}
+ [id$="-periodo"]>div{min-width:0}
+ [id$="-periodo"]>p,[id$="-periodo"]>label,[id$="-periodo"]>details{grid-column:1/-1;min-width:0}
+ [id$="-periodo"] input[type=date],[id$="-periodo"] input[type=month]{width:100%;min-width:0;max-width:100%;height:42px;background:white;color:#0f172a;font-size:16px}
+ [id$="-periodo"]>button{min-width:0;white-space:normal;padding:9px 6px;font-size:12px}
+ #obra-titulo{font-size:20px;overflow-wrap:anywhere}
+ #app-container main .overflow-x-auto,#app-container main .overflow-auto{max-width:100%;min-width:0}
+ #app-container main input:not([type=checkbox]),#app-container main select{max-width:100%;min-width:0;font-size:16px}
  #app-container>header{position:relative}
  #app-container main{padding:12px!important;max-width:100%;min-width:0}
  #app-container section,#app-container .grid>div{min-width:0;max-width:100%}

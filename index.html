@@ -97,7 +97,7 @@
       #grid-graficos-dinamicos h3, [id^="painel-fixo-"] h3 { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
       .dica-rotulo-grafico { position:absolute; z-index:30; max-width:280px; padding:8px 10px; background:#0f172a; color:white; border-radius:6px; font-size:12px; white-space:normal; pointer-events:none; box-shadow:0 2px 8px #0003; }
     </style>
-  <link rel="stylesheet" href="configuracoes-responsivas.css?v=config-clara-20261014b">
+  <link rel="stylesheet" href="configuracoes-responsivas.css?v=mobile-20261014">
   <link rel="stylesheet" href="ajuda-contextual.css?v=ajuda-20261014">
 </head>
 <body class="bg-[#F4F6F9] font-sans text-gray-800 antialiased min-h-screen flex flex-col">
@@ -204,14 +204,14 @@
           </div>
         </div>
 
-        <div class="flex flex-wrap items-center justify-between gap-2 lg:space-x-4">
+        <div id="header-controles" class="flex flex-wrap items-center justify-between gap-2 lg:space-x-4">
           <div class="flex flex-col">
             <label for="seletor-obra" class="text-xs text-gray-200 font-medium">Obra em Análise:</label>
             <select id="seletor-obra" onchange="alterarObraAtiva(this.value)" class="bg-[#002266] text-white text-sm font-semibold rounded-lg px-3 py-1.5 border border-[#00CFFF]/40 focus:outline-none">
             </select>
           </div>
 
-          <div class="border-l border-[#002266] pl-4 flex items-center space-x-3">
+          <div id="header-acoes" class="border-l border-[#002266] pl-4 flex items-center space-x-3">
             <div class="text-right hidden md:block">
               <p id="user-display-name" class="text-sm font-semibold">---</p>
               <p id="user-display-role" class="text-xs text-[#00CFFF] font-bold uppercase">---</p>
@@ -627,7 +627,7 @@
   
   <script src="app.js?v=obras-az-20261014"></script>
 <script src="configuracoes-sistema.js?v=config-clara-20261014b"></script>
-  <script src="telas-config.js?v=login-identificacao-20261014"></script>
+  <script src="telas-config.js?v=mobile-20261014"></script>
   <script src="analise-avancada.js?v=recuperacao-20261014b"></script>
   <script src="paineis-fixos.js?v=recuperacao-20261014b"></script>
   <script src="graficos-legiveis.js?v=recuperacao-20261014b"></script>
