@@ -1,0 +1,24 @@
+.painel-linha-inteira{grid-column:1/-1}
+.editor-painel>fieldset{border:0}
+#modal-configuracoes>div{width:min(1100px,calc(100vw - 32px));max-height:calc(100dvh - 32px);overflow:auto}
+#modal-configuracoes .config-tabs{position:sticky;top:0;background:white;z-index:5;display:flex;gap:20px;padding:12px 0;overflow-x:auto}
+#config-telas>details{background:#f8fafc;margin:12px 0}
+#config-telas>details>summary{padding:8px;font-size:16px}
+#config-parametros button{max-width:100%;height:auto;align-self:flex-start}
+#config-parametros .salvar-telas{position:sticky;bottom:0;z-index:5;box-shadow:0 0 0 8px white}
+@media(max-width:640px){
+ #app-container>header{position:relative}
+ #app-container main{padding:12px!important;max-width:100%;min-width:0}
+ #app-container section,#app-container .grid>div{min-width:0;max-width:100%}
+ #modal-configuracoes{padding:6px!important}
+ #modal-configuracoes>div{width:100%;padding:14px!important;max-height:calc(100dvh - 12px)}
+ #modal-configuracoes input,#modal-configuracoes select{font-size:16px;max-width:100%;min-width:0}
+ #modal-configuracoes .config-tabs{gap:16px;white-space:nowrap}
+ .editor-painel summary{overflow-wrap:anywhere}
+ #config-telas label{overflow-wrap:anywhere}
+ #config-telas select{margin-left:0;width:100%}
+ [id^="painel-fixo-"]{min-width:0}
+ [id^="painel-fixo-"] canvas{max-width:100%}
+ .painel-acoes button{min-height:36px}
+}
+@media print{.painel-acoes{display:none!important}}
