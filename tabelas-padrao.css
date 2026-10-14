@@ -11,3 +11,5 @@
 .bp-tabela-toolbar{padding:12px;background:#f7f9fd;border:1px solid #dbe3ee;border-radius:10px 10px 0 0;color:#123364;}
 @media(min-width:1024px){.bp-grafico-abc-largo{grid-column:1/-1;}}
 @media(max-width:640px){:is(#app-container main,#modal-configuracoes,#dialogo-custo-fluxo) table td{max-width:240px;} .bp-grafico-abc-largo{min-width:0;width:100%;}}
+
+.bp-tabela-padrao .bp-celula-numero{text-align:right;font-variant-numeric:tabular-nums;}
