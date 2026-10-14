@@ -1633,6 +1633,7 @@ function renderizarGridGraficosDinamicos(obra, cats) {
         : [{label:({previsto:'Previsto',realizado:'Realizado',saldo:'Saldo',percentual:'% Uso',idc:'IDC'})[cfg.yField] || 'Valor',data:rows.map(r=>r[yMap[cfg.yField] || 'previsto']),backgroundColor:colors[0],borderColor:colors[0],borderWidth:2}];
       graficosInstancias[cfg.id] = new Chart(ctx, {
         type: cfg.tipo,
+        abcOptions:cfg.abc,
         data: { labels, datasets },
         options: { responsive: true, maintainAspectRatio: false, indexAxis: cfg.tipo === 'bar' && cfg.horizontal ? 'y' : 'x', interaction:{mode:'nearest',intersect:false}, onClick: (event, elements, chart) => {
           if(!elements?.length)elements=chart.getElementsAtEventForMode(event,'nearest',{intersect:false},true);
@@ -1769,7 +1770,7 @@ function chaveGraficosUsuario() {
 }
 function normalizarGraficos(lista) {
   if (!Array.isArray(lista)) return GRAFICOS_PADRAO.map(g=>({...g}));
-  return lista.map((g,i)=>({ id:String(g.id||'grafico_'+i), titulo:String(g.titulo||'Gráfico '+(i+1)), tipo:['bar','line','doughnut','pie','polarArea','radar','table','list','gauge'].includes(g.tipo)?g.tipo:'bar', velocimetro:g.velocimetro||{},colunas:Array.isArray(g.colunas)?g.colunas:[],tabelaFonte:g.tabelaFonte||'', xField:g.xField||'categoria', yField:g.yField||'comparativo', horizontal:!!g.horizontal }));
+  return lista.map((g,i)=>({ id:String(g.id||'grafico_'+i), titulo:String(g.titulo||'Gráfico '+(i+1)), tipo:['bar','line','doughnut','pie','polarArea','radar','table','list','gauge','abc'].includes(g.tipo)?g.tipo:'bar', velocimetro:g.velocimetro||{},abc:g.abc||{},colunas:Array.isArray(g.colunas)?g.colunas:[],tabelaFonte:g.tabelaFonte||'', xField:g.xField||'categoria', yField:g.yField||'comparativo', horizontal:!!g.horizontal }));
 }
 function carregarGraficosUsuario() {
   const chave=chaveGraficosUsuario();
@@ -1789,7 +1790,8 @@ function adicionarNovoGrafico() {
   const xField = document.getElementById('novo-chart-x').value;
   const yField = document.getElementById('novo-chart-y').value;
   if (!titulo) return alert("Digite o título.");
-  graficosConfig.push({ velocimetro:{...velocimetroNovoGrafico},colunas:[...colunasNovoGrafico],tabelaFonte:fonteTabelaNovoGrafico,id: `chart_custom_${Date.now()}`, titulo, tipo, xField, yField, horizontal: tipo === 'bar' && document.getElementById('novo-chart-horizontal').checked });
+  if(tipo==='abc')validarABC(abcNovoGrafico);
+  graficosConfig.push({ abc:{...abcNovoGrafico},velocimetro:{...velocimetroNovoGrafico},colunas:[...colunasNovoGrafico],tabelaFonte:fonteTabelaNovoGrafico,id: `chart_custom_${Date.now()}`, titulo, tipo, xField, yField, horizontal: tipo === 'bar' && document.getElementById('novo-chart-horizontal').checked });
   document.getElementById('novo-chart-titulo').value = '';
   persistirGraficosConfig(); renderizarListaGraficosConfig(); atualizarDashboard();
 }
@@ -1807,7 +1809,7 @@ function renderizarListaGraficosConfig() {
     const title=document.createElement('label'); title.className='text-xs font-bold text-gray-600'; title.textContent='Título';
     const input=document.createElement('input'); input.className='w-full border p-2 rounded mt-1'; input.value=g.titulo; input.maxLength=80; input.onchange=()=>{g.titulo=input.value.trim()||'Gráfico'; persistirGraficosConfig(); atualizarDashboard();}; title.appendChild(input);
     const onEdit=()=>{persistirGraficosConfig(); atualizarDashboard();};
-    const type=select('Tipo',g.tipo,[['bar','Barras'],['line','Linha'],['doughnut','Rosca'],['pie','Pizza'],['polarArea','Área polar'],['radar','Radar'],['table','Tabela'],['list','Lista'],['gauge','Velocímetro']],e=>{g.tipo=e.target.value;onEdit();renderizarListaGraficosConfig();});
+    const type=select('Tipo',g.tipo,[['bar','Barras'],['line','Linha'],['doughnut','Rosca'],['pie','Pizza'],['polarArea','Área polar'],['radar','Radar'],['table','Tabela'],['list','Lista'],['gauge','Velocímetro'],['abc','Curva ABC']],e=>{g.tipo=e.target.value;onEdit();renderizarListaGraficosConfig();});
     const x=select('Eixo X',g.xField||'categoria',opcoesCamposGraficos('x'),e=>{
       g.xField=e.target.value;
       const yOpts=opcoesCamposGraficos('y',g.xField);
@@ -1819,7 +1821,7 @@ function renderizarListaGraficosConfig() {
     const horizontal=document.createElement('label'); horizontal.className='flex items-center gap-1 text-xs';
     const check=document.createElement('input'); check.type='checkbox'; check.checked=!!g.horizontal; check.disabled=g.tipo!=='bar'; check.onchange=()=>{g.horizontal=check.checked;onEdit();}; horizontal.append(check,document.createTextNode('Horizontal'));
     const remove=document.createElement('button'); remove.type='button'; remove.textContent='Remover'; remove.className='text-red-700 font-bold'; remove.onclick=()=>removerGrafico(g.id);
-    action.append(horizontal,remove); row.append(title,type,x,y,action); div.appendChild(row);if(g.tipo==='gauge')div.appendChild(criarOpcoesVelocimetro(g,()=>{persistirGraficosConfig();atualizarDashboard();}));if(g.tipo==='table'||g.tipo==='list')div.appendChild(criarSeletorColunasTabela(g,()=>{persistirGraficosConfig();atualizarDashboard();}));
+    action.append(horizontal,remove); row.append(title,type,x,y,action); div.appendChild(row);if(g.tipo==='abc')div.appendChild(criarOpcoesABC(g,()=>{validarABC(g.abc);persistirGraficosConfig();atualizarDashboard();}));if(g.tipo==='gauge')div.appendChild(criarOpcoesVelocimetro(g,()=>{persistirGraficosConfig();atualizarDashboard();}));if(g.tipo==='table'||g.tipo==='list')div.appendChild(criarSeletorColunasTabela(g,()=>{persistirGraficosConfig();atualizarDashboard();}));
   });
 }
 

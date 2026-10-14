@@ -523,7 +523,7 @@
           <p class="text-gray-600">Os eixos incluem as categorias/obras e os títulos de coluna importados em Dados Base (por exemplo, Fornecedor, CNPJ e Valor). Todos os títulos estão disponíveis nos dois eixos. Campos numéricos são somados; campos textuais mostram contagem de valores distintos, ou os valores na tabela/lista. Clique em um ponto para filtrar os gráficos da mesma planilha e a tabela Dados Base.</p>
           <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
             <div><label class="font-bold">Título:</label><input type="text" id="novo-chart-titulo" class="w-full border p-2 rounded-lg mt-1"></div>
-            <div><label class="font-bold">Tipo de gráfico:</label><select id="novo-chart-tipo" class="w-full border p-2 rounded-lg mt-1 font-bold"><option value="bar">Barras verticais</option><option value="line">Linha</option><option value="doughnut">Rosca</option><option value="pie">Pizza</option><option value="polarArea">Área polar</option><option value="radar">Radar</option><option value="table">Tabela</option><option value="list">Lista</option><option value="gauge">Velocímetro</option></select></div>
+            <div><label class="font-bold">Tipo de gráfico:</label><select id="novo-chart-tipo" class="w-full border p-2 rounded-lg mt-1 font-bold"><option value="bar">Barras verticais</option><option value="line">Linha</option><option value="doughnut">Rosca</option><option value="pie">Pizza</option><option value="polarArea">Área polar</option><option value="radar">Radar</option><option value="table">Tabela</option><option value="list">Lista</option><option value="gauge">Velocímetro</option><option value="abc">Curva ABC</option></select></div>
             <div><label class="font-bold">Eixo X:</label><select id="novo-chart-x" class="w-full border p-2 rounded-lg mt-1 font-bold"><option value="categoria">Categoria</option><option value="obra">Obra</option></select></div>
             <div><label class="font-bold">Eixo Y:</label><select id="novo-chart-y" class="w-full border p-2 rounded-lg mt-1 font-bold"><option value="comparativo">Previsto x Realizado</option><option value="previsto">Previsto</option><option value="realizado">Realizado</option><option value="saldo">Saldo</option><option value="percentual">% de uso</option><option value="idc">IDC</option></select></div>
             <label class="flex items-center gap-2 font-bold mt-5"><input id="novo-chart-horizontal" type="checkbox"> Barras horizontais</label>
@@ -625,11 +625,11 @@
   <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   
-  <script src="app.js?v=realizado-fixo-20261014"></script>
+  <script src="app.js?v=categoria-abc-20261014"></script>
 <script src="configuracoes-sistema.js?v=config-clara-20261014b"></script>
-  <script src="telas-config.js?v=realizado-fixo-20261014"></script>
-  <script src="analise-avancada.js?v=realizado-fixo-20261014"></script>
-  <script src="paineis-fixos.js?v=pesquisa-percentual-20261014"></script>
+  <script src="telas-config.js?v=categoria-abc-20261014"></script>
+  <script src="analise-avancada.js?v=categoria-abc-20261014"></script>
+  <script src="paineis-fixos.js?v=categoria-abc-20261014"></script>
   <script src="graficos-legiveis.js?v=recuperacao-20261014b"></script>
   <script src="solicitacoes-usuarios.js?v=recuperacao-20261014b"></script>
   <script src="senha-provisoria.js?v=recuperacao-20261014b"></script>
@@ -649,6 +649,8 @@
   <script src="pesquisa-todas-abas.js?v=pesquisa-somar-20261014"></script>
   <script src="ocultar-itens-zerados.js?v=itens-relevantes-20261014"></script>
   <script src="realizado-para-fixo.js?v=realizado-fixo-20261014"></script>
+  <script src="curva-abc.js?v=categoria-abc-20261014"></script>
+  <script src="categoria-custo-fixo.js?v=categoria-abc-20261014"></script>
 </body>
 </html>
 

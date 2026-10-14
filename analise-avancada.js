@@ -129,7 +129,7 @@ function linhasGraficoPorCampos(cfg,obra){
     else if(y?.tipo==='contagem')g.valor++;
     else{const header=campos.valor||encontrarColuna(p.headers,'valor');g.valor+=header?parseMonetario(row[header]):0;}
   });});
-  return [...grupos.values()].map(g=>({...g,valor:y?.tipo==='coluna'&&!numeric?g.valores.size:g.valor,texto:[...g.valores].join(', '),numerico:numeric||y?.tipo!=='coluna'})).sort((a,b)=>b.valor-a.valor).slice(0,cfg.tipo==='gauge'?Infinity:parametrosSistema.maxGruposGrafico);
+  return [...grupos.values()].map(g=>({...g,valor:y?.tipo==='coluna'&&!numeric?g.valores.size:g.valor,texto:[...g.valores].join(', '),numerico:numeric||y?.tipo!=='coluna'})).sort((a,b)=>b.valor-a.valor).slice(0,['gauge','abc'].includes(cfg.tipo)?Infinity:parametrosSistema.maxGruposGrafico);
 }
 function renderizarGraficoTabela(cfg,rows,canvas){
   if(!canvas)return;if(cfg.colunas?.length){renderizarTabelaColunas(cfg,canvas);return;}const box=canvas.parentElement;box.className='relative max-h-80 overflow-auto';canvas.remove();
