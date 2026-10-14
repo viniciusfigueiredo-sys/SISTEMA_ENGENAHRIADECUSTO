@@ -1681,7 +1681,11 @@ function trocarAbaConfig(aba) {
 function renderizarTabelaGestaoObras() {
   const tbody = document.getElementById('tabela-gestao-obras-body');
   tbody.innerHTML = '';
-  Object.keys(obrasBD).forEach(id => {
+  Object.keys(obrasBD).sort((a, b) =>
+    String(obrasBD[a].nome || obrasBD[a].cc || '').localeCompare(
+      String(obrasBD[b].nome || obrasBD[b].cc || ''), 'pt-BR', { sensitivity: 'base', numeric: true }
+    ) || a.localeCompare(b)
+  ).forEach(id => {
     const o = obrasBD[id];
     tbody.innerHTML += `
       <tr>
