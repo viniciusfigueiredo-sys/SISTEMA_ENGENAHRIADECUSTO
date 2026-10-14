@@ -4,7 +4,7 @@ ALTER TABLE public.configuracoes ADD COLUMN IF NOT EXISTS revisao_dados text NOT
 CREATE OR REPLACE FUNCTION public.bp_sinalizar_revisao_dados()
 RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 BEGIN
-  UPDATE public.configuracoes SET revisao_dados = gen_random_uuid()::text;
+  UPDATE public.configuracoes SET revisao_dados = gen_random_uuid()::text WHERE id = (SELECT id FROM public.configuracoes ORDER BY id LIMIT 1);
   RETURN NULL;
 END;
 $$;
@@ -26,6 +26,6 @@ CREATE TRIGGER bp_revisao_usuarios AFTER INSERT OR UPDATE OR DELETE ON public.us
 DROP TRIGGER IF EXISTS bp_revisao_config ON public.configuracoes;
 CREATE TRIGGER bp_revisao_config BEFORE UPDATE ON public.configuracoes FOR EACH ROW EXECUTE FUNCTION public.bp_revisao_configuracoes();
 
-UPDATE public.configuracoes SET revisao_dados = gen_random_uuid()::text;
+UPDATE public.configuracoes SET revisao_dados = gen_random_uuid()::text WHERE id = (SELECT id FROM public.configuracoes ORDER BY id LIMIT 1);
 NOTIFY pgrst, 'reload schema';
 COMMIT;
