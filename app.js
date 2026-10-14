@@ -1487,7 +1487,7 @@ function atualizarDashboard() {
     const previsto = ((obra.categoriasPrevisto && obra.categoriasPrevisto[cat]) || 0) * multiplicadorCenario;
     const realizado = realizadoPorCategoria[cat] || 0;
     return { cat, previsto, realizado, farol: classificarFarol(previsto, realizado) };
-  });
+  }).filter(l => (l.previsto !== 0 || l.realizado !== 0) && (typeof pesquisaUniversalAtiva!=="function" || !pesquisaUniversalAtiva() || categoriasDaPesquisa().has(normalizarTextoUI(l.cat))));
   const linhasVisiveis = linhas.filter(l => categoriaEstaSelecionada(l.cat) && (!filtrosDashboard.farol || l.farol === filtrosDashboard.farol) && (typeof resumoPassaFiltroTabela!=="function"||resumoPassaFiltroTabela(l)));
   ordenarDemonstrativo(linhasVisiveis);
   linhasDashboardVisiveis = linhasVisiveis;
