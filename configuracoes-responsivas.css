@@ -6,7 +6,8 @@
 #config-telas>details[hidden]{display:none!important}
 #config-telas>details>summary{display:none}
 #config-telas>details{border:0;padding:0;background:transparent}
-.cfg-salvar-tela{position:sticky;bottom:0;background:white;padding:12px 0;z-index:6;border-top:1px solid #dbe3ee}
+.cfg-salvar-tela{background:white;padding:12px 0;border-top:1px solid #dbe3ee}
+.cfg-intro{padding:12px;margin:8px 0}.cfg-intro p{margin-bottom:0}
 .editor-painel>fieldset{border:0}
 #modal-configuracoes>div{width:min(1100px,calc(100vw - 32px));max-height:calc(100dvh - 32px);overflow:auto}
 #modal-configuracoes .config-tabs{position:sticky;top:0;background:white;z-index:5;display:flex;gap:20px;padding:12px 0;overflow-x:auto}
