@@ -1,6 +1,6 @@
 // Filtros de período, seleções cumulativas e custos recorrentes por obra.
 let categoriasSelecionadas = [];
-let selecaoMultipla = false;
+let selecaoMultipla = true;
 let periodoPagamento = { inicio:'', fim:'' };
 const cachePagamentosObra = new WeakMap();
 const brl = valor => Number(valor || 0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
@@ -47,7 +47,6 @@ function renderizarControlesAvancados(){
     botao('📅 Abrir calendário',()=>{try{mes.showPicker();}catch(e){mes.focus();}});
     mes.onchange=()=>{if(!mes.value)return;const [y,m]=mes.value.split('-').map(Number),end=new Date(y,m,0).getDate();aplicarPeriodoPagamento(mes.value+'-01',mes.value+'-'+String(end).padStart(2,'0'));};
     botao('Aplicar datas',()=>aplicarPeriodoPagamento(inicio.value,fim.value));botao('Todos os períodos',()=>aplicarPeriodoPagamento('',''));
-    const multi=document.createElement('label');multi.className='flex gap-2 items-center text-sm';const check=document.createElement('input');check.type='checkbox';check.checked=selecaoMultipla;check.onchange=()=>{selecaoMultipla=check.checked;};multi.append(check,document.createTextNode('Somar várias seleções'));host.append(multi);
     const p=document.createElement('p');p.className='w-full text-xs text-gray-600';const selecao=categoriasSelecionadas.length?categoriasSelecionadas.join(' + '):filtrosDashboard.categoria;
     const semData=dadosBasePlanilhas.filter(p=>p.tipo==='Realizado'&&!colunaPagamento(p)).map(p=>p.nome);
     p.textContent=(selecao?'Soma selecionada: '+selecao+'. ':'')+'O período filtra pagamentos realizados; o orçamento mantém o previsto das categorias selecionadas.'+((periodoPagamento.inicio||periodoPagamento.fim)&&semData.length?' Fontes sem data de pagamento são excluídas do período: '+semData.join(', ')+'.':'');host.append(p);
@@ -103,7 +102,7 @@ async function salvarCustoFixo(event){
 }
 function preencherCustoFixo(custo){const f=document.getElementById('fixos-form');if(custo.categoria&&!Array.from(f.elements.categoria.options).some(o=>o.value===custo.categoria))f.elements.categoria.add(new Option(custo.categoria+' (categoria do cadastro)',custo.categoria));for(const nome of ['id','nome','fornecedor','categoria','valor','quantidade','intervalo','unidade','inicio','fim'])f.elements[nome].value=custo[nome]??'';f.scrollIntoView({behavior:'smooth',block:'start'});}
 async function alternarCustoFixo(id){const obraId=obraAtivaID,atuais=obrasBD[obraId]?.custosFixos||[],alvo=atuais.find(c=>c.id===id);if(alvo&&!alvo.ativo&&atuais.some(c=>c.id!==id&&c.ativo&&normalizarTextoUI(c.fornecedor)===normalizarTextoUI(alvo.fornecedor)&&normalizarTextoUI(c.categoria)===normalizarTextoUI(alvo.categoria))){document.getElementById('fixos-status').textContent='Já existe outro custo ativo para este fornecedor e categoria.';return;}const custos=atuais.map(c=>c.id===id?{...c,ativo:!c.ativo}:c);try{await persistirCustosFixos(obraId,custos);renderizarCustosFixos();}catch(e){document.getElementById('fixos-status').textContent=e.message;}}
-function resumoParametrosFixos(obra,inicio,fim){const custos=(obra.custosFixos||[]).filter(c=>c.ativo&&categoriaEstaSelecionada(c.categoria));const cats=[...new Set(custos.map(c=>c.categoria))];const parametro=custos.reduce((s,c)=>s+ocorrenciasCusto(c,inicio,fim)*c.valor*c.quantidade,0);const previsto=cats.reduce((s,c)=>s+Number(obra.categoriasPrevisto?.[c]||0)*multiplicadorCenario,0);return {custos,cats,parametro,previsto};}
+function resumoParametrosFixos(obra,inicio,fim){const custos=(obra.custosFixos||[]).filter(c=>c.ativo&&categoriaEstaSelecionada(c.categoria)&&(typeof custoPassaFiltroTabela!=="function"||custoPassaFiltroTabela(c)));const cats=[...new Set(custos.map(c=>c.categoria))];const parametro=custos.reduce((s,c)=>s+ocorrenciasCusto(c,inicio,fim)*c.valor*c.quantidade,0);const previsto=cats.reduce((s,c)=>s+Number(obra.categoriasPrevisto?.[c]||0)*multiplicadorCenario,0);return {custos,cats,parametro,previsto};}
 function renderizarCardsCustos(host,cards){host.replaceChildren();cards.forEach(([label,valor])=>{const c=document.createElement('div');c.className='bg-white border rounded-xl p-4';const l=document.createElement('p');l.className='text-xs text-gray-600';l.textContent=label;const v=document.createElement('strong');v.className='block text-xl text-blue-800 mt-2';v.textContent=valor;c.append(l,v);host.append(c);});}
 function periodoCustosAtual(){const hoje=new Date(),inicio=periodoPagamento.inicio||hoje.toLocaleDateString('sv-SE').slice(0,7)+'-01',fim=periodoPagamento.fim||new Date(hoje.getFullYear(),hoje.getMonth()+1,0).toLocaleDateString('sv-SE');return {inicio,fim};}
 function renderizarCustosFixos(){

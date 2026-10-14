@@ -1342,7 +1342,7 @@ function renderizarFiltrosBaseDashboard() {
 }
 
 function obterRealizadoFiltradoDashboard(obra) {
- if(!filtrosDashboard.base && !periodoPagamento.inicio && !periodoPagamento.fim)return null;
+ if(!filtrosDashboard.base && !periodoPagamento.inicio && !periodoPagamento.fim && !(typeof filtroAutomaticoTabela!=="undefined"&&filtroAutomaticoTabela))return null;
  const fontes=dadosBasePlanilhas.filter(p=>p.tipo==='Realizado');if(!fontes.length)return (periodoPagamento.inicio||periodoPagamento.fim)?{}:null;
  const grupos={};for(const fonte of fontes){const campos=obterCamposRealizado(fonte.headers,fonte.rows,fonte.id);if(!campos.obra||!campos.valor)continue;for(const row of linhasDaObra(fonte,obra)){if(!linhaPassaFiltroInterativo(fonte,row,campos.categoria))continue;const cat=String(row[campos.categoria]||'Outros').trim();grupos[cat]=(grupos[cat]||0)+parseMonetario(row[campos.valor]);}}return grupos;
 }
@@ -1488,7 +1488,7 @@ function atualizarDashboard() {
     const realizado = realizadoPorCategoria[cat] || 0;
     return { cat, previsto, realizado, farol: classificarFarol(previsto, realizado) };
   });
-  const linhasVisiveis = linhas.filter(l => categoriaEstaSelecionada(l.cat) && (!filtrosDashboard.farol || l.farol === filtrosDashboard.farol));
+  const linhasVisiveis = linhas.filter(l => categoriaEstaSelecionada(l.cat) && (!filtrosDashboard.farol || l.farol === filtrosDashboard.farol) && (typeof resumoPassaFiltroTabela!=="function"||resumoPassaFiltroTabela(l)));
   ordenarDemonstrativo(linhasVisiveis);
   linhasDashboardVisiveis = linhasVisiveis;
   renderizarSelecaoInterativa();renderizarControlesAvancados();
@@ -1509,7 +1509,7 @@ function atualizarDashboard() {
   const cV = linhas.filter(l => l.farol === 'green').length;
   const cA = linhas.filter(l => l.farol === 'amber').length;
   const cR = linhas.filter(l => l.farol === 'red').length;
-  linhasVisiveis.forEach(({ cat, previsto: prev, realizado: real }) => {
+  ordenarDemonstrativo(linhas.filter(l=>(!filtrosDashboard.farol||l.farol===filtrosDashboard.farol)&&(typeof resumoPassaFiltroTabela!=="function"||resumoPassaFiltroTabela(l)))).forEach(({ cat, previsto: prev, realizado: real }) => {
     const saldo = prev - real;
     const percUso = prev > 0 ? (real / prev) * 100 : (real > 0 ? 999 : 0);
 
