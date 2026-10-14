@@ -4,3 +4,5 @@
 .bp-tooltip-ajuda[hidden]{display:none!important}
 @media(max-width:640px){.bp-ajuda{width:24px!important;height:24px!important;min-width:24px;min-height:24px!important}.bp-tooltip-ajuda{font-size:14px}}
 @media print{.bp-ajuda,.bp-tooltip-ajuda{display:none!important}}
+.bp-ajuda-grafico{width:16px!important;height:16px!important;min-width:16px;min-height:16px!important;font-size:10px!important;margin-left:6px;border-color:#94a3b8!important;background:transparent!important;color:#64748b!important;}
+@media(max-width:640px){.bp-ajuda-grafico{width:20px!important;height:20px!important;min-width:20px;min-height:20px!important;font-size:11px!important;}}

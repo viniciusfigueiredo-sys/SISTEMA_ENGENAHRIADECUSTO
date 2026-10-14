@@ -14,10 +14,12 @@ function dataPagamentoISO(valor,ordem='br') {
   if(date.getFullYear()!==Number(m[1])||date.getMonth()+1!==Number(m[2])||date.getDate()!==Number(m[3]))return '';
   return `${m[1]}-${m[2]}-${m[3]}`;
 }
-function colunaPagamento(planilha){return planilha?.headers?.find(h=>/data.*(pagamento|credito|debito)|pagamento.*data|data.*baixa/.test(normalizarTextoUI(tituloColunaBase(planilha,h))));}
+const cacheColunasPagamento=new WeakMap();
+function colunasPagamento(planilha){if(!planilha)return [];const anterior=cacheColunasPagamento.get(planilha);if(anterior&&anterior.headers===planilha.headers&&anterior.titulos===planilha.titulosColunas)return anterior.colunas;const colunas=(planilha.headers||[]).filter(h=>/data.*(pagamento|credito|debito)|pagamento.*data|data.*baixa|pago em|dt[ ._-]*pag/.test(normalizarTextoUI(tituloColunaBase(planilha,h)))).map((h,i)=>({h,i,n:/pagamento|pago em|dt[ ._-]*pag/.test(normalizarTextoUI(tituloColunaBase(planilha,h)))?0:/baixa/.test(normalizarTextoUI(tituloColunaBase(planilha,h)))?1:2})).sort((a,b)=>a.n-b.n||a.i-b.i).map(r=>r.h);cacheColunasPagamento.set(planilha,{headers:planilha.headers,titulos:planilha.titulosColunas,colunas});return colunas;}
+function colunaPagamento(planilha){return colunasPagamento(planilha)[0];}
 const cacheOrdemData = new WeakMap();
 function ordemDataPlanilha(planilha,header){let mapa=cacheOrdemData.get(planilha);if(!mapa){mapa=new Map();cacheOrdemData.set(planilha,mapa);}if(mapa.has(header))return mapa.get(header);let br=0,us=0;for(const row of (planilha.rows||[]).slice(0,1000)){const m=String(row[header]||'').match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);if(m){if(Number(m[1])>12)br++;if(Number(m[2])>12)us++;}}const ordem=us>br?'us':'br';mapa.set(header,ordem);return ordem;}
-function dataPagamentoLinha(planilha,row){const header=colunaPagamento(planilha);return header?dataPagamentoISO(row[header],ordemDataPlanilha(planilha,header)):'';}
+function dataPagamentoLinha(planilha,row){for(const header of colunasPagamento(planilha)){const data=dataPagamentoISO(row[header],ordemDataPlanilha(planilha,header));if(data)return data;}return '';}
 function categoriaEstaSelecionada(cat){const valores=categoriasSelecionadas.length?categoriasSelecionadas:filtrosDashboard.categoria?[filtrosDashboard.categoria]:[];return !valores.length||valores.some(c=>normalizarTextoUI(c)===normalizarTextoUI(cat));}
 function selecionarCampoGrafico(planilha,header,valor,forcarMultipla=false){
   if(!planilha)return;const filtro=filtrosDashboard.base;let values=[];
