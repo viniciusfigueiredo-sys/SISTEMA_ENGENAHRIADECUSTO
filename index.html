@@ -132,6 +132,7 @@
           Entrar no Sistema
         </button>
 
+        <button type="button" onclick="abrirRecuperacaoLogin()" class="block mx-auto text-xs text-[#003399] font-bold hover:underline">Esqueci minha senha</button>
         <p id="solic-status" role="status" aria-live="polite" class="text-xs text-blue-800"></p>
         <div class="text-center pt-2 border-t border-gray-100">
           <p class="text-xs text-gray-500">Não possui conta? 
@@ -140,6 +141,18 @@
         </div>
       </div>
 
+      <div id="box-recuperacao-login" class="space-y-4 hidden">
+        <h3 class="font-bold text-[#003399]">Recuperar senha</h3>
+        <p class="text-sm text-gray-600">Informe o e-mail vinculado à sua conta de acesso. Enviaremos um link para você definir uma nova senha.</p>
+        <form onsubmit="enviarLinkRecuperacao(event)" class="space-y-4">
+          <label for="recuperacao-email" class="block text-xs font-bold text-gray-700">E-mail da conta</label>
+          <input id="recuperacao-email" type="email" required autocomplete="email" maxlength="254" placeholder="seu.email@empresa.com.br" class="w-full border rounded-lg p-3">
+          <button id="btn-enviar-recuperacao" type="submit" class="w-full bg-[#003399] text-white font-bold py-3 rounded-lg">Enviar link de recuperação</button>
+          <p id="recuperacao-login-status" role="status" aria-live="polite" class="text-sm text-blue-800"></p>
+        </form>
+        <p class="text-xs text-gray-500">Contas antigas sem e-mail vinculado à autenticação precisam de auxílio do Mestre. A senha não é enviada por e-mail.</p>
+        <button type="button" onclick="voltarLoginRecuperacao()" class="text-xs text-[#003399] font-bold">← Voltar ao login</button>
+      </div>
       <!-- FORMULÁRIO DE SOLICITAÇÃO -->
       <div id="box-solicitacao" class="space-y-4 hidden">
         <div class="bg-amber-50 border-l-4 border-amber-400 p-2.5 rounded text-[11px] text-amber-800">
@@ -614,7 +627,7 @@
   
   <script src="app.js?v=obras-az-20261014"></script>
 <script src="configuracoes-sistema.js?v=config-clara-20261014b"></script>
-  <script src="telas-config.js?v=ajuda-discreta-20261014"></script>
+  <script src="telas-config.js?v=recuperacao-login-20261014"></script>
   <script src="analise-avancada.js?v=recuperacao-20261014b"></script>
   <script src="paineis-fixos.js?v=recuperacao-20261014b"></script>
   <script src="graficos-legiveis.js?v=recuperacao-20261014b"></script>
@@ -625,6 +638,7 @@
   <script src="paineis-editor.js?v=paineis-editor-20261014b"></script>
   <script src="configuracoes-organizadas.js?v=config-clara-20261014b"></script>
   <script src="ajuda-contextual.js?v=ajuda-discreta-20261014"></script>
+  <script src="recuperacao-login.js?v=recuperacao-login-20261014"></script>
 </body>
 </html>
 
