@@ -2026,18 +2026,19 @@ async function criarUsuarioDireto() {
   const usuario = document.getElementById('novo-usr-login').value.trim();
   const senha = document.getElementById('novo-usr-senha').value.trim();
   const perfil = document.getElementById('novo-usr-perfil').value;
+  const trocar_senha=!!document.getElementById('novo-usr-trocar-senha')?.checked;
   if (perfil==='Mestre' && !obterPermissoesUsuario().permissoes) return alert('Seu perfil não pode criar usuários Mestre.');
 
   if (!nome || !email || !usuario || !senha) return alert("Preencha todos os campos.");
   
   if (supabaseClient) {
     try {
-      const { data, error } = await supabaseClient.from('usuarios').insert([{ nome, email, usuario, senha, perfil, status: 'Aprovado' }]).select();
+      const { data, error } = await supabaseClient.from('usuarios').insert([{ nome, email, usuario, senha, perfil, trocar_senha, status: 'Aprovado' }]).select();
       if (error) return alert(`Não foi possível cadastrar o usuário: ${error.message}`);
       if (data?.[0]) usuariosBD.push(data[0]);
     } catch(e) { return alert(`Erro ao cadastrar o usuário: ${e.message || e}`); }
   } else {
-    usuariosBD.push({ id: Date.now().toString(), nome, email, usuario, senha, perfil, status: "Aprovado" });
+    usuariosBD.push({ id: Date.now().toString(), nome, email, usuario, senha, perfil, trocar_senha, status: "Aprovado" });
   }
   renderizarPainelUsuarios(); alert("Usuário registado!");
 }
@@ -2076,6 +2077,7 @@ async function salvarDadosUsuario(id, campos, botao, aviso) {
   if(usuariosBD.some(u=>String(u.id)!==String(id) && (normalizarTexto(u.usuario)===normalizarTexto(dados.usuario) || (dados.email && normalizarTexto(u.email)===normalizarTexto(dados.email))))){aviso.textContent='Login ou e-mail já utilizado.';return;}
   if(!Object.hasOwn(permissoesPerfis,dados.perfil)){aviso.textContent='Perfil inválido.';return;}
   if(campos.senha.value) dados.senha=campos.senha.value;
+  if(campos.trocar_senha)dados.trocar_senha=campos.trocar_senha.checked;
   botao.disabled=true;aviso.textContent='Salvando…';
   try {
     if(!supabaseClient)throw new Error('Conecte ao Supabase para salvar os dados do usuário.');
@@ -2112,7 +2114,7 @@ function renderizarPainelUsuarios() {
     const perfil=document.createElement('select');perfil.className='border rounded p-1 text-xs';
     opcoesPerfisUsuario().forEach(([v,t])=>{const option=new Option(t,v);if(v==='Mestre'&&!obterPermissoesUsuario().permissoes)option.disabled=true;perfil.add(option);});
     perfil.value=u.perfil || 'Engenheiro';perfil.disabled=!editavel;perfil.setAttribute('aria-label',`Perfil de ${u.nome || u.usuario}`);perfilTd.appendChild(perfil);tr.appendChild(perfilTd);campos.perfil=perfil;
-    const senhaTd=document.createElement('td');senhaTd.className='p-2';const senha=document.createElement('input');senha.type='password';senha.autocomplete='new-password';senha.placeholder='Nova senha (opcional)';senha.disabled=!editavel;senha.className='border rounded p-2 text-xs w-44';senha.setAttribute('aria-label',`Nova senha de ${u.nome||u.usuario}`);senhaTd.appendChild(senha);tr.appendChild(senhaTd);campos.senha=senha;
+    const senhaTd=document.createElement('td');senhaTd.className='p-2';const senha=document.createElement('input');senha.type='password';senha.autocomplete='new-password';senha.placeholder='Nova senha (opcional)';senha.disabled=!editavel;senha.className='border rounded p-2 text-xs w-44';senha.setAttribute('aria-label',`Nova senha de ${u.nome||u.usuario}`);senhaTd.appendChild(senha);tr.appendChild(senhaTd);campos.senha=senha;const exigir=document.createElement('input');exigir.type='checkbox';exigir.checked=u.trocar_senha===true;exigir.disabled=!editavel;const exigirLabel=document.createElement('label');exigirLabel.className='flex items-center gap-2 text-xs mt-2';exigirLabel.append(exigir,document.createTextNode('Exigir troca da senha no próximo acesso'));senhaTd.append(exigirLabel);campos.trocar_senha=exigir;
     const status=document.createElement('td');status.className='p-2 min-w-44';const aviso=document.createElement('p');aviso.className='text-xs mt-1';aviso.setAttribute('aria-live','polite');if(editavel){const salvar=document.createElement('button');salvar.type='button';salvar.textContent='Salvar dados';salvar.className='bg-[#003399] text-white rounded px-3 py-2 text-xs font-bold';salvar.onclick=()=>salvarDadosUsuario(u.id,campos,salvar,aviso);status.appendChild(salvar);}else aviso.textContent=String(u.id)==='local_master'?'Conta principal':'Somente o Mestre pode editar.';status.appendChild(aviso);tr.appendChild(status);
     tbodyAtivos.appendChild(tr);
   });

@@ -545,6 +545,8 @@
             <option value="Mestre">Mestre</option>
           </select>
         </div>
+        <label class="flex items-center gap-2 text-blue-800 font-bold"><input type="checkbox" id="novo-usr-trocar-senha" checked> Exigir troca da senha no primeiro acesso</label>
+        <p class="text-gray-500">Quando marcada, a senha cadastrada é provisória. No primeiro acesso, o usuário escolhe uma nova senha sem informar novamente a senha provisória.</p>
         <button type="button" onclick="criarUsuarioDireto()" class="w-full bg-[#003399] text-white font-bold py-2 rounded-lg">Cadastrar Usuário</button>
       </div>
 
@@ -588,7 +590,7 @@
 
       <div class="space-y-2 text-xs">
         <p class="font-bold text-[#003399] uppercase">Usuários cadastrados / editar dados</p>
-        <p class="text-gray-500">O Mestre pode editar nome, e-mail, login e perfil. Para alterar a senha, informe uma nova senha e salve; deixe em branco para manter a atual.</p>
+        <p class="text-gray-500">O Mestre pode editar nome, e-mail, login e perfil. Para recuperar o acesso, informe uma senha provisória e marque “Exigir troca da senha no próximo acesso”. Não precisa informar a senha antiga. Deixe a senha em branco para manter a atual.</p>
         <div class="overflow-auto max-h-64 border rounded-lg">
           <table class="w-full text-left min-w-max">
             <thead class="bg-gray-100 text-gray-600 font-bold uppercase text-[10px]">
@@ -608,13 +610,14 @@
   <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   
-  <script src="app.js?v=aprovacoes-20261014a"></script>
-<script src="configuracoes-sistema.js?v=aprovacoes-20261014a"></script>
-  <script src="telas-config.js?v=aprovacoes-20261014a"></script>
-  <script src="analise-avancada.js?v=aprovacoes-20261014a"></script>
-  <script src="paineis-fixos.js?v=aprovacoes-20261014a"></script>
-  <script src="graficos-legiveis.js?v=aprovacoes-20261014a"></script>
-  <script src="solicitacoes-usuarios.js?v=aprovacoes-20261014a"></script>
+  <script src="app.js?v=senha-provisoria-20261014a"></script>
+<script src="configuracoes-sistema.js?v=senha-provisoria-20261014a"></script>
+  <script src="telas-config.js?v=senha-provisoria-20261014a"></script>
+  <script src="analise-avancada.js?v=senha-provisoria-20261014a"></script>
+  <script src="paineis-fixos.js?v=senha-provisoria-20261014a"></script>
+  <script src="graficos-legiveis.js?v=senha-provisoria-20261014a"></script>
+  <script src="solicitacoes-usuarios.js?v=senha-provisoria-20261014a"></script>
+  <script src="senha-provisoria.js?v=senha-provisoria-20261014a"></script>
 </body>
 </html>
 
