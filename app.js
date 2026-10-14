@@ -931,6 +931,7 @@ function renderizarDadosBase() {
   tbody.className = 'divide-y divide-gray-200';
   rowsFiltradas.slice(inicio, fim).forEach(row => {
     const tr = document.createElement('tr');
+    tr.bpOrigemFixo = { tipo: 'realizado', fonteId: ativa.id, row, obraId: obraAtivaID };
     ativa.headers.forEach(header => { const td = document.createElement('td'); td.className = 'p-3 whitespace-nowrap'; td.textContent = row[header] ?? ''; tr.appendChild(td); });
     tbody.appendChild(tr);
   });
