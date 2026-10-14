@@ -131,10 +131,21 @@ function explicacaoAjuda(el){const name=textoRotuloAjuda(el)||el.getAttribute('a
  if(el.matches('h2,h3,h4'))return 'Seção '+name+'. Os dados e opções apresentados abaixo correspondem à obra, aos filtros e às permissões atuais.';
  return 'Opção '+name+'. '+(el.matches('button')?'Executa a ação indicada neste grupo.':'Preencha ou selecione o valor utilizado por este cadastro, filtro ou configuração.');
 }
+// Lista restrita: ajuda somente para conceitos e cálculos que exigem contexto.
+const ITENS_COM_AJUDA=new Set([
+ 'a cada','recorrencia','primeiro vencimento','indice idc','n/p',
+ 'agregacao','medicao','referencia','sentido das cores',
+ 'inicio da faixa amarela %','limite da faixa amarela / inicio vermelho %',
+ 'escala maxima do velocimetro %','limite da faixa verde','limite da faixa amarela',
+ 'meses distintos para identificar recorrencia'
+]);
 const ajudaAssociada=new WeakMap();let caixaAjuda,alvoAjuda,timerAjuda;
 function esconderAjuda(){if(caixaAjuda)caixaAjuda.hidden=true;alvoAjuda?.setAttribute('aria-expanded','false');alvoAjuda=null;}
 function mostrarAjuda(icon){if(!caixaAjuda){caixaAjuda=document.createElement('div');caixaAjuda.id='bp-tooltip-ajuda';caixaAjuda.className='bp-tooltip-ajuda';caixaAjuda.setAttribute('role','tooltip');document.body.append(caixaAjuda);}alvoAjuda?.setAttribute('aria-expanded','false');alvoAjuda=icon;icon.setAttribute('aria-expanded','true');caixaAjuda.textContent=icon.dataset.explicacao;caixaAjuda.hidden=false;const r=icon.getBoundingClientRect(),w=caixaAjuda.offsetWidth,h=caixaAjuda.offsetHeight;caixaAjuda.style.left=Math.max(8,Math.min(r.left,innerWidth-w-8))+'px';caixaAjuda.style.top=Math.max(8,r.bottom+h+12<innerHeight?r.bottom+8:r.top-h-8)+'px';}
-function adicionarAjuda(el){if(el.closest('#relatorio-impressao,.bp-tooltip-ajuda,.bp-ajuda')||el.matches('.sr-only')||!textoRotuloAjuda(el)&&!el.getAttribute('aria-label'))return;const anterior=ajudaAssociada.get(el);if(anterior?.isConnected){anterior.dataset.explicacao=explicacaoAjuda(el);return;}
+function adicionarAjuda(el){if(el.closest('#relatorio-impressao,.bp-tooltip-ajuda,.bp-ajuda')||el.matches('.sr-only,button,summary,th,h2,h3,h4'))return;
+ const key=chaveAjuda(textoRotuloAjuda(el)||el.getAttribute('aria-label'));const anterior=ajudaAssociada.get(el);
+ if(!ITENS_COM_AJUDA.has(key)){anterior?.remove();return;}
+ if(anterior?.isConnected){anterior.dataset.explicacao=explicacaoAjuda(el);return;}
  const icon=document.createElement('button');icon.type='button';icon.className='bp-ajuda';icon.setAttribute('aria-label','Ajuda: '+(textoRotuloAjuda(el)||el.getAttribute('aria-label')));icon.setAttribute('aria-expanded','false');icon.setAttribute('aria-describedby','bp-tooltip-ajuda');icon.dataset.explicacao=explicacaoAjuda(el);
  icon.addEventListener('mouseenter',()=>mostrarAjuda(icon));icon.addEventListener('mouseleave',esconderAjuda);icon.addEventListener('focus',()=>mostrarAjuda(icon));icon.addEventListener('blur',esconderAjuda);icon.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();mostrarAjuda(icon);});
  // Não altera o texto dos rótulos usado pelos editores e não cria botões dentro de botões.
