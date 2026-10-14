@@ -597,6 +597,7 @@ window.onload = async function() {
             id: o.id, nome: o.nome, cc: o.cc, responsavel: o.responsavel, status: o.status, urlPrevistoCSV: o.url_previsto,
             previstoArquivoLocal: !!(obrasBD[o.id]?.previstoArquivoLocal),
             custosFixos: o.dados_json?.custosFixos || obrasBD[o.id]?.custosFixos || [],
+            solicitacoesCustosFixos: o.dados_json?.solicitacoesCustosFixos || [],
             oculta: !!(o.dados_json?.oculta ?? obrasBD[o.id]?.oculta),
             previstoTotal: o.dados_json?.previstoTotal || 0, realizadoTotal: o.dados_json?.realizadoTotal || 0,
             categoriasPrevisto: o.dados_json?.categoriasPrevisto || {}, categoriasRealizado: o.dados_json?.categoriasRealizado || {}
@@ -1208,6 +1209,9 @@ async function sincronizarTodasPlanilhas() {
         const o = obrasBD[key];
         const dadosJson = { previstoTotal: o.previstoTotal, realizadoTotal: o.realizadoTotal, categoriasPrevisto: o.categoriasPrevisto, categoriasRealizado: o.categoriasRealizado, oculta: !!o.oculta, custosFixos:o.custosFixos || [] };
         try {
+          const { data: atualObra, error: erroAtualObra } = await supabaseClient.from('obras').select('dados_json').eq('id', o.id).maybeSingle();
+          if (erroAtualObra) throw erroAtualObra;
+          Object.assign(dadosJson, { custosFixos: atualObra?.dados_json?.custosFixos || o.custosFixos || [], solicitacoesCustosFixos: atualObra?.dados_json?.solicitacoesCustosFixos || o.solicitacoesCustosFixos || [] });
           const { error } = await supabaseClient.from('obras').upsert({ id: o.id, nome: o.nome, cc: o.cc, responsavel: o.responsavel, status: o.status, url_previsto: o.urlPrevistoCSV, dados_json: dadosJson });
           if (error) errosSupabase.push(`${o.nome}: ${error.message}`);
         } catch (error) { errosSupabase.push(`${o.nome}: ${error.message || error}`); }
