@@ -753,7 +753,7 @@ window.imprimirRelatorioPesquisa = imprimirRelatorioPesquisa;
 
 function pesquisarCustos(termo) {
   filtrosPesquisaCustos=String(termo||'');
-  const query=normalizarTextoUI(filtrosPesquisaCustos.trim());
+  const query=termosPesquisa(filtrosPesquisaCustos).join(' % ');
   const resumo=document.getElementById('pesquisa-custos-resumo'), leitura=document.getElementById('pesquisa-custos-leitura'), aviso=document.getElementById('pesquisa-custos-aviso'), host=document.getElementById('pesquisa-custos-resultados');
   const graficoCard=document.getElementById('pesquisa-custos-grafico-card'), canvas=document.getElementById('pesquisa-custos-chart'), graficoVazio=document.getElementById('pesquisa-custos-grafico-vazio');
   if(!resumo||!aviso||!host)return;
@@ -774,7 +774,7 @@ function pesquisarCustos(termo) {
     const camposBusca=headers.filter(header=>/categoria|natureza|item|descricao|servico|historico|fornecedor|produto|conta|codigo/.test(norm(header)));
     linhasDaObra(planilha,obra).forEach(row=>{
       const obraLinha=norm(row[obraHeader]);const obraOk=obraLinha===norm(obra.nome)||obraLinha===norm(obra.cc)||obraLinha===norm(obra.id)||((obra.cc||'').trim()&&obraLinha.includes(norm(obra.cc)));
-      if(!obraOk)return;possuiFonteObra=true;if(!linhaPassaFiltroInterativo(planilha,row,categoriaHeader))return;if(!(camposBusca.length?camposBusca:headers).some(header=>norm(row[header]).includes(query)))return;
+      if(!obraOk)return;possuiFonteObra=true;if(!linhaPassaFiltroInterativo(planilha,row,categoriaHeader))return;if(!registroCorrespondePesquisa(row,headers,query))return;
       const categoria=String((categoriaHeader&&row[categoriaHeader])||'Outros').trim()||'Outros';
       dados.push({planilha:planilha.nome,categoria,item:itemHeader?row[itemHeader]:'',descricao:descricaoHeader?row[descricaoHeader]:'',valor:valorHeader?parseMonetario(row[valorHeader]):0,row});
     });
@@ -782,7 +782,7 @@ function pesquisarCustos(termo) {
   const usandoResumo = !(dadosBasePlanilhas || []).some(p => (p.tipo === 'Realizado' || !p.tipo) && p.rows?.length);
   if (usandoResumo && !periodoPagamento.inicio && !periodoPagamento.fim) {
     possuiFonteObra = true;
-    Object.entries(obra.categoriasRealizado || {}).filter(([categoria])=>norm(categoria).includes(query)&&categoriaEstaSelecionada(categoria)).forEach(([categoria,valor])=>dados.push({planilha:'Resumo sincronizado',categoria,item:'',descricao:'Total da categoria',valor:Number(valor)||0,agregado:true}));
+    Object.entries(obra.categoriasRealizado || {}).filter(([categoria])=>correspondePesquisa([categoria],query)&&categoriaEstaSelecionada(categoria)).forEach(([categoria,valor])=>dados.push({planilha:'Resumo sincronizado',categoria,item:'',descricao:'Total da categoria',valor:Number(valor)||0,agregado:true}));
   }
   const planilhaPrevisto=(dadosBasePlanilhas||[]).find(p=>p.tipo==='Previsto'&&p.id===`previsto-${obraAtivaID}`);const previstosDiretos=[];
   if(planilhaPrevisto){
@@ -791,7 +791,7 @@ function pesquisarCustos(termo) {
     const itemHeader=col(headers,h=>h==='item'||h.includes('item ')||h.includes('codigo item')||h.includes('codigo'));
     const descricaoHeader=col(headers,h=>h.includes('descricao')||h.includes('servico')||h.includes('historico')||h.includes('especificacao'));
     const campos=headers.filter(h=>/categoria|natureza|item|descricao|servico|historico|fornecedor|produto|conta|codigo/.test(norm(h)));
-    (planilhaPrevisto.rows||[]).forEach(row=>{if(!linhaPassaFiltroInterativo(planilhaPrevisto,row,categoriaHeader))return;if((campos.length?campos:headers).some(header=>norm(row[header]).includes(query)))previstosDiretos.push({categoria:String((categoriaHeader&&row[categoriaHeader])||'Item encontrado').trim(),item:itemHeader?row[itemHeader]:'',descricao:descricaoHeader?row[descricaoHeader]:'',valor:(valorHeader?parseMonetario(row[valorHeader]):0)*multiplicadorCenario});});
+    (planilhaPrevisto.rows||[]).forEach(row=>{if(!linhaPassaFiltroInterativo(planilhaPrevisto,row,categoriaHeader))return;if(registroCorrespondePesquisa(row,headers,query))previstosDiretos.push({categoria:String((categoriaHeader&&row[categoriaHeader])||'Item encontrado').trim(),item:itemHeader?row[itemHeader]:'',descricao:descricaoHeader?row[descricaoHeader]:'',valor:(valorHeader?parseMonetario(row[valorHeader]):0)*multiplicadorCenario});});
   }
   ordenarObjetosTela(dados,'pesquisa',x=>x.valor,x=>x.categoria||x.item);ordenarObjetosTela(previstosDiretos,'pesquisa',x=>x.valor,x=>x.categoria||x.item);
   const cats=[...new Set(dados.map(x=>x.categoria))];const prevCats=Object.keys(obra.categoriasPrevisto||{}).filter(c=>cats.some(x=>norm(x)===norm(c)));
@@ -897,7 +897,7 @@ function renderizarDadosBase() {
   const categoriaHeader = headersNorm.find(([, h]) => /categoria|natureza|descricao|servico|item/.test(h))?.[0];
   const busca = norm(filtrosDadosBase.busca);
   const rowsFiltradas = rowsOriginais.filter(row => {
-    const texto = !busca || ativa.headers.some(h => norm(row[h]).includes(busca));
+    const texto = !busca || registroCorrespondePesquisa(row,ativa.headers,busca);
     const obraValor = obraHeader ? String(row[obraHeader] ?? '').trim() : '';
     const obraOk = !obraHeader || (obraVisivelNosDados(obraValor) && (!filtrosDadosBase.obra || norm(obraValor) === norm(filtrosDadosBase.obra)));
     const catOk = !filtrosDadosBase.categoria || !categoriaHeader || norm(row[categoriaHeader]) === norm(filtrosDadosBase.categoria);
@@ -1342,7 +1342,7 @@ function renderizarFiltrosBaseDashboard() {
 }
 
 function obterRealizadoFiltradoDashboard(obra) {
- if(!filtrosDashboard.base && !periodoPagamento.inicio && !periodoPagamento.fim && !(typeof filtroAutomaticoTabela!=="undefined"&&filtroAutomaticoTabela))return null;
+ if(!filtrosDashboard.base && !periodoPagamento.inicio && !periodoPagamento.fim && !(typeof filtroAutomaticoTabela!=="undefined"&&filtroAutomaticoTabela) && !(typeof pesquisaUniversalAtiva==="function"&&pesquisaUniversalAtiva()))return null;
  const fontes=dadosBasePlanilhas.filter(p=>p.tipo==='Realizado');if(!fontes.length)return (periodoPagamento.inicio||periodoPagamento.fim)?{}:null;
  const grupos={};for(const fonte of fontes){const campos=obterCamposRealizado(fonte.headers,fonte.rows,fonte.id);if(!campos.obra||!campos.valor)continue;for(const row of linhasDaObra(fonte,obra)){if(!linhaPassaFiltroInterativo(fonte,row,campos.categoria))continue;const cat=String(row[campos.categoria]||'Outros').trim();grupos[cat]=(grupos[cat]||0)+parseMonetario(row[campos.valor]);}}return grupos;
 }
