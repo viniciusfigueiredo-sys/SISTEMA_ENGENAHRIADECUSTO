@@ -2043,17 +2043,11 @@ async function criarUsuarioDireto() {
 }
 
 async function solicitarCadastro(e) {
-  if (e) e.preventDefault();
-  const nome = document.getElementById('solic-nome').value.trim();
-  const email = document.getElementById('solic-email').value.trim();
-  const usuario = document.getElementById('solic-usuario').value.trim();
-  const senha = document.getElementById('solic-senha').value.trim();
-  if (!nome || !email || !usuario || !senha) return alert("Preencha os campos.");
-  
-  if (supabaseClient) { try { await supabaseClient.from('usuarios').insert([{ nome, email, usuario, senha, perfil: "Engenheiro", status: "Pendente" }]); } catch(e){} }
-  else { solicitacoesPendentesBD.push({ id: Date.now().toString(), nome, email, usuario, senha, perfil: "Engenheiro", status: "Pendente" }); }
-  
-  exibirFormLogin(); alert("Solicitação registada!");
+ if(e)e.preventDefault();const nome=document.getElementById('solic-nome').value.trim(),email=document.getElementById('solic-email').value.trim(),usuario=document.getElementById('solic-usuario').value.trim(),senha=document.getElementById('solic-senha').value;
+ const status=document.getElementById('solic-status'),btn=document.getElementById('btn-solicitar-cadastro');const informar=texto=>{if(status)status.textContent=texto;else alert(texto);};
+ if(!nome||!email||!usuario||!senha.trim())return informar('Preencha todos os campos.');if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))return informar('Informe um e-mail válido.');if(btn?.disabled)return;if(btn)btn.disabled=true;informar('Enviando solicitação…');
+ try{if(!supabaseClient)throw new Error('Sem conexão com o banco. Aguarde e tente novamente.');const {data,error}=await supabaseClient.from('usuarios').insert([{nome,email,usuario,senha,perfil:'Engenheiro',status:'Pendente'}]).select('id,status').single();if(error)throw error;if(!data?.id||data.status!=='Pendente')throw new Error('O banco não confirmou a solicitação.');informar('Solicitação registrada no banco. Aguarde a aprovação do Mestre.');document.getElementById('solic-senha').value='';exibirFormLogin();alert('Solicitação registrada no banco. Aguarde a aprovação do Mestre.');}
+ catch(error){informar(error.code==='23505'?'Este login ou e-mail já possui cadastro. Solicite ao Mestre que confira a lista.':'Não foi possível registrar a solicitação: '+(error.message||'Falha de conexão. Tente novamente.'));}finally{if(btn)btn.disabled=false;}
 }
 
 async function aprovarSolicitacao(id) {
@@ -2061,7 +2055,7 @@ async function aprovarSolicitacao(id) {
   if (supabaseClient) {
     try {
       const { data, error } = await supabaseClient.from('usuarios').update({ status: 'Aprovado' }).eq('id', id).select('*');
-      if (error) return alert(`Não foi possível aprovar: ${error.message}`);
+      if (error) return alert(`Não foi possível aprovar: ${error.message}`);if(!data?.length)return alert('O banco não confirmou a aprovação. Atualize a lista e tente novamente.');
       solicitacoesPendentesBD=solicitacoesPendentesBD.filter(s=>String(s.id)!==String(id));
       (data || []).forEach(u=>{ if(!usuariosBD.some(atual=>String(atual.id)===String(u.id))) usuariosBD.push(u); });
     } catch(e) { return alert(`Erro ao aprovar usuário: ${e.message || e}`); }

@@ -130,6 +130,7 @@
           Entrar no Sistema
         </button>
 
+        <p id="solic-status" role="status" aria-live="polite" class="text-xs text-blue-800"></p>
         <div class="text-center pt-2 border-t border-gray-100">
           <p class="text-xs text-gray-500">Não possui conta? 
             <button type="button" onclick="exibirFormSolicitacao()" class="text-[#003399] font-bold hover:underline">Solicitar Acesso</button>
@@ -159,7 +160,7 @@
           <input type="password" id="solic-senha" placeholder="••••••••" class="w-full text-xs border border-gray-300 rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-[#003399]">
         </div>
 
-        <button type="button" onclick="solicitarCadastro()" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs py-3 rounded-lg transition-all shadow-md">
+        <button id="btn-solicitar-cadastro" type="button" onclick="solicitarCadastro()" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs py-3 rounded-lg transition-all shadow-md">
           Enviar Solicitação ao Mestre
         </button>
 
@@ -607,12 +608,13 @@
   <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   
-  <script src="app.js?v=rotulos-legiveis-20261013a"></script>
-<script src="configuracoes-sistema.js?v=rotulos-legiveis-20261013a"></script>
-  <script src="telas-config.js?v=rotulos-legiveis-20261013a"></script>
-  <script src="analise-avancada.js?v=rotulos-legiveis-20261013a"></script>
-  <script src="paineis-fixos.js?v=rotulos-legiveis-20261013a"></script>
-  <script src="graficos-legiveis.js?v=rotulos-legiveis-20261013a"></script>
+  <script src="app.js?v=aprovacoes-20261014a"></script>
+<script src="configuracoes-sistema.js?v=aprovacoes-20261014a"></script>
+  <script src="telas-config.js?v=aprovacoes-20261014a"></script>
+  <script src="analise-avancada.js?v=aprovacoes-20261014a"></script>
+  <script src="paineis-fixos.js?v=aprovacoes-20261014a"></script>
+  <script src="graficos-legiveis.js?v=aprovacoes-20261014a"></script>
+  <script src="solicitacoes-usuarios.js?v=aprovacoes-20261014a"></script>
 </body>
 </html>
 
