@@ -597,6 +597,7 @@ window.onload = async function() {
             id: o.id, nome: o.nome, cc: o.cc, responsavel: o.responsavel, status: o.status, urlPrevistoCSV: o.url_previsto,
             previstoArquivoLocal: !!(obrasBD[o.id]?.previstoArquivoLocal),
             custosFixos: o.dados_json?.custosFixos || obrasBD[o.id]?.custosFixos || [],
+            vinculosCategoriasFixas:o.dados_json?.vinculosCategoriasFixas || [],
             solicitacoesCustosFixos: o.dados_json?.solicitacoesCustosFixos || [],
             oculta: !!(o.dados_json?.oculta ?? obrasBD[o.id]?.oculta),
             previstoTotal: o.dados_json?.previstoTotal || 0, realizadoTotal: o.dados_json?.realizadoTotal || 0,
@@ -1204,7 +1205,7 @@ async function sincronizarTodasPlanilhas() {
     atualizarSeletoresNovoGrafico();
     renderizarListaGraficosConfig();
     dadosBasePaginaAtual = 0;
-    let errosSupabase = [];
+    let errosSupabase = [];let resumoVinculosFixos={novos:0,atualizados:0};
     if (supabaseClient) {
       for (const key in obrasBD) {
         const o = obrasBD[key];
@@ -1212,13 +1213,16 @@ async function sincronizarTodasPlanilhas() {
         try {
           const { data: atualObra, error: erroAtualObra } = await supabaseClient.from('obras').select('dados_json').eq('id', o.id).maybeSingle();
           if (erroAtualObra) throw erroAtualObra;
-          Object.assign(dadosJson, { custosFixos: atualObra?.dados_json?.custosFixos || o.custosFixos || [], solicitacoesCustosFixos: atualObra?.dados_json?.solicitacoesCustosFixos || o.solicitacoesCustosFixos || [] });
+          Object.assign(dadosJson,{...atualObra?.dados_json,...dadosJson});
+          Object.assign(dadosJson, { vinculosCategoriasFixas:atualObra?.dados_json?.vinculosCategoriasFixas||o.vinculosCategoriasFixas||[],custosFixos: atualObra?.dados_json?.custosFixos || o.custosFixos || [], solicitacoesCustosFixos: atualObra?.dados_json?.solicitacoesCustosFixos || o.solicitacoesCustosFixos || [] });
+          const resultadoFixos=typeof atualizarVinculosFixosNaImportacao==='function'&&!fontesEmCache.length?atualizarVinculosFixosNaImportacao(o,dadosJson):{novos:0,atualizados:0};
           const { error } = await supabaseClient.from('obras').upsert({ id: o.id, nome: o.nome, cc: o.cc, responsavel: o.responsavel, status: o.status, url_previsto: o.urlPrevistoCSV, dados_json: dadosJson });
-          if (error) errosSupabase.push(`${o.nome}: ${error.message}`);
+          if (error) errosSupabase.push(`${o.nome}: ${error.message}`);else{Object.assign(o,{custosFixos:dadosJson.custosFixos,vinculosCategoriasFixas:dadosJson.vinculosCategoriasFixas,solicitacoesCustosFixos:dadosJson.solicitacoesCustosFixos});resumoVinculosFixos.novos+=resultadoFixos.novos;resumoVinculosFixos.atualizados+=resultadoFixos.atualizados;}
         } catch (error) { errosSupabase.push(`${o.nome}: ${error.message || error}`); }
       }
     }
 
+    localStorage.setItem('obras_bp',JSON.stringify(obrasBD));if((resumoVinculosFixos.novos||resumoVinculosFixos.atualizados)&&typeof sinalizarAlteracaoCompartilhada==='function')await sinalizarAlteracaoCompartilhada();
     popularSeletorObras();
     atualizarDashboard();
     renderizarDadosBase();
@@ -1229,7 +1233,7 @@ async function sincronizarTodasPlanilhas() {
       const ausentes = [!campos.obra && 'obra/departamento', !campos.valor && 'valor pago/realizado'].filter(Boolean);
       return `${base.nome}: ${base.rows.length.toLocaleString('pt-BR')} linhas lidas e guardadas em Dados Base, mas faltam ${ausentes.join(' e ')}. Os resumos financeiros existentes foram preservados.`;
     }).join(' ')}.` : '';
-    const detalheAssociacao = `${linhasRealizado.reduce((total, item) => total + item.rows.length, 0).toLocaleString('pt-BR')} linha(s) lidas de fontes com campos financeiros; ${linhasRealizadoAssociadas} associada(s) às obras; ${obrasCriadasNaImportacao.size} obra(s) nova(s) criada(s) por não encontrar correspondência pelo nome/CC.`;
+    const detalheAssociacao = `Custos fixos automáticos: ${resumoVinculosFixos.novos} fornecedor(es) novo(s) e ${resumoVinculosFixos.atualizados} parâmetro(s) atualizado(s). ${linhasRealizado.reduce((total, item) => total + item.rows.length, 0).toLocaleString('pt-BR')} linha(s) lidas de fontes com campos financeiros; ${linhasRealizadoAssociadas} associada(s) às obras; ${obrasCriadasNaImportacao.size} obra(s) nova(s) criada(s) por não encontrar correspondência pelo nome/CC.`;
     const avisoCache=fontesEmCache.length?`\nA fonte remota não atualizou; foram mantidos os dados Realizado já salvos: ${fontesEmCache.join('; ')}.`:'';
     if (errosSupabase.length) alert(`Dados importados e análises atualizadas neste navegador. ${detalheAssociacao} Total realizado: ${totalRealizadoImportado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}.${detalheCampos} O Supabase recusou parte das gravações:\n${errosSupabase.slice(0, 5).join('\n')}${avisoCache}`);
     else if (supabaseClient) alert(`Importação concluída: ${dadosBasePlanilhas.length} planilha(s). ${detalheAssociacao} Total realizado: ${totalRealizadoImportado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}. Resumos sincronizados com o Supabase.${detalheCampos}${avisoCache}`);
