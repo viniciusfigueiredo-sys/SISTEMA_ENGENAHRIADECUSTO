@@ -29,7 +29,8 @@ coletarConfiguracoesTelas=function(anteriores){
   const p=fontePainel(tela,item.fonte);if(!p)continue;
   const medida=item.campo||item.y;if(!['table','list'].includes(item.tipo)&&!['contagem','distintos'].includes(item.agregacao)&&!camposNumericosPainel(p).includes(medida))throw new Error(info.nome+' · '+item.titulo+': escolha uma coluna numérica para a medida ou use Contagem / Valores distintos.');
  }
- });return result;
+ });
+ Object.entries(TELAS_CONFIG).forEach(([tela,info])=>{if(podeConfigurar(info.grupo)&&rascunhoPaineis[tela])result[tela]={...result[tela],layoutExistente:copiarConfig(rascunhoPaineis[tela].layoutExistente)};});return result;
 };
 function aplicarLayoutPaineis(tela){
  const cfg=configuracaoTela(tela),host=document.getElementById('painel-fixo-'+tela);if(!host)return;
@@ -63,4 +64,11 @@ organizarConfiguracoesPorTela=function(){organizarEditorOriginal();
  const panel=document.getElementById('config-telas');if(!panel)return;const help=elementoFixo('p','1. Escolha a tela. 2. Abra o gráfico ou KPI para editar. 3. Salve as configurações. Painéis fixos são compartilhados; Meus gráficos são pessoais.','text-sm text-gray-600 mb-3');panel.prepend(help);
  const buscar=elementoFixo('input',undefined,'border rounded p-2 w-full mb-3');buscar.placeholder='Buscar tela ou configuração';buscar.setAttribute('aria-label','Buscar configurações');buscar.oninput=()=>{const term=normalizarTextoUI(buscar.value);panel.querySelectorAll(':scope > details').forEach(d=>{d.hidden=!normalizarTextoUI(d.textContent).includes(term);});};panel.prepend(buscar);
  const status=document.getElementById('param-status'),save=elementoFixo('button','Salvar configurações das telas','bg-blue-800 text-white rounded px-4 py-2 font-bold');save.type='button';save.onclick=salvarParametrosSistema;save.className+=' salvar-telas';status?.before(save);
+ Object.entries(TELAS_CONFIG).forEach(([tela,info])=>{const details=[...panel.querySelectorAll(':scope > details')].find(d=>d.querySelector('summary')?.textContent===info.nome);if(!details)return;const cfg=rascunhoPaineis[tela];cfg.layoutExistente||={};const layout=elementoFixo('details',undefined,'border rounded p-3 mt-3');layout.append(elementoFixo('summary','Tamanho e ordem dos elementos existentes','font-bold cursor-pointer'));layout.append(elementoFixo('p','A ordem e a largura se aplicam dentro do grupo original de cada elemento. A altura se aplica aos gráficos.','text-xs text-gray-600 my-2'));
+ Object.entries(info.itens).forEach(([id,nome])=>{const item=cfg.layoutExistente[id]||={};const row=elementoFixo('fieldset',undefined,'grid sm:grid-cols-3 gap-3 border-t py-3');row.append(elementoFixo('legend',nome,'text-xs font-bold'));criarCampoPainel(row,'Ordem no grupo',item.ordem||0,'number',v=>item.ordem=v);criarCampoPainel(row,'Largura no grupo',item.largura||'original','text',v=>item.largura=v,[['original','Original'],['total','Linha inteira']]);if(/grafico|chart/.test(id))criarCampoPainel(row,'Altura (px)',item.altura||300,'number',v=>item.altura=v);layout.append(row);});if(!podeConfigurar(info.grupo))layout.querySelectorAll('input,select').forEach(el=>el.disabled=true);details.append(layout);});
 };
+const aplicarLayoutEditorOriginal=aplicarConfiguracoesTelas;
+aplicarConfiguracoesTelas=function(){aplicarLayoutEditorOriginal();Object.keys(TELAS_CONFIG).forEach(tela=>{Object.entries(configuracaoTela(tela).layoutExistente||{}).forEach(([id,cfg])=>{const el=document.getElementById(id);if(!el)return;const card=el.tagName==='CANVAS'?el.parentElement?.closest('.bg-white')||el.parentElement:id.startsWith('kpi-')?el.closest('.bg-white')||el:el;
+ card.style.order=String(cfg.ordem||0);card.style.gridColumn=cfg.largura==='total'?'1 / -1':'';
+ if(cfg.altura&&el.tagName==='CANVAS')el.parentElement.style.height=Math.min(900,Math.max(180,cfg.altura))+'px';
+ });});};
