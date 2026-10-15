@@ -733,7 +733,7 @@ function renderizarPrevisto() {
   ordenarLinhasTela(rows,'previsto',categoriaHeader||descricaoHeader,valorHeader);
   const resumo=new Map();
   if(rows.length&&valorHeader){rows.forEach(row=>{const nome=String(row[categoriaHeader]||row[descricaoHeader]||'Item previsto').trim();resumo.set(nome,(resumo.get(nome)||0)+parseMonetario(row[valorHeader])*multiplicadorCenario);});}
-  else categorias.forEach(c=>resumo.set(c,(obra.categoriasPrevisto?.[c]||0)*multiplicadorCenario));
+  else if(!planilha||!valorHeader)categorias.forEach(c=>resumo.set(c,(obra.categoriasPrevisto?.[c]||0)*multiplicadorCenario));
   const totalFiltrado=[...resumo.values()].reduce((sum,value)=>sum+value,0);
   if(kpis.children[0]?.children[1])kpis.children[0].children[1].textContent=moeda(totalFiltrado);
   if(kpis.children[1]?.children[1])kpis.children[1].children[1].textContent=String(resumo.size);
@@ -746,6 +746,7 @@ function renderizarPrevisto() {
   const totalPaginas=Math.max(1,Math.ceil(rows.length/DADOS_BASE_PAGINA_TAMANHO));previstoPaginaAtual=Math.min(previstoPaginaAtual,totalPaginas-1);const inicio=previstoPaginaAtual*DADOS_BASE_PAGINA_TAMANHO;const fatia=rows.slice(inicio,inicio+DADOS_BASE_PAGINA_TAMANHO);
   const wrap=document.createElement('div');wrap.className='overflow-auto max-h-[70vh]';const table=document.createElement('table');table.className='min-w-full text-xs text-left';const thead=document.createElement('thead');thead.className='sticky top-0 bg-[#003399] text-white uppercase';const trh=document.createElement('tr');headers.forEach(h=>{const th=document.createElement('th');th.className='p-3 whitespace-nowrap';th.textContent=tituloColunaBase(planilha,h);trh.appendChild(th);});thead.appendChild(trh);const tbody=document.createElement('tbody');tbody.className='divide-y divide-gray-200';
   fatia.forEach(row=>{const tr=document.createElement('tr');headers.forEach(h=>{const td=document.createElement('td');td.className='p-3 whitespace-nowrap';td.textContent=row[h]??'';tr.appendChild(td);});tbody.appendChild(tr);});table.append(thead,tbody);wrap.appendChild(table);host.appendChild(wrap);
+  if(fatia.length&&typeof prepararTabelaInterativa==='function'){[...tbody.rows].forEach((tr,i)=>tr.dataset.chaveLinha=chaveRegistroTabela(fatia[i]));prepararTabelaInterativa(table,'previsto:nativa:'+obraAtivaID,renderizarPrevisto,{tela:'previsto',fonte:planilha,raw:fatia,headers});}
   if(paginacao){const anterior=document.createElement('button');anterior.type='button';anterior.textContent='← Anterior';anterior.disabled=previstoPaginaAtual===0;anterior.className='px-3 py-2 border rounded-lg text-sm font-bold disabled:opacity-40';anterior.onclick=()=>{previstoPaginaAtual--;renderizarPrevisto();};const texto=document.createElement('span');texto.className='text-sm text-gray-600';texto.textContent=`Página ${previstoPaginaAtual+1} de ${totalPaginas} • ${rows.length} linhas`;const proxima=document.createElement('button');proxima.type='button';proxima.textContent='Próxima →';proxima.disabled=previstoPaginaAtual>=totalPaginas-1;proxima.className='px-3 py-2 border rounded-lg text-sm font-bold disabled:opacity-40';proxima.onclick=()=>{previstoPaginaAtual++;renderizarPrevisto();};paginacao.append(anterior,texto,proxima);}
 }
 
@@ -940,6 +941,7 @@ function renderizarDadosBase() {
   table.append(thead, tbody);
   tabela.appendChild(table);
   conteudo.replaceChildren(tabela);
+  if(rowsFiltradas.length&&typeof prepararTabelaInterativa==='function'){const raw=rowsFiltradas.slice(inicio,fim);[...tbody.rows].forEach((tr,i)=>tr.dataset.chaveLinha=chaveRegistroTabela(raw[i]));prepararTabelaInterativa(table,'realizado:nativa:'+obraAtivaID+':'+ativa.id,renderizarDadosBase,{tela:'realizado',fonte:ativa,raw,headers:ativa.headers});}
   const controles = document.getElementById('dados-base-paginacao');
   controles.replaceChildren();
   const anterior = document.createElement('button');
