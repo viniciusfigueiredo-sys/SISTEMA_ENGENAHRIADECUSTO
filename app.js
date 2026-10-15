@@ -1944,9 +1944,10 @@ function atualizarSeletoresPerfis(){['novo-usr-perfil','permissoes-perfil-select
 async function persistirPerfisCompartilhados(perfis){
   if(!supabaseClient)throw new Error('Conecte ao Supabase para salvar perfis compartilhados.');
   const {data:atual,error:leituraErro}=await supabaseClient.from('configuracoes').select('perfis_json').eq('id',configGlobal.idConfigSupabase||1).single();if(leituraErro)throw leituraErro;
-  const {data,error}=await supabaseClient.from('configuracoes').update({perfis_json:{...perfis,__sistema:atual?.perfis_json?.__sistema||{manutencao:false}}}).eq('id',configGlobal.idConfigSupabase||1).select('id').single();
+  const meta={...atual?.perfis_json?.__sistema};const bloqueados=new Set(Object.entries(perfis).filter(([,p])=>p?.configuracoesBloqueadas).map(([nome])=>nome));if(bloqueados.size){const {data:usuarios,error:erroUsuarios}=await supabaseClient.from('usuarios').select('id,perfil');if(erroUsuarios)throw erroUsuarios;const ids=new Set((usuarios||[]).filter(u=>bloqueados.has(u.perfil)).map(u=>String(u.id)));meta.acessosConfiguracao=Object.fromEntries(Object.entries(meta.acessosConfiguracao||{}).map(([g,lista])=>[g,(lista||[]).filter(id=>!ids.has(String(id)))]));}
+  const {data,error}=await supabaseClient.from('configuracoes').update({perfis_json:{...perfis,__sistema:meta}}).eq('id',configGlobal.idConfigSupabase||1).select('id').single();
   if(error)throw error;if(!data)throw new Error('O banco não confirmou o salvamento.');
-  localStorage.setItem('permissoes_bp',JSON.stringify(perfis));
+  localStorage.setItem('permissoes_bp',JSON.stringify(perfis));carregarParametrosSistema(meta);if(typeof sinalizarAlteracaoCompartilhada==='function')await sinalizarAlteracaoCompartilhada();
 }
 async function criarPerfilPersonalizado(){
   if(usuarioAutenticado?.perfil!=='Mestre')return alert('Somente o Mestre pode criar perfis.');
@@ -2007,6 +2008,7 @@ async function salvarPermissoesPerfil() {
     dadosBase:document.getElementById('perm-dados-base').checked,
     sincronizar:document.getElementById('perm-sincronizar').checked,
     configuracoes:document.getElementById('perm-configuracoes').checked,
+    configuracoesBloqueadas:!document.getElementById('perm-configuracoes').checked,
     usuarios:document.getElementById('perm-usuarios').checked,
     permissoes:document.getElementById('perm-permissoes').checked,
     graficos:document.getElementById('perm-graficos').checked,
