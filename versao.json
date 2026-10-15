@@ -1,6 +1,6 @@
 {
-  "versao": "central-ajuda-final-20261015",
-  "publicadoEm": "2026-10-15T16:53:55.976Z",
-  "ajudaVersao": "central-ajuda-final-20261015",
-  "novidades": "Central de Ajuda com busca e manual; notificações por perfil; gestão de custos fixos por obra com pausa individual da atualização automática."
+  "versao": "retirar-categoria-20261015",
+  "ajudaVersao": "retirar-categoria-20261015",
+  "publicadoEm": "2026-10-15T17:51:01.773Z",
+  "novidades": "Retirar uma categoria inteira dos custos fixos de uma obra, desligando o vínculo automático e preservando o histórico. Marcações diferenciadas para custos ativos e vínculos sem custos."
 }
