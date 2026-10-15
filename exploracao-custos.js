@@ -18,7 +18,7 @@ function registrosExploracaoBP(tela){
 function abrirExploracaoCustosBP(tela,categoriaInicial='',opcoes={}){
  const registros=registrosExploracaoBP(tela),dialog=document.createElement('dialog');dialog.className='bp-explorar-custos';
  const titulo=document.createElement('h2');titulo.textContent='Explorar custos · '+TELAS_CONFIG[tela].nome;
- const nota=document.createElement('p');nota.textContent=obrasBD[obraAtivaID].nome+' · '+(tela==='fixos'?'Parâmetros fixos no período':tela==='previsto'?'Orçamento previsto':tela==='recorrentes'?'Pagamentos recorrentes':'Pagamentos realizados')+' · filtros atuais. Esta exploração não altera os filtros da tela.';
+ const nota=document.createElement('p');nota.textContent=obrasBD[obraAtivaID].nome+' · '+(tela==='fixos'?'Parâmetros fixos no período':tela==='previsto'?'Orçamento previsto':tela==='recorrentes'?'Pagamentos recorrentes':'Pagamentos realizados')+' · filtros atuais. As seleções desta exploração filtram os gráficos, tabelas e indicadores de todas as telas da obra.';
  const controles=document.createElement('div');controles.className='bp-explorar-controles';
  function select(nome,options,value){const label=document.createElement('label');label.textContent=nome;const s=document.createElement('select');s.setAttribute('aria-label',nome);options.forEach(([v,t])=>s.add(new Option(t,v)));s.value=value;label.append(s);controles.append(label);return s;}
  const categoria=select('Categoria da exploração',[['','Todas as categorias'],...[...new Set(registros.map(r=>r.categoria))].sort((a,b)=>a.localeCompare(b,'pt-BR')).map(c=>[c,c])],categoriaInicial);
@@ -31,6 +31,7 @@ function abrirExploracaoCustosBP(tela,categoriaInicial='',opcoes={}){
  dialog.append(titulo,nota,controles,total,voltar,box,tabela,fechar);document.body.append(dialog);let chart=null,outros=opcoes.membros?new Set(opcoes.membros):null,selecionados=new Set();
  function desenhar(){chart?.destroy();const termos=normalizarTextoUI(busca.value).split('%').map(s=>s.trim()).filter(Boolean),base=registros.filter(r=>(!categoria.value||r.categoria===categoria.value)&&(!termos.length||termos.some(t=>normalizarTextoUI([r.categoria,r.fornecedor,r.item].join(' ')).includes(t))));
  const meses=new Set(base.filter(r=>r.data).map(r=>r.data.slice(0,7))),datados=new Map();base.filter(r=>r.data).forEach(r=>{const k=String(r[agrupar.value]||'Não informado');datados.set(k,(datados.get(k)||0)+r.valor);});
+ aplicarSelecaoExploracaoGlobalBP(outros?base.filter(r=>outros.has(String(r[agrupar.value]||'Não informado'))):base,agrupar.value,selecionados,!!outros||!!categoria.value||!!busca.value.trim()||selecionados.size>0);
  const grupos=new Map();base.forEach(r=>{const label=String(r[agrupar.value]||'Não informado');grupos.set(label,(grupos.get(label)||0)+r.valor);});
  let todos=[...grupos].map(([label,valor])=>({label,valor}));if(outros)todos=todos.filter(r=>outros.has(r.label));const soma=todos.reduce((s,r)=>s+r.valor,0),selecionadosRows=todos.filter(r=>selecionados.has(r.label));
  const shown=resumirGruposExploracaoBP(todos,Number(limite.value));voltar.hidden=!outros;
