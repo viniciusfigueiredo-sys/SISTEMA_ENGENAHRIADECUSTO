@@ -52,3 +52,5 @@
  .painel-acoes button{min-height:36px}
 }
 @media print{.painel-acoes{display:none!important}}
+/* O cadastro manual saiu da tela; as edições existentes usam um diálogo próprio. */
+#fixos-form{display:none!important;}
