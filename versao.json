@@ -1,6 +1,6 @@
 {
-  "versao": "migracao-conta-20261015",
-  "ajudaVersao": "migracao-conta-20261015",
-  "publicadoEm": "2026-10-15T20:57:30.4363897Z",
-  "novidades": "Novo endereço do sistema: viniciussouzaf.github.io/SISTEMA_ENGENAHRIADECUSTO/. GitHub e Supabase transferidos para a conta vinculada ao Gmail, com o mesmo banco. Atualize seus favoritos."
+  "versao": "empresa-neutra-20261015",
+  "ajudaVersao": "empresa-neutra-20261015",
+  "publicadoEm": "2026-10-15T21:13:23.0391604Z",
+  "novidades": "Central e Controle de Custo: identidade neutra, nome e logo da empresa configuráveis e área do Mestre para zerar o banco com confirmação e validação no servidor."
 }

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Brasil Pontes - Controladoria & Engenharia de Custos</title>
+  <title>Central e Controle de Custo</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; }
     @media (max-width: 640px) {
@@ -112,13 +112,13 @@
   <div id="screen-login" class="fixed inset-0 bg-[#003399] z-50 flex items-center justify-center p-4">
     <div class="bg-white rounded-2xl max-w-md w-full p-8 shadow-2xl space-y-6 relative">
       <div class="text-center space-y-2">
-        <div class="inline-flex bg-[#003399] p-3 rounded-xl shadow-md mb-2">
+        <div id="login-empresa-logo" class="inline-flex bg-[#003399] text-white font-black p-3 rounded-xl shadow-md mb-2">
           <span class="text-white font-black text-3xl tracking-tighter flex items-center">
-            <span class="text-[#00CFFF] mr-1">✦</span>BP
+            CC
           </span>
         </div>
-        <h2 id="login-app-title" class="text-2xl font-black text-[#003399]">Brasil Pontes</h2>
-        <p class="text-xs text-gray-500 font-medium">Controladoria & Engenharia de Custos</p>
+        <h2 id="login-app-title" class="text-2xl font-black text-[#003399]">Central e Controle de Custo</h2>
+        <p id="login-empresa-nome" class="text-xs text-gray-500 font-medium">Gestão de custos e resultados</p>
       </div>
 
       <!-- FORMULÁRIO DE LOGIN (Protegido - Sem <form> para evitar recarregamento) -->
@@ -168,7 +168,7 @@
         </div>
         <div>
           <label class="block text-xs font-bold text-gray-700 uppercase mb-1">E-mail Corporativo:</label>
-          <input type="email" id="solic-email" placeholder="seuemail@brasilpontes.com.br" class="w-full text-xs border border-gray-300 rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-[#003399]">
+          <input type="email" id="solic-email" placeholder="seuemail@empresa.com.br" class="w-full text-xs border border-gray-300 rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-[#003399]">
         </div>
         <div>
           <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Usuário desejado:</label>
@@ -197,14 +197,14 @@
     <header class="bg-[#003399] text-white shadow-lg sticky top-0 z-40">
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 min-h-20 h-auto py-3 flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
         <div class="flex items-center space-x-4 min-w-0">
-          <div class="bg-white p-2 rounded-lg shadow-sm flex items-center justify-center">
+          <div id="header-empresa-logo" class="bg-white text-[#003399] font-black p-2 rounded-lg shadow-sm flex items-center justify-center">
             <span class="text-[#003399] font-black text-2xl tracking-tighter flex items-center">
-              <span class="text-[#00CFFF] mr-0.5">✦</span>BP
+              CC
             </span>
           </div>
           <div>
-            <h1 id="header-app-title" class="font-bold text-lg leading-tight">Brasil Pontes</h1>
-            <p class="text-xs text-[#00CFFF] font-medium">Controladoria & Engenharia de Custos</p>
+            <h1 id="header-app-title" class="font-bold text-lg leading-tight">Central e Controle de Custo</h1>
+            <p id="header-empresa-nome" class="text-xs text-[#00CFFF] font-medium">Gestão de custos e resultados</p>
           </div>
         </div>
 
@@ -477,7 +477,7 @@
           <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div>
               <label class="font-bold">Nome da Empresa / Aplicação:</label>
-              <input type="text" id="config-app-title" class="w-full border p-2 rounded-lg mt-1" placeholder="Brasil Pontes">
+              <input type="text" id="config-app-title" class="w-full border p-2 rounded-lg mt-1" placeholder="Central e Controle de Custo">
             </div>
           </div>
           <div class="border-t pt-3 space-y-3">
@@ -629,16 +629,16 @@
   <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   
-  <script src="app.js?v=parametros-prazo-final-20261015"></script>
+  <script src="app.js?v=empresa-neutra-20261015"></script>
 <script src="configuracoes-sistema.js?v=fixos-check-perfis-final-20261015"></script>
-  <script src="telas-config.js?v=migracao-conta-20261015"></script>
+  <script src="telas-config.js?v=empresa-neutra-20261015"></script>
   <script src="analise-avancada.js?v=parametros-prazo-final-20261015"></script>
   <script src="paineis-fixos.js?v=config-simples-final-20261015"></script>
   <script src="graficos-legiveis.js?v=recuperacao-20261014b"></script>
   <script src="solicitacoes-usuarios.js?v=recuperacao-20261014b"></script>
   <script src="senha-provisoria.js?v=recuperacao-20261014b"></script>
   <script src="sessao-inatividade.js?v=recuperacao-20261014b"></script>
-  <script src="auth-protegida.js?v=recuperacao-20261014b"></script>
+  <script src="empresa-compat.js?v=empresa-neutra-20261015"></script>
   <script src="paineis-editor.js?v=config-simples-final-20261015"></script>
   <script src="configuracoes-organizadas.js?v=config-clara-20261014b"></script>
   <script src="ajuda-contextual.js?v=ajuda-discreta-20261014"></script>
@@ -672,14 +672,14 @@
 <link rel="stylesheet" href="parametros-obra-detalhes.css?v=parametros-prazo-final-20261015">
 <script src="parametros-obra-detalhes.js?v=central-ajuda-final-20261015"></script>
 <link rel="stylesheet" href="central-ajuda.css?v=categorias-em-lote-20261015">
-<script src="central-ajuda.js?v=migracao-conta-20261015"></script>
+<script src="central-ajuda.js?v=empresa-neutra-20261015"></script>
 <script src="gestao-fixos-por-obra.js?v=central-ajuda-final-20261015"></script>
 <script src="central-notificacoes.js?v=central-ajuda-final-20261015"></script>
 <script src="retirar-categoria-fixa.js?v=retirar-categoria-final-20261015"></script>
 <script src="categorias-fixas-lote.js?v=categorias-em-lote-20261015"></script>
 <link rel="stylesheet" href="cabecalho-ajuda-notificacoes.css?v=ajuda-sino-cabecalho-20261015">
 <script src="cabecalho-ajuda-notificacoes.js?v=ajuda-sino-cabecalho-20261015"></script>
-</body>
+<link rel="stylesheet" href="empresa-config.css?v=empresa-neutra-20261015"><script src="empresa-config.js?v=empresa-neutra-20261015"></script><script src="empresa-acesso.js?v=empresa-neutra-20261015"></script></body>
 </html>
 
 

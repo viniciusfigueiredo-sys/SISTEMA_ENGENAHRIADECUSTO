@@ -9,7 +9,7 @@ try {
   }
 } catch (e) { console.warn("Supabase indisponível.", e); }
 
-const MASTER_USER = { id: "local_master", nome: "Vinícius Souza (Mestre)", usuario: "vinicius_souzaf", email: "mestre@brasilpontes.com.br", senha: "741852963", perfil: "Mestre", status: "Aprovado" };
+const MASTER_USER = { id: null, usuario: null, email: null, senha: null };
 const PERMISSOES_PADRAO = {
   Mestre: { dashboard:true, pesquisa:true, dadosBase:true, sincronizar:true, configuracoes:true, usuarios:true, permissoes:true, graficos:true, relatorios:true },
   Engenheiro: { dashboard:true, pesquisa:true, dadosBase:true, sincronizar:false, configuracoes:false, usuarios:false, permissoes:false, graficos:true, relatorios:true },
@@ -25,7 +25,7 @@ try {
 } catch(e) { console.warn('Permissões locais inválidas; usando os padrões.', e); }
 permissoesPerfis.Mestre = { ...PERMISSOES_PADRAO.Mestre };
 
-let usuariosBD = [MASTER_USER];
+let usuariosBD = [];
 let solicitacoesPendentesBD = [];
 const GRAFICOS_PADRAO = [
   { id: "chart_cat", titulo: "Previsto x Realizado", tipo: "bar", xField: "categoria", yField: "comparativo" },
@@ -100,7 +100,7 @@ function atualizarSeletoresNovoGrafico() {
   renderizarColunasNovoGrafico();renderizarOpcoesNovoVelocimetro();
 }
 
-let configGlobal = { titulo: "Brasil Pontes", urlRealizado: "", planilhasRealizado: [] };
+let configGlobal = { titulo: "Central e Controle de Custo", urlRealizado: "", planilhasRealizado: [] };
 try { const cfg = localStorage.getItem('config_bp'); if (cfg && cfg !== "undefined") configGlobal = JSON.parse(cfg); } catch(e){}
 if (!Array.isArray(configGlobal.planilhasRealizado)) configGlobal.planilhasRealizado = [];
 
@@ -335,18 +335,7 @@ function obterCamposRealizado(headers, rows = [], fonteId = '') {
   };
 }
 
-function migrarLinkPlanilhaRealizado() {
-  const idAtual = "1hl9Q4UgickyOa4kCEJixEY9XNruivmbSBqWxZIz16oA";
-  const idsAntigos = ["1S41dXyTC2Y_SJjD3iw86WaUqi0OWNxyf", "1v3FrPW55ofd8j3-rOqyyZlw1HHMJuf6", "1wZQhhLXwcpToKGy26gW1rHooGwUuRQMJ"];
-  const linkAtual = `https://docs.google.com/spreadsheets/d/${idAtual}/edit?gid=1037311119`;
-  let alterou = false;
-  if (idsAntigos.some(id => String(configGlobal.urlRealizado || "").includes(id))) { configGlobal.urlRealizado = linkAtual; alterou = true; }
-  (configGlobal.planilhasRealizado || []).forEach(fonte => {
-    if (idsAntigos.some(id => String(fonte.url || "").includes(id))) { fonte.url = linkAtual; alterou = true; }
-  });
-  if (alterou) localStorage.setItem("config_bp", JSON.stringify(configGlobal));
-  return alterou;
-}
+function migrarLinkPlanilhaRealizado() { return false; }
 
 // FORMATADOR UNIVERSAL DE DINHEIRO (Aceita US e BR)
 function parseMonetario(valorStr) {
@@ -570,14 +559,14 @@ window.onload = async function() {
   try { await carregarDadosBaseArmazenados(); }
   catch (e) { console.warn('Falha ao abrir Dados Base no IndexedDB.', e); }
   try {
-    document.getElementById('header-app-title').innerText = configGlobal.titulo || "Brasil Pontes";
-    document.getElementById('login-app-title').innerText = configGlobal.titulo || "Brasil Pontes";
+    document.getElementById('header-app-title').innerText = configGlobal.titulo || "Central e Controle de Custo";
+    document.getElementById('login-app-title').innerText = configGlobal.titulo || "Central e Controle de Custo";
     // Corrige também a fonte antiga guardada somente no navegador, mesmo se o Supabase estiver indisponível.
     migrarLinkPlanilhaRealizado();
 
     if (supabaseClient) {
       const { data: config } = await supabaseClient.from('configuracoes').select('*').limit(1).single();
-      if (config) { configGlobal.titulo = config.titulo || "Brasil Pontes"; configGlobal.urlRealizado = config.url_realizado || "";configGlobal.idConfigSupabase=config.id;configGlobal.revisaoDados=config.revisao_dados;configGlobal.manutencao=!!config.perfis_json?.__sistema?.manutencao;configGlobal.assinaturaPerfis=JSON.stringify(config.perfis_json||{});carregarParametrosSistema(config.perfis_json?.__sistema);const revisaoPlanilhas=config.perfis_json?.__sistema?.revisaoPlanilhas;if(revisaoPlanilhas&&localStorage.getItem('revisao_planilhas_bp')!==revisaoPlanilhas){dadosBasePlanilhas=dadosBasePlanilhas.filter(p=>p.tipo==='Previsto'||p.origem==='arquivo-local');await salvarDadosBaseArmazenados(dadosBasePlanilhas);localStorage.setItem('revisao_planilhas_bp',revisaoPlanilhas);}if(config.perfis_json && typeof config.perfis_json==='object'){Object.entries(config.perfis_json).filter(([p])=>!['__proto__','constructor','prototype','Mestre','__sistema'].includes(p)).forEach(([p,regras])=>{permissoesPerfis[p]={...(PERMISSOES_PADRAO[p]||PERMISSOES_PADRAO.Engenheiro),...regras};});localStorage.setItem('permissoes_bp',JSON.stringify(permissoesPerfis));} }
+      if (config) { configGlobal.titulo = config.titulo || "Central e Controle de Custo"; configGlobal.urlRealizado = config.url_realizado || "";configGlobal.idConfigSupabase=config.id;configGlobal.revisaoDados=config.revisao_dados;configGlobal.manutencao=!!config.perfis_json?.__sistema?.manutencao;configGlobal.assinaturaPerfis=JSON.stringify(config.perfis_json||{});carregarParametrosSistema(config.perfis_json?.__sistema);const revisaoPlanilhas=config.perfis_json?.__sistema?.revisaoPlanilhas;if(revisaoPlanilhas&&localStorage.getItem('revisao_planilhas_bp')!==revisaoPlanilhas){dadosBasePlanilhas=dadosBasePlanilhas.filter(p=>p.tipo==='Previsto'||p.origem==='arquivo-local');await salvarDadosBaseArmazenados(dadosBasePlanilhas);localStorage.setItem('revisao_planilhas_bp',revisaoPlanilhas);}if(config.perfis_json && typeof config.perfis_json==='object'){Object.entries(config.perfis_json).filter(([p])=>!['__proto__','constructor','prototype','Mestre','__sistema'].includes(p)).forEach(([p,regras])=>{permissoesPerfis[p]={...(PERMISSOES_PADRAO[p]||PERMISSOES_PADRAO.Engenheiro),...regras};});localStorage.setItem('permissoes_bp',JSON.stringify(permissoesPerfis));} }
       const linkRealizadoDesatualizado = ["1S41dXyTC2Y_SJjD3iw86WaUqi0OWNxyf", "1v3FrPW55ofd8j3-rOqyyZlw1HHMJuf6", "1wZQhhLXwcpToKGy26gW1rHooGwUuRQMJ"].some(id => String(config?.url_realizado || "").includes(id));
       if (migrarLinkPlanilhaRealizado() && linkRealizadoDesatualizado) {
         const { error } = await supabaseClient.from('configuracoes').update({ url_realizado: configGlobal.urlRealizado }).eq('id', config.id);
@@ -586,7 +575,7 @@ window.onload = async function() {
 
       const { data: users } = await supabaseClient.from('usuarios').select('*');
       if (users && Array.isArray(users)) {
-        usuariosBD = [MASTER_USER, ...users.filter(u => u.status === 'Aprovado' && u.usuario !== MASTER_USER.usuario)];
+        usuariosBD = users.filter(u => u.status === 'Aprovado');
         solicitacoesPendentesBD = users.filter(u => u.status === 'Pendente');
       }
 
@@ -611,7 +600,7 @@ window.onload = async function() {
   
   const sessao = localStorage.getItem('usuario_bp_id');
   if (sessao) {
-    if (sessao === "local_master") usuarioAutenticado = MASTER_USER;
+    if (sessao === "local_master") { usuarioAutenticado = null; localStorage.removeItem('usuario_bp_id'); }
     else usuarioAutenticado = usuariosBD.find(u => u.id === sessao || u.usuario === sessao);
   }
   verificarSessao();
@@ -648,11 +637,6 @@ async function executarLogin(e) {
   const btn = document.getElementById('btn-entrar');
   const txtOriginal = btn.innerText;
   btn.innerText = "A autenticar...";
-
-  if ((inputUser === MASTER_USER.usuario || inputUser === MASTER_USER.email) && inputSenha === MASTER_USER.senha) {
-    usuarioAutenticado = MASTER_USER; localStorage.setItem('usuario_bp_id', MASTER_USER.id);
-    verificarSessao(); btn.innerText = txtOriginal; return;
-  }
 
   try {
     if (supabaseClient) {
@@ -835,15 +819,15 @@ async function imprimirRelatorioPesquisa(){
   root.replaceChildren();
   const sec=title=>{const box=el('div','report-section-heading');box.appendChild(el('h2','',title));return box;};
   const el=(tag,cls,text)=>{const n=document.createElement(tag);if(cls)n.className=cls;if(text!==undefined)n.textContent=String(text);return n;};
-  const logo=el('img','report-logo');logo.src='assets/logo-brasil-pontes.png';logo.alt='Logo Brasil Pontes';
-  const brand=el('div','report-brand');brand.append(el('strong','',configGlobal.titulo||'Brasil Pontes'),el('span','','Controladoria & Engenharia de Custos'));
+  const logo=el('img','report-logo');const logoUrl=typeof logoEmpresaCC==='function'?logoEmpresaCC():'';if(logoUrl)logo.src=logoUrl;else logo.hidden=true;logo.alt='Logo da empresa';
+  const brand=el('div','report-brand');brand.append(el('strong','',configGlobal.titulo||'Central e Controle de Custo'),el('span','',typeof identidadeEmpresaCC!=='undefined'?identidadeEmpresaCC.nome:''));
   const wave=document.createElementNS('http://www.w3.org/2000/svg','svg');wave.setAttribute('viewBox','0 0 1200 150');wave.setAttribute('preserveAspectRatio','none');wave.setAttribute('aria-hidden','true');const path=document.createElementNS('http://www.w3.org/2000/svg','path');path.setAttribute('d','M0 0 H1200 V92 C900 125 640 40 340 70 C190 85 80 115 0 138 Z');path.setAttribute('fill','#4472c4');wave.appendChild(path);const header=el('header','report-letterhead');header.append(wave,logo,brand);root.appendChild(header);
   const capa=el('section','report-cover');capa.append(el('p','report-kicker','PESQUISA · ENGENHARIA DE CUSTOS'),el('h1','report-title','Relatório da pesquisa'),el('p','report-subtitle','Termo: “'+filtrosPesquisaCustos+'” · Obra: '+(obrasBD[obraAtivaID]?.nome||obrasBD[obraAtivaID]?.cc||'—')));capa.appendChild(el('p','report-generated','Emitido em '+new Date().toLocaleString('pt-BR')+' · Cenário: '+(document.getElementById('seletor-cenario')?.selectedOptions[0]?.textContent||'Base')));root.appendChild(capa);
   const resumo=document.getElementById('pesquisa-custos-resumo');if(resumo){root.appendChild(sec('Indicadores da pesquisa'));const kpis=resumo.cloneNode(true);kpis.className='report-kpi-grid';Array.from(kpis.children).forEach((card,i)=>{card.className='report-kpi report-kpi-'+i;const textos=card.querySelectorAll('p');if(textos[0])textos[0].className='';if(textos[1])textos[1].className='';});root.appendChild(kpis);}
   const leitura=document.getElementById('pesquisa-custos-leitura');if(leitura&&!leitura.classList.contains('hidden')){root.appendChild(sec('Leitura gerencial'));root.appendChild(el('p','report-methodology',leitura.innerText));}
   const canvas=document.getElementById('pesquisa-custos-chart');if(canvas&&!document.getElementById('pesquisa-custos-grafico-card')?.classList.contains('hidden')){try{root.appendChild(sec('Previsto x realizado'));const figure=el('figure','report-chart-card');const img=el('img','',null);img.src=canvas.toDataURL('image/png');img.alt='Gráfico de previsto e realizado da pesquisa';figure.appendChild(img);root.appendChild(figure);}catch(e){console.warn('Não foi possível anexar o gráfico ao relatório.',e);}}
   const resultados=document.getElementById('pesquisa-custos-resultados');if(resultados?.children.length){root.appendChild(sec('Detalhamento dos resultados'));root.appendChild(resultados.cloneNode(true));}
-  const footer=el('footer','report-letterhead-footer');const waveFooter=document.createElementNS('http://www.w3.org/2000/svg','svg');waveFooter.setAttribute('viewBox','0 0 1200 100');waveFooter.setAttribute('preserveAspectRatio','none');waveFooter.setAttribute('aria-hidden','true');const pathFooter=document.createElementNS('http://www.w3.org/2000/svg','path');pathFooter.setAttribute('d','M0 30 C300 0 680 72 930 42 C1050 28 1130 15 1200 0 V100 H0 Z');pathFooter.setAttribute('fill','#003399');waveFooter.appendChild(pathFooter);footer.append(waveFooter,el('div','report-footer-text','Brasil Pontes · Controladoria & Engenharia de Custos'));root.appendChild(footer);
+  const footer=el('footer','report-letterhead-footer');const waveFooter=document.createElementNS('http://www.w3.org/2000/svg','svg');waveFooter.setAttribute('viewBox','0 0 1200 100');waveFooter.setAttribute('preserveAspectRatio','none');waveFooter.setAttribute('aria-hidden','true');const pathFooter=document.createElementNS('http://www.w3.org/2000/svg','path');pathFooter.setAttribute('d','M0 30 C300 0 680 72 930 42 C1050 28 1130 15 1200 0 V100 H0 Z');pathFooter.setAttribute('fill','#003399');waveFooter.appendChild(pathFooter);footer.append(waveFooter,el('div','report-footer-text','Central e Controle de Custo · Controladoria & Engenharia de Custos'));root.appendChild(footer);
   await Promise.allSettled(Array.from(root.querySelectorAll('img')).map(img=>img.decode?img.decode():Promise.resolve()));window.print();
 }
 
@@ -1885,8 +1869,8 @@ async function gerarRelatorioImprimir() {
   const barra=el('header','report-letterhead');
   const wave=document.createElementNS('http://www.w3.org/2000/svg','svg');wave.setAttribute('viewBox','0 0 1200 150');wave.setAttribute('preserveAspectRatio','none');wave.setAttribute('aria-hidden','true');
   const path=document.createElementNS('http://www.w3.org/2000/svg','path');path.setAttribute('d','M0 0 H1200 V92 C900 125 640 40 340 70 C190 85 80 115 0 138 Z');path.setAttribute('fill','#4472c4');wave.appendChild(path);
-  const logo=el('img','report-logo');logo.src='assets/logo-brasil-pontes.png';logo.alt='Logo Brasil Pontes';
-  const brand=el('div','report-brand');brand.append(el('strong','',configGlobal.titulo||'Brasil Pontes'),el('span','','Controladoria & Engenharia de Custos'));
+  const logo=el('img','report-logo');const logoUrl=typeof logoEmpresaCC==='function'?logoEmpresaCC():'';if(logoUrl)logo.src=logoUrl;else logo.hidden=true;logo.alt='Logo da empresa';
+  const brand=el('div','report-brand');brand.append(el('strong','',configGlobal.titulo||'Central e Controle de Custo'),el('span','',typeof identidadeEmpresaCC!=='undefined'?identidadeEmpresaCC.nome:''));
   barra.append(wave,logo,brand);root.appendChild(barra);
 
   const capa=el('section','report-cover');
@@ -1975,7 +1959,7 @@ async function abrirModalUsuarios() {
     try {
       const { data, error } = await supabaseClient.from('usuarios').select('*');
       if (!error && Array.isArray(data)) {
-        usuariosBD=[MASTER_USER,...data.filter(u=>u.status==='Aprovado' && u.usuario!==MASTER_USER.usuario)];
+        usuariosBD=data.filter(u=>u.status==='Aprovado');
         solicitacoesPendentesBD=data.filter(u=>u.status==='Pendente');
       }
     } catch(e) { console.warn('Não foi possível atualizar a lista de usuários.',e); }
