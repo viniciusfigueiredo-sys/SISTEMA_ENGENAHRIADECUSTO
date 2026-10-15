@@ -1,6 +1,6 @@
 {
-  "versao": "retirar-categoria-final-20261015",
-  "ajudaVersao": "retirar-categoria-final-20261015",
-  "publicadoEm": "2026-10-15T17:51:01.773Z",
-  "novidades": "Retirar uma categoria inteira dos custos fixos de uma obra, desligando o vínculo automático e preservando o histórico. Marcações diferenciadas para custos ativos e vínculos sem custos."
+  "versao": "categorias-em-lote-20261015",
+  "ajudaVersao": "categorias-em-lote-20261015",
+  "publicadoEm": "2026-10-15T18:25:48.181Z",
+  "novidades": "Adicionar várias categorias de custos fixos de uma vez, com busca, seleção múltipla, referência e motivo em uma confirmação por obra."
 }
