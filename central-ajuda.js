@@ -1,5 +1,5 @@
 /* Central de Ajuda: o conteúdo acompanha a versão publicada, sem enviar buscas para fora. */
-const VERSAO_AJUDA_BP='retirar-categoria-20261015';
+const VERSAO_AJUDA_BP='retirar-categoria-final-20261015';
 const ARTIGOS_AJUDA_BP=[
 ['retirar-categoria','Custos fixos','Retirar uma categoria inteira dos custos fixos','Abra Configurações → Custos Fixos → Adicionar uma categoria aos Custos Fixos. Escolha obra e categoria e use Retirar categoria desta obra. Informe o motivo e confirme. Todos os fornecedores daquela categoria são arquivados e a entrada automática é desligada somente nesta obra. Pagamentos e histórico são preservados. Excluir um fornecedor isolado não desliga o vínculo automático da categoria. ✓ identifica custos ativos; Automática indica vínculo sem custos ativos.','desmarcar remover seleção passagem excluir categoria'],
 ['primeiros-passos','Começar','Como começar a usar o sistema?','Escolha a obra no cabeçalho. Abra Análises para consultar os indicadores, Realizado para ver pagamentos e Previsto para consultar o orçamento. Use Limpar filtro geral para voltar à visão completa.','obra iniciar menu navegação'],
