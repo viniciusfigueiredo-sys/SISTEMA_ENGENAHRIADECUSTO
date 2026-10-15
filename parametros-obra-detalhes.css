@@ -1,0 +1,1 @@
+.bp-engrenagem{font-size:56px;color:#003399;display:inline-block;animation:bp-manter 4s linear infinite}@keyframes bp-manter{to{transform:rotate(360deg)}}@media(prefers-reduced-motion:reduce){.bp-engrenagem{animation:none}}

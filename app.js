@@ -595,6 +595,7 @@ window.onload = async function() {
         obras.forEach(o => {
           obrasBD[o.id] = {
             id: o.id, nome: o.nome, cc: o.cc, responsavel: o.responsavel, status: o.status, urlPrevistoCSV: o.url_previsto,
+            inicioObra:o.dados_json?.inicioObra||'', fimObra:o.dados_json?.fimObra||'',
             previstoArquivoLocal: !!(obrasBD[o.id]?.previstoArquivoLocal),
             custosFixos: o.dados_json?.custosFixos || obrasBD[o.id]?.custosFixos || [],
             vinculosCategoriasFixas:o.dados_json?.vinculosCategoriasFixas || [],
