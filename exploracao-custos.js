@@ -15,19 +15,19 @@ function registrosExploracaoBP(tela){
  linhasDaObra(p,obra).forEach(row=>{if(campos.valor&&linhaPassaFiltroInterativo(p,row,campos.categoria))rows.push({categoria:row[campos.categoria]||'Sem categoria',fornecedor:row[fornecedor]||'Não informado',item:row[item]||row[fornecedor]||'Não informado',valor:parseMonetario(row[campos.valor])*(tela==='previsto'?multiplicadorCenario:1)});});
  });return rows;
 }
-function abrirExploracaoCustosBP(tela,categoriaInicial=''){
+function abrirExploracaoCustosBP(tela,categoriaInicial='',opcoes={}){
  const registros=registrosExploracaoBP(tela),dialog=document.createElement('dialog');dialog.className='bp-explorar-custos';
  const titulo=document.createElement('h2');titulo.textContent='Explorar custos · '+TELAS_CONFIG[tela].nome;
  const nota=document.createElement('p');nota.textContent=obrasBD[obraAtivaID].nome+' · '+(tela==='fixos'?'Parâmetros fixos no período':tela==='previsto'?'Orçamento previsto':tela==='recorrentes'?'Pagamentos recorrentes':'Pagamentos realizados')+' · filtros atuais. Esta exploração não altera os filtros da tela.';
  const controles=document.createElement('div');controles.className='bp-explorar-controles';
  function select(nome,options,value){const label=document.createElement('label');label.textContent=nome;const s=document.createElement('select');s.setAttribute('aria-label',nome);options.forEach(([v,t])=>s.add(new Option(t,v)));s.value=value;label.append(s);controles.append(label);return s;}
  const categoria=select('Categoria da exploração',[['','Todas as categorias'],...[...new Set(registros.map(r=>r.categoria))].sort((a,b)=>a.localeCompare(b,'pt-BR')).map(c=>[c,c])],categoriaInicial);
- const agrupar=select('Mostrar por',[['categoria','Categoria'],['fornecedor','Fornecedor'],['item','Item / descrição']],categoriaInicial?'fornecedor':'categoria');
+ const agrupar=select('Mostrar por',[['categoria','Categoria'],['fornecedor','Fornecedor'],['item','Item / descrição']],opcoes.agrupar||(categoriaInicial?'fornecedor':'categoria'));
  const limite=select('Quantidade de grupos',[['5','Top 5'],['10','Top 10'],['20','Top 20'],['0','Todos']],String(configuracaoTela(tela).exploracaoLimite??10));
  const busca=document.createElement('input');busca.type='search';busca.placeholder='Pesquisar fornecedor, categoria ou item (% = ou)';busca.setAttribute('aria-label','Pesquisar na exploração');controles.append(busca);
  const total=document.createElement('p'),voltar=document.createElement('button'),box=document.createElement('div'),canvas=document.createElement('canvas'),tabela=document.createElement('div'),fechar=document.createElement('button');
  box.style.height='350px';box.append(canvas);tabela.className='bp-explorar-tabela';voltar.textContent='Voltar a todos os grupos';voltar.type=fechar.type='button';fechar.textContent='Fechar';
- dialog.append(titulo,nota,controles,total,voltar,box,tabela,fechar);document.body.append(dialog);let chart=null,outros=null,selecionados=new Set();
+ dialog.append(titulo,nota,controles,total,voltar,box,tabela,fechar);document.body.append(dialog);let chart=null,outros=opcoes.membros?new Set(opcoes.membros):null,selecionados=new Set();
  function desenhar(){chart?.destroy();const termos=normalizarTextoUI(busca.value).split('%').map(s=>s.trim()).filter(Boolean),base=registros.filter(r=>(!categoria.value||r.categoria===categoria.value)&&(!termos.length||termos.some(t=>normalizarTextoUI([r.categoria,r.fornecedor,r.item].join(' ')).includes(t))));
  const grupos=new Map();base.forEach(r=>{const label=String(r[agrupar.value]||'Não informado');grupos.set(label,(grupos.get(label)||0)+r.valor);});
  let todos=[...grupos].map(([label,valor])=>({label,valor}));if(outros)todos=todos.filter(r=>outros.has(r.label));const soma=todos.reduce((s,r)=>s+r.valor,0),selecionadosRows=todos.filter(r=>selecionados.has(r.label));
