@@ -13,3 +13,6 @@
 .cfg-popup-rodape{display:flex;flex-wrap:wrap;justify-content:flex-end;align-items:center;gap:10px;padding:14px 22px;position:sticky;bottom:0;background:white;border-top:1px solid #dbe3ee;z-index:10;}
 .cfg-popup-status{width:100%;font-size:13px;white-space:normal;color:#123364;}
 @media(max-width:640px){.cfg-dialogo-pratico{width:calc(100vw - 12px);max-height:96dvh;border-radius:12px;}.cfg-cartao-abrir{padding:14px!important;gap:6px 10px}.cfg-popup-cabecalho,.cfg-popup-conteudo,.cfg-popup-rodape{padding:14px}.cfg-popup-instrucao{padding:12px 14px}.cfg-popup-cabecalho h2{font-size:16px}.cfg-popup-conteudo input:not([type=checkbox]),.cfg-popup-conteudo select,.cfg-popup-conteudo textarea{font-size:16px}.cfg-cartao-descricao{font-size:12px}.cfg-cartao-link{font-size:12px}}
+.cfg-feedback-salvar{padding:12px 14px;border:1px solid #86efac;border-radius:10px;background:#f0fdf4;color:#166534;font-size:13px;}.cfg-feedback-salvar.cfg-feedback-erro{border-color:#fca5a5;background:#fef2f2;color:#991b1b;}
+/* Cada assunto tem seu próprio botão de salvar; evita um rodapé duplicado. */
+#config-parametros>.cfg-salvar-tela{display:none;}

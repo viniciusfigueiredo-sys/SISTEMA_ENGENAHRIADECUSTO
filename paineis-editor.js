@@ -4,7 +4,7 @@ function camposNumericosPainel(p){return (p?.headers||[]).filter(h=>colunaBaseNu
 const editorPainelOriginal=criarEditorCompartilhado;
 criarEditorCompartilhado=function(tela,cfg,classe,onRemover){
  const details=elementoFixo('details',undefined,'editor-painel border rounded-xl bg-white');
- const summary=elementoFixo('summary',(cfg.titulo||'Sem título')+' · '+(classe==='kpi'?'KPI':'Gráfico'),'p-3 font-bold text-blue-800 cursor-pointer');details.append(summary);
+ const summary=elementoFixo('summary',(cfg.titulo||'Sem título')+' · '+(classe==='kpi'?'Indicador':'Gráfico'),'p-3 font-bold text-blue-800 cursor-pointer');details.append(summary);
  const box=editorPainelOriginal(tela,cfg,classe,onRemover);details.append(box);
  const layout=elementoFixo('div',undefined,'grid sm:grid-cols-2 gap-3 p-3 border-t');box.before(layout);
  criarCampoPainel(layout,'Exibição',cfg.ativo===false?'nao':'sim','text',v=>cfg.ativo=v==='sim',[['sim','Exibir'],['nao','Ocultar']]);
@@ -12,8 +12,8 @@ criarEditorCompartilhado=function(tela,cfg,classe,onRemover){
  criarCampoPainel(layout,'Ordem de exibição',cfg.ordem||0,'number',v=>cfg.ordem=v);
  criarCampoPainel(layout,'Largura no computador',cfg.largura||'metade','text',v=>cfg.largura=v,[['metade','Metade da linha'],['total','Linha inteira']]);
  if(classe!=='kpi')criarCampoPainel(layout,'Altura do gráfico (px)',cfg.alturaGrafico||300,'number',v=>cfg.alturaGrafico=v);
- const aviso=elementoFixo('p','Escolha uma coluna numérica no eixo Y para somar. Para textos, use Contagem ou Valores distintos. No celular os painéis ocupam a largura disponível.','p-3 text-xs text-gray-600');box.before(aviso);
- details.addEventListener('input',()=>summary.textContent=(cfg.titulo||'Sem título')+' · '+(classe==='kpi'?'KPI':'Gráfico'));
+ const aviso=elementoFixo('p','Escolha um valor numérico em “Valor que será calculado”. Para nomes, escolha Contagem ou Valores distintos. No celular cada gráfico ocupa a largura disponível.','p-3 text-xs text-gray-600');box.before(aviso);
+ details.addEventListener('input',()=>summary.textContent=(cfg.titulo||'Sem título')+' · '+(classe==='kpi'?'Indicador':'Gráfico'));
  // Uma fonte recém-selecionada usa um campo numérico como medida inicial.
  const corrigirMedida=()=>{const p=fontePainel(tela,cfg.fonte),nums=camposNumericosPainel(p),key=classe==='kpi'?'campo':'y';const seletor=box.querySelector('[aria-label="'+(classe==='kpi'?'Coluna do KPI':'Eixo Y')+'"]');if(!cfg[key]||(!['contagem','distintos'].includes(cfg.agregacao)&&!nums.includes(cfg[key]))){const pago=nums.find(h=>/valor pago|valor total|previsto/.test(normalizarTextoUI(tituloColunaBase(p,h))))||nums[0];if(pago){cfg[key]=pago;if(seletor)seletor.value=pago;}else cfg.agregacao='contagem';}const agg=box.querySelector('[aria-label="Agregação"]');if(agg)agg.value=cfg.agregacao||'soma';};
  corrigirMedida();box.querySelector('[aria-label="Fonte de dados"]')?.addEventListener('change',corrigirMedida);

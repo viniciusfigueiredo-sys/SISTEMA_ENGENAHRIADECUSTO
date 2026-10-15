@@ -98,7 +98,7 @@
       .dica-rotulo-grafico { position:absolute; z-index:30; max-width:280px; padding:8px 10px; background:#0f172a; color:white; border-radius:6px; font-size:12px; white-space:normal; pointer-events:none; box-shadow:0 2px 8px #0003; }
     </style>
   <link rel="stylesheet" href="configuracoes-responsivas.css?v=graficos-ordem-20261014">
-  <link rel="stylesheet" href="configuracoes-praticas.css?v=config-simples-20261015">
+  <link rel="stylesheet" href="configuracoes-praticas.css?v=config-simples-final-20261015">
   <link rel="stylesheet" href="tabelas-padrao.css?v=tabelas-paleta-final-20261014">
   <link rel="stylesheet" href="ajuda-contextual.css?v=fixos-interacao-ajuda-20261014">
 </head>
@@ -457,7 +457,7 @@
   <div id="modal-configuracoes" class="fixed inset-0 bg-black/60 backdrop-blur-sm hidden z-50 flex items-center justify-center p-4">
     <div class="bg-white rounded-2xl max-w-5xl w-full p-4 sm:p-6 shadow-2xl border border-gray-100 space-y-6 max-h-[90vh] overflow-y-auto">
       <div class="flex justify-between items-center border-b pb-3">
-        <h3 id="titulo-modal-configuracoes" class="text-lg font-bold text-[#003399]">⚙️ Painel de Configurações do Sistema</h3>
+        <h3 id="titulo-modal-configuracoes" class="text-lg font-bold text-[#003399]">⚙️ Configurações</h3>
         <button onclick="fecharModalConfiguracoes()" class="text-gray-400 hover:text-gray-600 font-bold">✕</button>
       </div>
 
@@ -468,7 +468,7 @@
 
       <div id="cfg-aba-geral" class="space-y-4 text-xs">
         <div class="bg-amber-50 border-l-4 border-amber-400 p-3 rounded text-[11px] text-amber-800">
-          <strong>Importação:</strong> use um link compartilhado do Google Planilhas ou selecione um arquivo CSV, TSV, XLS, XLSX, XLSM ou ODS. Arquivos locais são lidos neste navegador e guardados no IndexedDB; links de outros serviços precisam permitir acesso pelo navegador (CORS).
+          <strong>Como importar:</strong> adicione o link de uma planilha Google ou escolha um arquivo Excel, CSV ou outro formato aceito. O link precisa permitir leitura. Depois, use “Sincronizar Base de Dados” na tela Análises.
         </div>
         <div class="bg-[#F4F6F9] p-4 rounded-xl border space-y-3">
           <p class="font-bold text-[#003399] uppercase">Configurações Gerais</p>
@@ -496,10 +496,10 @@
             <table class="w-full text-left bg-white rounded-lg overflow-hidden border min-w-max">
               <thead class="bg-[#003399] text-white font-bold uppercase text-[10px]">
                 <tr>
-                  <th class="p-2">Departamento / Filtro</th>
-                  <th class="p-2">Nome Amigável</th>
+                  <th class="p-2">Código / nome na planilha</th>
+                  <th class="p-2">Nome exibido</th>
                   <th class="p-2">Gestor responsável</th>
-                  <th class="p-2">URL Planilha PREVISTO (Desta Obra)</th>
+                  <th class="p-2">Planilha do orçamento (Previsto)</th>
                   <th class="p-2 text-center">Ações</th>
                 </tr>
               </thead>
@@ -629,15 +629,15 @@
   
   <script src="app.js?v=fixos-automaticos-20261014"></script>
 <script src="configuracoes-sistema.js?v=config-clara-20261014b"></script>
-  <script src="telas-config.js?v=config-simples-20261015"></script>
+  <script src="telas-config.js?v=config-simples-final-20261015"></script>
   <script src="analise-avancada.js?v=fixos-interacao-ajuda-20261014"></script>
-  <script src="paineis-fixos.js?v=fixos-interacao-ajuda-20261014"></script>
+  <script src="paineis-fixos.js?v=config-simples-final-20261015"></script>
   <script src="graficos-legiveis.js?v=recuperacao-20261014b"></script>
   <script src="solicitacoes-usuarios.js?v=recuperacao-20261014b"></script>
   <script src="senha-provisoria.js?v=recuperacao-20261014b"></script>
   <script src="sessao-inatividade.js?v=recuperacao-20261014b"></script>
   <script src="auth-protegida.js?v=recuperacao-20261014b"></script>
-  <script src="paineis-editor.js?v=paineis-editor-20261014b"></script>
+  <script src="paineis-editor.js?v=config-simples-final-20261015"></script>
   <script src="configuracoes-organizadas.js?v=config-clara-20261014b"></script>
   <script src="ajuda-contextual.js?v=ajuda-discreta-20261014"></script>
   <script src="recuperacao-login.js?v=recuperacao-login-20261014"></script>
@@ -654,10 +654,10 @@
   <script src="curva-abc.js?v=categoria-abc-20261014"></script>
   <script src="tabelas-padrao.js?v=tabelas-paleta-final-20261014"></script>
   <script src="graficos-ajuda.js?v=fixos-interacao-ajuda-20261014"></script>
-  <script src="categoria-custo-fixo.js?v=config-simples-20261015"></script>
+  <script src="categoria-custo-fixo.js?v=config-simples-final-20261015"></script>
   <script src="custos-fixos-vinculos.js?v=fixos-automaticos-20261014"></script>
   <script src="graficos-ordem.js?v=graficos-ordem-20261014"></script>
-  <script src="configuracoes-praticas.js?v=config-simples-20261015"></script>
+  <script src="configuracoes-praticas.js?v=config-simples-final-20261015"></script>
 </body>
 </html>
 
